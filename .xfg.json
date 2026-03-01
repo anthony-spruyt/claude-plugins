@@ -7,7 +7,16 @@
         ".devcontainer/initialize.sh",
         ".devcontainer/package.json",
         ".devcontainer/post-create.sh",
-        ".devcontainer/setup-devcontainer.sh"
+        ".devcontainer/setup-devcontainer.sh",
+        ".editorconfig",
+        ".gitignore",
+        ".gitleaks.toml",
+        ".pre-commit-config.yaml",
+        ".prettierignore",
+        ".prettierrc.yaml",
+        ".vscode/settings.json",
+        ".yamllint.yml",
+        "LICENSE"
       ],
       "labels": [
         "blocked",

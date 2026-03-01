@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/prettierrc.json
+# This file is automatically updated - do not modify directly
+
+trailingComma: "es5"
+tabWidth: 2
+semi: true
+singleQuote: false
+proseWrap: "preserve"
+overrides:
+  - files: "*.json"
+    options:
+      printWidth: 1
+  - files: "*.json5"
+    options:
+      quoteProps: "preserve"
+      trailingComma: "none"
