@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "configs": {
     "repo-operator": {
       "files": [
@@ -9,34 +9,17 @@
         ".devcontainer/post-create.sh",
         ".devcontainer/setup-devcontainer.sh",
         ".editorconfig",
+        ".github/actionlint.yaml",
         ".gitignore",
         ".gitleaks.toml",
+        ".markdownlint.json",
+        ".markdownlintignore",
         ".pre-commit-config.yaml",
         ".prettierignore",
         ".prettierrc.yaml",
         ".vscode/settings.json",
         ".yamllint.yml",
         "LICENSE"
-      ],
-      "labels": [
-        "blocked",
-        "bug",
-        "chore",
-        "dep/major",
-        "dep/minor",
-        "dep/patch",
-        "dependencies",
-        "docker",
-        "documentation",
-        "duplicate",
-        "enhancement",
-        "github actions",
-        "good first issue",
-        "help wanted",
-        "invalid",
-        "question",
-        "security",
-        "wontfix"
       ]
     }
   }
