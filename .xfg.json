@@ -9,7 +9,6 @@
         ".devcontainer/post-create.sh",
         ".devcontainer/setup-devcontainer.sh",
         ".editorconfig",
-        ".github/actionlint.yaml",
         ".gitignore",
         ".gitleaks.toml",
         ".markdownlint.json",
