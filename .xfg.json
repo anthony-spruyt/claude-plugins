@@ -11,6 +11,7 @@
         ".editorconfig",
         ".gitignore",
         ".gitleaks.toml",
+        ".jsonlintrc",
         ".markdownlint.json",
         ".markdownlintignore",
         ".pre-commit-config.yaml",
