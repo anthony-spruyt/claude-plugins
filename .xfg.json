@@ -4,9 +4,10 @@
     "repo-operator": {
       "files": [
         ".devcontainer/devcontainer.json",
+        ".devcontainer/Dockerfile",
         ".devcontainer/initialize.sh",
-        ".devcontainer/package.json",
-        ".devcontainer/post-create.sh",
+        ".devcontainer/podman-seccomp.json",
+        ".devcontainer/README.md",
         ".devcontainer/setup-devcontainer.sh",
         ".editorconfig",
         ".gitignore",
