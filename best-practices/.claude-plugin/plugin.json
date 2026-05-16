@@ -1,0 +1,11 @@
+{
+  "name": "best-practices",
+  "version": "1.0.0",
+  "description": "Warning rules for conventional commits, tool usage, and shell wrappers",
+  "author": {
+    "name": "anthony-spruyt",
+    "email": "spruyt.anthony@gmail.com"
+  },
+  "repository": "https://github.com/anthony-spruyt/claude-plugins",
+  "license": "MIT"
+}
