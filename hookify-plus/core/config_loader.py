@@ -211,12 +211,62 @@ def extract_frontmatter(content: str) -> tuple[Dict[str, Any], str]:
     return frontmatter, message
 
 
-def load_rules(event: Optional[str] = None) -> List[Rule]:
-    """Load all hookify rules from .claude directory.
+RULE_DIR_NAME = "hookify-plus"
+RULE_GLOB = "*.md"
 
-    Loads rules from both:
-    - Project-level: ./.claude/hookify.*.local.md (relative to cwd)
-    - Global: ~/.claude/hookify.*.local.md (user's home directory)
+
+def _get_project_rules() -> List[str]:
+    """Find rules in .claude/hookify-plus/ relative to cwd."""
+    project_dir = os.path.join(".claude", RULE_DIR_NAME)
+    if not os.path.isdir(project_dir):
+        return []
+    return glob.glob(os.path.join(project_dir, RULE_GLOB))
+
+
+def _get_global_rules() -> List[str]:
+    """Find rules in ~/.claude/hookify-plus/."""
+    home = os.path.expanduser("~")
+    global_dir = os.path.join(home, ".claude", RULE_DIR_NAME)
+    if not os.path.isdir(global_dir):
+        return []
+    return glob.glob(os.path.join(global_dir, RULE_GLOB))
+
+
+def _get_plugin_rules() -> List[str]:
+    """Find rules in sibling plugin hookify-plus/ directories."""
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if not plugin_root:
+        return []
+
+    marketplace_dir = os.path.dirname(plugin_root)
+    self_name = os.path.basename(plugin_root)
+    rule_files = []
+
+    try:
+        for sibling in os.listdir(marketplace_dir):
+            if sibling == self_name:
+                continue
+            hookify_dir = os.path.join(marketplace_dir, sibling, RULE_DIR_NAME)
+            if os.path.isdir(hookify_dir):
+                rule_files.extend(glob.glob(os.path.join(hookify_dir, RULE_GLOB)))
+    except OSError:
+        pass
+
+    return rule_files
+
+
+def discover_rule_files() -> List[str]:
+    """Discover all rule files from project, global, and plugin sources."""
+    return _get_project_rules() + _get_global_rules() + _get_plugin_rules()
+
+
+def load_rules(event: Optional[str] = None) -> List[Rule]:
+    """Load all hookify rules from discovered locations.
+
+    Scans:
+    - .claude/hookify-plus/*.md (project-level, relative to cwd)
+    - ~/.claude/hookify-plus/*.md (user's home directory)
+    - <sibling_plugin>/hookify-plus/*.md (same marketplace)
 
     Args:
         event: Optional event filter ("bash", "file", "stop", etc.)
@@ -225,41 +275,25 @@ def load_rules(event: Optional[str] = None) -> List[Rule]:
         List of enabled Rule objects matching the event.
     """
     rules = []
-
-    # Find all hookify.*.local.md files from both project and global .claude
-    patterns = [
-        os.path.join('.claude', 'hookify.*.local.md'),  # Project-level
-        os.path.expanduser(os.path.join('~', '.claude', 'hookify.*.local.md')),  # Global
-    ]
-    files = []
-    for pattern in patterns:
-        files.extend(glob.glob(pattern))
+    files = discover_rule_files()
 
     for file_path in files:
         try:
             rule = load_rule_file(file_path)
             if not rule:
                 continue
-
-            # Filter by event if specified
             if event:
                 if rule.event != 'all' and rule.event != event:
                     continue
-
-            # Only include enabled rules
             if rule.enabled:
                 rules.append(rule)
-
         except (IOError, OSError, PermissionError) as e:
-            # File I/O errors - log and continue
             print(f"Warning: Failed to read {file_path}: {e}", file=sys.stderr)
             continue
         except (ValueError, KeyError, AttributeError, TypeError) as e:
-            # Parsing errors - log and continue
             print(f"Warning: Failed to parse {file_path}: {e}", file=sys.stderr)
             continue
         except Exception as e:
-            # Unexpected errors - log with type details
             print(f"Warning: Unexpected error loading {file_path} ({type(e).__name__}): {e}", file=sys.stderr)
             continue
 
