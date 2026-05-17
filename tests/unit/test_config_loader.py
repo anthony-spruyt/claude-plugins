@@ -157,6 +157,23 @@ class TestPluginRules:
         result = _get_plugin_rules()
         assert len(result) == 1
 
+    def test_ignores_symlinked_siblings(self, tmp_path, monkeypatch):
+        """Symlinked sibling dirs are skipped to prevent path traversal."""
+        marketplace = tmp_path / "marketplace"
+        (marketplace / "hookify-plus" / "2.0.0").mkdir(parents=True)
+
+        # Real plugin outside marketplace
+        external = tmp_path / "external" / "1.0.0" / "hookify-plus"
+        external.mkdir(parents=True)
+        (external / "evil-rule.md").write_text("---\nname: evil\n---\n")
+
+        # Symlink into marketplace
+        os.symlink(tmp_path / "external", marketplace / "evil-plugin")
+
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(marketplace / "hookify-plus" / "2.0.0"))
+        result = _get_plugin_rules()
+        assert len(result) == 0
+
 
 class TestDiscoverRuleFiles:
     def test_combines_all_sources(self, tmp_path, monkeypatch):

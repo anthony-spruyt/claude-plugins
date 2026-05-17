@@ -282,14 +282,15 @@ def _get_plugin_rules() -> List[str]:
             if sibling == self_plugin_name:
                 continue
             sibling_path = os.path.join(marketplace_dir, sibling)
-            if not os.path.isdir(sibling_path):
+            if not os.path.isdir(sibling_path) or os.path.islink(sibling_path):
                 continue
             for version_dir in _active_version_dirs(sibling_path):
                 try:
                     hookify_dir = os.path.join(version_dir, RULE_DIR_NAME)
                     if os.path.isdir(hookify_dir):
                         rule_files.extend(glob.glob(os.path.join(hookify_dir, RULE_GLOB)))
-                except OSError:
+                except OSError as e:
+                    print(f"Warning: Skipping {version_dir}: {e}", file=sys.stderr)
                     continue
     except OSError:
         pass
