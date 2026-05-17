@@ -233,22 +233,34 @@ def _get_global_rules() -> List[str]:
 
 
 def _get_plugin_rules() -> List[str]:
-    """Find rules in sibling plugin hookify-plus/ directories."""
+    """Find rules in sibling plugin hookify-plus/ directories.
+
+    Cache layout: cache/{marketplace}/{plugin}/{version}/
+    CLAUDE_PLUGIN_ROOT points to the version dir, so we go up two levels
+    to reach the marketplace dir where sibling plugins live.
+    """
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if not plugin_root:
         return []
 
-    marketplace_dir = os.path.dirname(plugin_root)
-    self_name = os.path.basename(plugin_root)
+    # Go up two levels: version dir -> plugin dir -> marketplace dir
+    plugin_dir = os.path.dirname(plugin_root)
+    marketplace_dir = os.path.dirname(plugin_dir)
+    self_plugin_name = os.path.basename(plugin_dir)
     rule_files = []
 
     try:
         for sibling in os.listdir(marketplace_dir):
-            if sibling == self_name:
+            if sibling == self_plugin_name:
                 continue
-            hookify_dir = os.path.join(marketplace_dir, sibling, RULE_DIR_NAME)
-            if os.path.isdir(hookify_dir):
-                rule_files.extend(glob.glob(os.path.join(hookify_dir, RULE_GLOB)))
+            sibling_path = os.path.join(marketplace_dir, sibling)
+            if not os.path.isdir(sibling_path):
+                continue
+            # Scan all version dirs under sibling
+            for version in os.listdir(sibling_path):
+                hookify_dir = os.path.join(sibling_path, version, RULE_DIR_NAME)
+                if os.path.isdir(hookify_dir):
+                    rule_files.extend(glob.glob(os.path.join(hookify_dir, RULE_GLOB)))
     except OSError:
         pass
 
