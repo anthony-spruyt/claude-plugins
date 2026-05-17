@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
+  "name": "devcontainer-common",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "NEXUS_URL": "${localEnv:NEXUS_URL}"
+    }
+  },
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "containerUser": "vscode",
+  "remoteUser": "vscode",
+  "runArgs": [
+    "--env-file",
+    "${localEnv:HOME}/.secrets/.env",
+    "--security-opt",
+    "seccomp=${localWorkspaceFolder}/.devcontainer/podman-seccomp.json",
+    "--device",
+    "/dev/fuse"
+  ],
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh/agent.sock,target=/ssh-agent,type=bind",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind",
+    "source=${localWorkspaceFolderBasename}-containers,target=/var/lib/containers,type=volume"
+  ],
+  "containerEnv": {
+    "SSH_AUTH_SOCK": "/ssh-agent"
+  },
+  "features": {
+    "ghcr.io/devcontainers-extra/features/renovate-cli": {
+      "version": "43.122.0"
+    }
+  },
+  "initializeCommand": "bash ${localWorkspaceFolder}/.devcontainer/initialize.sh",
+  "postCreateCommand": "bash -lc \"cd ${containerWorkspaceFolder} && devcontainer-post-create\"",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "bierner.markdown-mermaid",
+        "blueglassblock.better-json5",
+        "esbenp.prettier-vscode",
+        "mhutchie.git-graph",
+        "redhat.vscode-yaml",
+        "github.vscode-github-actions",
+        "jetmartin.bats"
+      ]
+    }
+  }
+}

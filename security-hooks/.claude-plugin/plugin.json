@@ -1,0 +1,10 @@
+{
+  "name": "security-hooks",
+  "version": "1.0.0",
+  "description": "23 blocking rules preventing secret exposure via CLI commands and file reads",
+  "author": {
+    "name": "anthony-spruyt"
+  },
+  "repository": "https://github.com/anthony-spruyt/claude-plugins",
+  "license": "MIT"
+}

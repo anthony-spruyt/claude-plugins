@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/github-workflow.json
+# See https://github.com/anthony-spruyt/repo-operator/blob/main/src/templates/.github/workflows/ci.yaml for template comments
+
+name: "CI"
+on:
+  pull_request:
+    branches:
+      - "main"
+  push:
+    branches:
+      - "main"
+permissions:
+  actions: "write"
+  contents: "write"
+  pull-requests: "write"
+  security-events: "write"
+  statuses: "write"
+jobs:
+  lint:
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_lint.yaml@main"
+    secrets: "inherit"
+  test:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd" # v6
+      - uses: "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405" # v6
+        with:
+          python-version: "3.14"
+      - name: "Install Python dependencies"
+        run: "pip install pytest pyyaml"
+      - name: "Run unit tests"
+        run: "python -m pytest tests/unit/ -v"
+      - name: "Install bats"
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq bats
+          sudo mkdir -p /usr/local/lib/bats
+          for lib in bats-support bats-assert; do
+            sudo git clone --depth 1 --branch v0.3.0 \
+              "https://github.com/bats-core/${lib}.git" \
+              "/usr/local/lib/bats/${lib}"
+          done
+          sudo chmod -R a+r /usr/local/lib/bats
+      - name: "Run integration tests"
+        run: "bats tests/hooks/ -t"
+  summary:
+    needs:
+      - "lint"
+      - "test"
+    if: "always()"
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_summary.yaml@main"

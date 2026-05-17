@@ -1,0 +1,37 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "aspruyt-plugins",
+  "description": "Security hooks, best practices, and hookify-plus engine",
+  "owner": {
+    "name": "anthony-spruyt"
+  },
+  "plugins": [
+    {
+      "name": "hookify-plus",
+      "description": "Rule engine with rate-limited warnings, stderr fix for #12446, and convention-based discovery",
+      "version": "2.1.0",
+      "author": {
+        "name": "anthony-spruyt"
+      },
+      "source": "./hookify-plus"
+    },
+    {
+      "name": "security-hooks",
+      "description": "23 blocking rules preventing secret exposure via CLI commands and file reads",
+      "version": "1.0.0",
+      "author": {
+        "name": "anthony-spruyt"
+      },
+      "source": "./security-hooks"
+    },
+    {
+      "name": "best-practices",
+      "description": "Warning rules for conventional commits, tool usage, and shell wrappers",
+      "version": "1.0.0",
+      "author": {
+        "name": "anthony-spruyt"
+      },
+      "source": "./best-practices"
+    }
+  ]
+}
