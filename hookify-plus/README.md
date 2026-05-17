@@ -1,6 +1,6 @@
 # Hookify Plus
 
-[![Version](https://img.shields.io/badge/version-2.2.1-blue)](CHANGELOG.md)
+![Version](https://img.shields.io/badge/version-2.2.1-blue)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **A rule engine for Claude Code with convention-based rule discovery.**
@@ -192,8 +192,6 @@ The version is read from `.claude-plugin/plugin.json`. `claude plugins update`
 compares the installed version string against the manifest, so a version bump
 is required for users to pick up changes.
 
-See [CHANGELOG.md](CHANGELOG.md) for history.
-
 ---
 
 ## Credits
@@ -208,7 +206,7 @@ See [CHANGELOG.md](CHANGELOG.md) for history.
 ## Contributing
 
 1. Fork [anthony-spruyt/claude-plugins](https://github.com/anthony-spruyt/claude-plugins)
-2. Make changes and add a CHANGELOG.md entry
+2. Make your changes
 3. Bump the version in `hookify-plus/.claude-plugin/plugin.json` **and** `.claude-plugin/marketplace.json`
 4. Submit a PR
 
