@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "alwaysThinkingEnabled": true,
+  "fastMode": false,
+  "model": "claude-opus-4-6[1m]",
+  "autoUpdatesChannel": "latest",
+  "effortLevel": "xhigh",
+  "viewMode": "verbose",
+  "autoMemoryEnabled": false,
+  "skipDangerousModePermissionPrompt": true,
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "deny": [
+      "mcp__bravesearch__brave_local_search",
+      "mcp__bravesearch__brave_video_search",
+      "mcp__bravesearch__brave_image_search",
+      "mcp__bravesearch__brave_news_search",
+      "mcp__bravesearch__brave_summarizer",
+      "Read(./**/*id_rsa*)",
+      "Read(./**/*id_ed25519*)",
+      "Read(./**/*id_ecdsa*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/*.p12)",
+      "Read(./**/*.pfx)",
+      "Read(./**/*.jks)",
+      "Read(./**/*.keystore)",
+      "Read(./**/*.credentials)",
+      "Read(./**/*credentials.json)",
+      "Read(./**/.aws/credentials)",
+      "Read(./**/.kube/config)",
+      "Read(./**/*kubeconfig*)",
+      "Read(./**/*.htpasswd)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./**/*.sops.*)",
+      "Read(./**/.docker/config.json)",
+      "Read(./**/.config/gh/hosts.yml)",
+      "Read(./**/.npmrc)",
+      "Read(./**/.pypirc)",
+      "Read(./**/.netrc)",
+      "Read(./**/.vault-token)",
+      "Read(./**/.ssh/config)",
+      "Read(~/.ssh/*)",
+      "Read(~/.ssh/**/*)",
+      "Read(~/.aws/credentials)",
+      "Read(~/.kube/config)",
+      "Read(~/.docker/config.json)",
+      "Read(~/.config/gh/hosts.yml)",
+      "Read(~/.npmrc)",
+      "Read(~/.pypirc)",
+      "Read(~/.netrc)",
+      "Read(~/.vault-token)",
+      "Read(~/.gnupg/*)",
+      "Read(~/.gnupg/**/*)",
+      "Read(~/.password-store/*)",
+      "Read(~/.password-store/**/*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file_path=$(jq -r '.tool_input.file_path // .tool_input.notebook_path' < /dev/stdin); case \"$file_path\" in *.md) mdformat \"$file_path\" 2>/dev/null || true ;; *) npx prettier --write \"$file_path\" 2>/dev/null || true ;; esac"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "hookify-plus@aspruyt-plugins": true,
+    "security-hooks@aspruyt-plugins": true,
+    "best-practices@aspruyt-plugins": true,
+    "superpowers@claude-plugins-official": true,
+    "caveman@caveman": true,
+    "agentmemory@agentmemory": true,
+    "context7@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": false,
+    "claude-md-management@claude-plugins-official": false,
+    "code-review@claude-plugins-official": false,
+    "feature-dev@claude-plugins-official": false,
+    "hookify@claude-plugins-official": false,
+    "plugin-dev@claude-plugins-official": false,
+    "security-guidance@claude-plugins-official": false
+  },
+  "extraKnownMarketplaces": {
+    "aspruyt-plugins": {
+      "autoUpdate": true,
+      "source": {
+        "source": "github",
+        "repo": "anthony-spruyt/claude-plugins"
+      }
+    },
+    "caveman": {
+      "autoUpdate": true,
+      "source": {
+        "source": "github",
+        "repo": "JuliusBrussee/caveman"
+      }
+    },
+    "agentmemory": {
+      "autoUpdate": true,
+      "source": {
+        "source": "github",
+        "repo": "rohitg00/agentmemory"
+      }
+    }
+  }
+}
