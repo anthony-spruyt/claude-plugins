@@ -1,0 +1,11 @@
+{
+  "name": "hookify-plus",
+  "version": "2.0.0",
+  "description": "Rule engine with convention-based discovery, rate-limited warnings, and stderr fix for #12446",
+  "author": {
+    "name": "anthony-spruyt",
+    "email": "spruyt.anthony@gmail.com"
+  },
+  "repository": "https://github.com/anthony-spruyt/claude-plugins",
+  "license": "MIT"
+}

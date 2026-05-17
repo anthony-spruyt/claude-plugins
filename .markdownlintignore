@@ -1,2 +1,13 @@
 # Claude Code generated files
 .claude/
+
+# Hookify rule files use frontmatter, not headings (MD041/MD040/MD060)
+security-hooks/hookify-plus/
+best-practices/hookify-plus/
+hookify-plus/examples/
+hookify-plus/commands/
+hookify-plus/agents/
+hookify-plus/skills/
+
+# Changelog repeats headings by design (MD024)
+hookify-plus/CHANGELOG.md

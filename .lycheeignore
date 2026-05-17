@@ -19,3 +19,6 @@ https://127\.0\.0\.1.*
 
 # Schema store times out intermittently in CI
 https://json\.schemastore\.org/.*
+
+# Marketplace schema URL does not exist yet
+https://anthropic\.com/claude-code/marketplace\.schema\.json
