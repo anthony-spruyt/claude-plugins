@@ -232,18 +232,46 @@ def _get_global_rules() -> List[str]:
     return glob.glob(os.path.join(global_dir, RULE_GLOB))
 
 
+IN_USE_DIR = ".in_use"
+
+
+def _active_version_dirs(plugin_path: str) -> List[str]:
+    """Return version dirs under a plugin that are actively in use.
+
+    Prefers versions with an .in_use marker. Falls back to all version
+    dirs if none are marked (backward compat with older Claude Code).
+    """
+    try:
+        entries = os.listdir(plugin_path)
+    except OSError:
+        return []
+
+    version_dirs = []
+    active_dirs = []
+
+    for entry in entries:
+        full = os.path.join(plugin_path, entry)
+        if not os.path.isdir(full):
+            continue
+        version_dirs.append(full)
+        if os.path.isdir(os.path.join(full, IN_USE_DIR)):
+            active_dirs.append(full)
+
+    return active_dirs if active_dirs else version_dirs
+
+
 def _get_plugin_rules() -> List[str]:
     """Find rules in sibling plugin hookify-plus/ directories.
 
     Cache layout: cache/{marketplace}/{plugin}/{version}/
     CLAUDE_PLUGIN_ROOT points to the version dir, so we go up two levels
     to reach the marketplace dir where sibling plugins live.
+    Only scans version dirs with .in_use markers to avoid loading stale rules.
     """
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if not plugin_root:
         return []
 
-    # Go up two levels: version dir -> plugin dir -> marketplace dir
     plugin_dir = os.path.dirname(plugin_root)
     marketplace_dir = os.path.dirname(plugin_dir)
     self_plugin_name = os.path.basename(plugin_dir)
@@ -256,11 +284,13 @@ def _get_plugin_rules() -> List[str]:
             sibling_path = os.path.join(marketplace_dir, sibling)
             if not os.path.isdir(sibling_path):
                 continue
-            # Scan all version dirs under sibling
-            for version in os.listdir(sibling_path):
-                hookify_dir = os.path.join(sibling_path, version, RULE_DIR_NAME)
-                if os.path.isdir(hookify_dir):
-                    rule_files.extend(glob.glob(os.path.join(hookify_dir, RULE_GLOB)))
+            for version_dir in _active_version_dirs(sibling_path):
+                try:
+                    hookify_dir = os.path.join(version_dir, RULE_DIR_NAME)
+                    if os.path.isdir(hookify_dir):
+                        rule_files.extend(glob.glob(os.path.join(hookify_dir, RULE_GLOB)))
+                except OSError:
+                    continue
     except OSError:
         pass
 
