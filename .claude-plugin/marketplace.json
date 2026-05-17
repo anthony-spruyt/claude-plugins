@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claude-plugins",
+  "name": "aspruyt-plugins",
   "description": "Security hooks, best practices, and hookify-plus engine",
   "owner": {
     "name": "anthony-spruyt",
