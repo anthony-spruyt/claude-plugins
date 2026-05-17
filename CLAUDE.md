@@ -24,6 +24,18 @@ bats tests/hooks/
 pytest tests/unit/ -v
 ```
 
+## Versioning
+
+Plugin versions are read from `plugin.json` manifests. `claude plugins update` compares the installed version string against the manifest — same string means "already at latest" even if code changed.
+
+**When making changes in a PR**, bump the version in both files:
+1. `<plugin>/.claude-plugin/plugin.json` — the plugin's own manifest
+2. `.claude-plugin/marketplace.json` — the marketplace registry
+
+Use semver: patch for bug fixes, minor for new rules/features, major for breaking changes.
+
+If you forget, users must uninstall/reinstall to pick up changes.
+
 ## Plugin Discovery Convention
 
 Rules live in `hookify-plus/` directories. The engine scans:
