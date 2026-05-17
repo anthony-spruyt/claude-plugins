@@ -60,9 +60,10 @@ class TestPluginRules:
         """
         marketplace = tmp_path / "marketplace"
         (marketplace / "hookify-plus" / "2.0.0").mkdir(parents=True)
-        sibling_rules = marketplace / "security-hooks" / "1.0.0" / "hookify-plus"
-        sibling_rules.mkdir(parents=True)
-        (sibling_rules / "block-test.md").write_text("---\nname: test\n---\ntest")
+        sibling_version = marketplace / "security-hooks" / "1.0.0"
+        (sibling_version / "hookify-plus").mkdir(parents=True)
+        (sibling_version / "hookify-plus" / "block-test.md").write_text("---\nname: test\n---\ntest")
+        (sibling_version / ".in_use").mkdir()
 
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(marketplace / "hookify-plus" / "2.0.0"))
         result = _get_plugin_rules()
@@ -77,9 +78,10 @@ class TestPluginRules:
         (self_version / "hookify-plus").mkdir()
         (self_version / "hookify-plus" / "own-rule.md").write_text("---\nname: own\n---\n")
 
-        sibling_rules = marketplace / "security-hooks" / "1.0.0" / "hookify-plus"
-        sibling_rules.mkdir(parents=True)
-        (sibling_rules / "sibling-rule.md").write_text("---\nname: sibling\n---\n")
+        sibling_version = marketplace / "security-hooks" / "1.0.0"
+        (sibling_version / "hookify-plus").mkdir(parents=True)
+        (sibling_version / "hookify-plus" / "sibling-rule.md").write_text("---\nname: sibling\n---\n")
+        (sibling_version / ".in_use").mkdir()
 
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(self_version))
         result = _get_plugin_rules()
@@ -98,9 +100,10 @@ class TestPluginRules:
         (marketplace / "hookify-plus" / "2.0.0").mkdir(parents=True)
 
         for plugin in ["security-hooks", "best-practices"]:
-            rules_dir = marketplace / plugin / "1.0.0" / "hookify-plus"
-            rules_dir.mkdir(parents=True)
-            (rules_dir / f"{plugin}-rule.md").write_text(f"---\nname: {plugin}\n---\n")
+            version_dir = marketplace / plugin / "1.0.0"
+            (version_dir / "hookify-plus").mkdir(parents=True)
+            (version_dir / "hookify-plus" / f"{plugin}-rule.md").write_text(f"---\nname: {plugin}\n---\n")
+            (version_dir / ".in_use").mkdir()
 
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(marketplace / "hookify-plus" / "2.0.0"))
         result = _get_plugin_rules()
@@ -127,8 +130,8 @@ class TestPluginRules:
         assert len(result) == 1
         assert "new-rule.md" in result[0]
 
-    def test_falls_back_to_all_versions_without_in_use(self, tmp_path, monkeypatch):
-        """Scans all version dirs when no .in_use markers exist."""
+    def test_skips_versions_without_in_use(self, tmp_path, monkeypatch):
+        """Versions without .in_use marker are not scanned."""
         marketplace = tmp_path / "marketplace"
         (marketplace / "hookify-plus" / "2.0.0").mkdir(parents=True)
 
@@ -139,7 +142,7 @@ class TestPluginRules:
 
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(marketplace / "hookify-plus" / "2.0.0"))
         result = _get_plugin_rules()
-        assert len(result) == 2
+        assert len(result) == 0
 
     def test_ignores_non_directory_entries(self, tmp_path, monkeypatch):
         """Non-directory entries in marketplace dir are skipped."""
@@ -149,9 +152,10 @@ class TestPluginRules:
         # File in marketplace dir (not a plugin)
         (marketplace / "README.md").write_text("not a plugin")
 
-        sibling_rules = marketplace / "security-hooks" / "1.0.0" / "hookify-plus"
-        sibling_rules.mkdir(parents=True)
-        (sibling_rules / "rule.md").write_text("---\nname: rule\n---\n")
+        sibling_version = marketplace / "security-hooks" / "1.0.0"
+        (sibling_version / "hookify-plus").mkdir(parents=True)
+        (sibling_version / "hookify-plus" / "rule.md").write_text("---\nname: rule\n---\n")
+        (sibling_version / ".in_use").mkdir()
 
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(marketplace / "hookify-plus" / "2.0.0"))
         result = _get_plugin_rules()
@@ -194,9 +198,10 @@ class TestDiscoverRuleFiles:
         # Plugin rule
         marketplace = tmp_path / "marketplace"
         (marketplace / "hookify-plus" / "2.0.0").mkdir(parents=True)
-        sibling = marketplace / "my-plugin" / "1.0.0" / "hookify-plus"
-        sibling.mkdir(parents=True)
-        (sibling / "plugin.md").write_text("---\nname: plugin\n---\n")
+        sibling_version = marketplace / "my-plugin" / "1.0.0"
+        (sibling_version / "hookify-plus").mkdir(parents=True)
+        (sibling_version / "hookify-plus" / "plugin.md").write_text("---\nname: plugin\n---\n")
+        (sibling_version / ".in_use").mkdir()
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(marketplace / "hookify-plus" / "2.0.0"))
 
         result = discover_rule_files()

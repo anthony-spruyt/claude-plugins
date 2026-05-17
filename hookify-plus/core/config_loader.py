@@ -236,28 +236,21 @@ IN_USE_DIR = ".in_use"
 
 
 def _active_version_dirs(plugin_path: str) -> List[str]:
-    """Return version dirs under a plugin that are actively in use.
-
-    Prefers versions with an .in_use marker. Falls back to all version
-    dirs if none are marked (backward compat with older Claude Code).
-    """
+    """Return version dirs under a plugin that have an .in_use marker."""
     try:
         entries = os.listdir(plugin_path)
     except OSError:
         return []
 
-    version_dirs = []
     active_dirs = []
-
     for entry in entries:
         full = os.path.join(plugin_path, entry)
         if not os.path.isdir(full):
             continue
-        version_dirs.append(full)
         if os.path.isdir(os.path.join(full, IN_USE_DIR)):
             active_dirs.append(full)
 
-    return active_dirs if active_dirs else version_dirs
+    return active_dirs
 
 
 def _get_plugin_rules() -> List[str]:
