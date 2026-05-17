@@ -26,7 +26,11 @@
   "containerEnv": {
     "SSH_AUTH_SOCK": "/ssh-agent"
   },
-  "features": {},
+  "features": {
+    "ghcr.io/devcontainers-extra/features/renovate-cli": {
+      "version": "43.122.0"
+    }
+  },
   "initializeCommand": "bash ${localWorkspaceFolder}/.devcontainer/initialize.sh",
   "postCreateCommand": "bash -lc \"cd ${containerWorkspaceFolder} && devcontainer-post-create\"",
   "customizations": {
@@ -37,7 +41,9 @@
         "blueglassblock.better-json5",
         "esbenp.prettier-vscode",
         "mhutchie.git-graph",
-        "redhat.vscode-yaml"
+        "redhat.vscode-yaml",
+        "github.vscode-github-actions",
+        "jetmartin.bats"
       ]
     }
   }

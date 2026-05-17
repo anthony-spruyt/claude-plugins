@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/github-workflow.json
+# See https://github.com/anthony-spruyt/repo-operator/blob/main/src/templates/.github/workflows/ci.yaml for template comments
+
+name: "CI"
+on:
+  pull_request:
+    branches:
+      - "main"
+  push:
+    branches:
+      - "main"
+permissions:
+  actions: "write"
+  contents: "write"
+  pull-requests: "write"
+  security-events: "write"
+  statuses: "write"
+jobs:
+  lint:
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_lint.yaml@main"
+    secrets: "inherit"
+  summary:
+    needs:
+      - "lint"
+    if: "always()"
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_summary.yaml@main"
