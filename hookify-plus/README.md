@@ -11,6 +11,8 @@ It originated from Anthropic's [hookify](https://github.com/anthropics/claude-co
 
 ## What You Get
 
+### Features
+
 | Feature           | What it does                                             |
 | ----------------- | -------------------------------------------------------- |
 | `not_regex_match` | Exclude patterns (e.g., skip test files from rules)      |
@@ -20,9 +22,25 @@ It originated from Anthropic's [hookify](https://github.com/anthropics/claude-co
 | `Update` tool     | File events also fire for the Update tool                |
 | `warn_once`       | Rate limiting — only warn once per session               |
 | `warn_interval`   | Rate limiting — warn every N matches                     |
-| stderr + exit 2   | Claude actually sees block/warn messages ([#12446])      |
+
+### Fixes
+
+These ship with the engine — install and you have them:
+
+| Fix                                                          | Issue     |
+| ------------------------------------------------------------ | --------- |
+| Claude actually sees block/warn messages (stderr + exit 2)   | [#12446]  |
+| Read/Glob/Grep no longer misfire `file` rules                | [#14588]  |
+| Write tool `new_text` field extracts content correctly       | [#16081]  |
+| Python 3.8 type-hint compatibility                           | [#14588]  |
+| Windows paths with spaces work                               | [#16152]  |
+| `require-tests` example uses the correct operator            | [#13464]  |
 
 [#12446]: https://github.com/anthropics/claude-code/issues/12446
+[#13464]: https://github.com/anthropics/claude-code/issues/13464
+[#14588]: https://github.com/anthropics/claude-code/issues/14588
+[#16081]: https://github.com/anthropics/claude-code/pull/16081
+[#16152]: https://github.com/anthropics/claude-code/issues/16152
 
 ---
 
