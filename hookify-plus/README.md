@@ -1,16 +1,15 @@
 # Hookify Plus
 
-[![Version](https://img.shields.io/badge/version-0.1.0--plus.4-blue)](CHANGELOG.md)
-[![Based on](https://img.shields.io/badge/based%20on-hookify%200.1.0-gray)](https://github.com/anthropics/claude-code/tree/main/plugins/hookify)
+[![Version](https://img.shields.io/badge/version-2.2.1-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Community-maintained fork of the hookify plugin for Claude Code.**
+**A rule engine for Claude Code with convention-based rule discovery.**
 
-The upstream hookify plugin has bugs and missing features that Anthropic hasn't addressed. This fork integrates community fixes so you don't have to wait.
+Hookify Plus turns markdown files with YAML frontmatter into PreToolUse / PostToolUse / Stop / UserPromptSubmit hooks. Write a rule, drop it in a `hookify-plus/` directory, and it's active — no hook wiring required.
+
+It originated from Anthropic's [hookify](https://github.com/anthropics/claude-code/tree/main/plugins/hookify) plugin and now ships independently with added features and fixes (see [Credits](#credits)).
 
 ## What You Get
-
-### 7 Features Added
 
 | Feature           | What it does                                             |
 | ----------------- | -------------------------------------------------------- |
@@ -18,49 +17,50 @@ The upstream hookify plugin has bugs and missing features that Anthropic hasn't 
 | `value` key       | Clearer syntax for non-regex operators                   |
 | `read` event      | Separate event for Read/Glob/Grep/LS (no false triggers) |
 | Global rules      | Rules in `~/.claude/` apply to ALL projects              |
-| `Update` tool     | File events now fire for the Update tool                 |
-| `warn_once`       | Rate limiting - only warn once per session               |
-| `warn_interval`   | Rate limiting - warn every N matches                     |
+| `Update` tool     | File events also fire for the Update tool                |
+| `warn_once`       | Rate limiting — only warn once per session               |
+| `warn_interval`   | Rate limiting — warn every N matches                     |
+| stderr + exit 2   | Claude actually sees block/warn messages ([#12446])      |
 
-### 6 Bugs Fixed
+[#12446]: https://github.com/anthropics/claude-code/issues/12446
 
-| Bug                                       | Issue                                                                                  |
-| ----------------------------------------- | -------------------------------------------------------------------------------------- |
-| Read tools incorrectly fired `file` rules | [#14588](https://github.com/anthropics/claude-code/issues/14588)                       |
-| Write tool `new_text` field was broken    | [#16081](https://github.com/anthropics/claude-code/pull/16081)                         |
-| Python 3.8 type hints incompatible        | [#14588](https://github.com/anthropics/claude-code/issues/14588)                       |
-| Claude couldn't see why rules blocked     | [#12446](https://github.com/anthropics/claude-code/issues/12446) (stderr + exit 2 fix) |
-| Windows paths with spaces failed          | [#16152](https://github.com/anthropics/claude-code/issues/16152)                       |
-| Example file used wrong operator          | [#13464](https://github.com/anthropics/claude-code/issues/13464)                       |
+---
 
-**13 total improvements.** No waiting for Anthropic to merge PRs.
+## Installation
+
+Hookify Plus is distributed through this marketplace:
+
+```bash
+/plugin marketplace add anthony-spruyt/claude-plugins
+```
+
+Then enable **hookify-plus** in your Claude Code settings. Companion rule
+plugins from the same marketplace (`security-hooks`, `best-practices`) are
+discovered automatically once the engine is enabled.
+
+Run `claude plugins update` to pick up new versions.
 
 ---
 
 ## Quick Start
 
+Create your first rule:
+
 ```bash
-# 1. Clone
-git clone https://github.com/adrozdenko/hookify-plus ~/hookify-plus
-
-# 2. Backup & link
-mv ~/.claude/plugins/cache/claude-code-plugins/hookify/0.1.0{,.bak}
-ln -s ~/hookify-plus ~/.claude/plugins/cache/claude-code-plugins/hookify/0.1.0
-
-# 3. Create your first rule
-mkdir -p .claude
-cat > .claude/hookify.warn-rm.local.md << 'EOF'
+mkdir -p .claude/hookify-plus
+cat > .claude/hookify-plus/warn-rm.md << 'EOF'
 ---
 name: warn-dangerous-rm
 enabled: true
 event: bash
 pattern: rm\s+-rf
+action: warn
 ---
 ⚠️ **Dangerous rm command!** Double-check the path before proceeding.
 EOF
-
-# Done! Rules are active immediately.
 ```
+
+The rule is active immediately — no restart needed.
 
 ---
 
@@ -163,57 +163,36 @@ Use the Glob tool instead of find/ls for better performance.
 | `stop`   | `reason`, `transcript`                         |
 | `prompt` | `user_prompt`                                  |
 
-### Rule Locations
-
-| Location                       | Scope                 |
-| ------------------------------ | --------------------- |
-| `.claude/hookify.*.local.md`   | Current project only  |
-| `~/.claude/hookify.*.local.md` | All projects (global) |
-
 ---
 
-## Installation
+## Rule Discovery
 
-### Install
+The engine scans three locations, in order:
 
-```bash
-git clone https://github.com/adrozdenko/hookify-plus ~/hookify-plus
+| Location                       | Scope                                     |
+| ------------------------------ | ----------------------------------------- |
+| `.claude/hookify-plus/*.md`    | Current project only                      |
+| `~/.claude/hookify-plus/*.md`  | All projects (global)                     |
+| `<sibling_plugin>/hookify-plus/*.md` | Provided by other plugins in the same marketplace |
 
-mv ~/.claude/plugins/cache/claude-code-plugins/hookify/0.1.0 \
-   ~/.claude/plugins/cache/claude-code-plugins/hookify/0.1.0.bak
-
-ln -s ~/hookify-plus \
-   ~/.claude/plugins/cache/claude-code-plugins/hookify/0.1.0
-```
-
-### Update
-
-```bash
-cd ~/hookify-plus && git pull
-```
-
-Changes take effect immediately—no restart needed.
-
-### Revert to Upstream
-
-```bash
-rm ~/.claude/plugins/cache/claude-code-plugins/hookify/0.1.0
-mv ~/.claude/plugins/cache/claude-code-plugins/hookify/0.1.0.bak \
-   ~/.claude/plugins/cache/claude-code-plugins/hookify/0.1.0
-```
+This is how `security-hooks` and `best-practices` ship their rules — they're
+plain rule files the engine picks up automatically.
 
 ---
 
 ## Versioning
 
-Format: `0.1.0-plus.N`
+Standard [semver](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
-- `0.1.0` = upstream hookify version
-- `plus.N` = patch number
+- **patch** — bug fixes
+- **minor** — new rules / features
+- **major** — breaking changes
 
-When upstream releases a new version, we rebase (e.g., `0.2.0-plus.1`).
+The version is read from `.claude-plugin/plugin.json`. `claude plugins update`
+compares the installed version string against the manifest, so a version bump
+is required for users to pick up changes.
 
-See [CHANGELOG.md](CHANGELOG.md) for full history.
+See [CHANGELOG.md](CHANGELOG.md) for history.
 
 ---
 
@@ -221,19 +200,17 @@ See [CHANGELOG.md](CHANGELOG.md) for full history.
 
 | Contributor                                          | Contribution                                                                             |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [@adrozdenko](https://github.com/adrozdenko)         | Fork maintainer, `not_regex_match`, `value` key, `read` event                            |
+| [@adrozdenko](https://github.com/adrozdenko)         | `not_regex_match`, `value` key, `read` event                                             |
 | [@kp222x](https://github.com/kp222x)                 | Global rules ([#13916](https://github.com/anthropics/claude-code/pull/13916))            |
 | [@heathdutton](https://github.com/heathdutton)       | Write fix + Update tool ([#16081](https://github.com/anthropics/claude-code/pull/16081)) |
-| [@anthony-spruyt](https://github.com/anthony-spruyt) | Rate limiting (`warn_once`, `warn_interval`), proper #12446 fix (stderr + exit 2)        |
+| [@anthony-spruyt](https://github.com/anthony-spruyt) | Maintainer; rate limiting (`warn_once`, `warn_interval`), stderr + exit 2 fix for [#12446](https://github.com/anthropics/claude-code/issues/12446) |
 
 ## Contributing
 
-1. Fork this repo
-2. Make changes
-3. Add entry to CHANGELOG.md
-4. Submit PR
-
-All community contributions welcome!
+1. Fork [anthony-spruyt/claude-plugins](https://github.com/anthony-spruyt/claude-plugins)
+2. Make changes and add a CHANGELOG.md entry
+3. Bump the version in `hookify-plus/.claude-plugin/plugin.json` **and** `.claude-plugin/marketplace.json`
+4. Submit a PR
 
 ## License
 

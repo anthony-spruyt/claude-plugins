@@ -2,7 +2,21 @@
 
 All notable changes to hookify-plus are documented here.
 
-Based on upstream [hookify 0.1.0](https://github.com/anthropics/claude-code/tree/main/plugins/hookify).
+Hookify Plus originated from Anthropic's [hookify](https://github.com/anthropics/claude-code/tree/main/plugins/hookify) plugin and is now maintained independently in the [anthony-spruyt/claude-plugins](https://github.com/anthony-spruyt/claude-plugins) marketplace under standard [semver](https://semver.org/).
+
+## [2.2.1] - 2026-05-17
+
+### Changed
+
+- **Docs** — Rewrote README to drop the stale "unmaintained fork" framing
+  and clone+symlink install instructions. Now documents marketplace
+  installation, the `.claude/hookify-plus/*.md` discovery convention, and
+  standard semver versioning.
+
+## Pre-2.x history
+
+The entries below predate the move to this marketplace, when versions
+followed an upstream-tracking `0.1.0-plus.N` scheme.
 
 ## [0.1.0-plus.4] - 2026-01-25
 
@@ -59,9 +73,11 @@ Original hookify plugin from Anthropic.
 
 ## Version Scheme
 
-`0.1.0-plus.N` where:
+Standard [semver](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
-- `0.1.0` = upstream hookify version this is based on
-- `plus.N` = hookify-plus patch number
+- **patch** — bug fixes
+- **minor** — new rules / features
+- **major** — breaking changes
 
-When upstream releases 0.2.0, we'll rebase and become `0.2.0-plus.1`.
+(Versions before 1.0.0 used an upstream-tracking `0.1.0-plus.N` scheme; see
+the pre-2.x history above.)
