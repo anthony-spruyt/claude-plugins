@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: "Install Python dependencies"
-        run: "pip install pytest"
+        run: "pip install pytest pyyaml"
       - name: "Run unit tests"
         run: "python -m pytest tests/unit/ -v"
       - name: "Install bats"
