@@ -1,6 +1,0 @@
-# Lychee link checker configuration
-
-# Exclude URLs that don't exist yet or are internal references
-exclude = [
-  "https://anthropic.com/claude-code/marketplace.schema.json",
-]
