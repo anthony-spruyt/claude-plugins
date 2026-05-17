@@ -1,0 +1,1514 @@
+# Hookify Test Cases
+# Data-driven test configuration for hookify rules
+#
+# Format:
+#   - name: descriptive test name
+#     tool: Bash (or Read/Edit/Write)
+#     command: the command to test (for Bash tool)
+#     expect: block | warn | allow
+
+test_cases:
+  # =============================================================================
+  # SOPS Decryption (block-sops-decrypt)
+  # =============================================================================
+  - name: "block-sops-decrypt: sops -d"
+    tool: Bash
+    command: "sops -d secrets.yaml"
+    expect: block
+
+  - name: "block-sops-decrypt: sops --decrypt"
+    tool: Bash
+    command: "sops --decrypt config.enc"
+    expect: block
+
+  - name: "block-sops-decrypt: sops exec-env"
+    tool: Bash
+    command: "sops exec-env secrets.yaml 'printenv'"
+    expect: block
+
+  - name: "block-sops-decrypt: sops exec-file"
+    tool: Bash
+    command: "sops exec-file secrets.yaml 'cat {}'"
+    expect: block
+
+  - name: "block-sops-decrypt: allows sops -e (encrypt)"
+    tool: Bash
+    command: "sops -e secrets.yaml"
+    expect: allow
+
+  - name: "block-sops-decrypt: allows sops --version"
+    tool: Bash
+    command: "sops --version"
+    expect: allow
+
+  # =============================================================================
+  # Environment Variable Grep (block-env-grep)
+  # =============================================================================
+  - name: "block-env-grep: env | grep"
+    tool: Bash
+    command: "env | grep SECRET"
+    expect: block
+
+  - name: "block-env-grep: printenv | grep"
+    tool: Bash
+    command: "printenv | grep TOKEN"
+    expect: block
+
+  - name: "block-env-grep: env | cut is safe (keys only)"
+    tool: Bash
+    command: "env | cut -d= -f1"
+    expect: allow
+
+  - name: "block-env-grep: env | wc is safe (count only)"
+    tool: Bash
+    command: "env | wc -l"
+    expect: allow
+
+  - name: "block-env-grep: cross-line env + grep not blocked (grep-tool warns)"
+    tool: Bash
+    command: "echo environment\n| grep pattern"
+    expect: warn
+
+  - name: "block-env-grep: myenv | grep not blocked (word boundary, grep-tool warns)"
+    tool: Bash
+    command: "myenv | grep foo"
+    expect: warn
+
+  - name: "block-env-grep: setenv | grep not blocked (word boundary, grep-tool warns)"
+    tool: Bash
+    command: "setenv | grep bar"
+    expect: warn
+
+  # =============================================================================
+  # Environment Dump (block-env-dump)
+  # =============================================================================
+  - name: "block-env-dump: standalone env"
+    tool: Bash
+    command: "env"
+    expect: block
+
+  - name: "block-env-dump: env with pipe"
+    tool: Bash
+    command: "env | head"
+    expect: block
+
+  - name: "block-env-dump: chained env"
+    tool: Bash
+    command: "mkdir /tmp && env"
+    expect: block
+
+  - name: "block-env-dump: env | sort (shows values)"
+    tool: Bash
+    command: "env | sort"
+    expect: block
+
+  - name: "block-env-dump: env | cut -d= -f2 (extracts values)"
+    tool: Bash
+    command: "env | cut -d= -f2"
+    expect: block
+
+  - name: "block-env-dump: env | cut -d= -f1,2 (extracts key+value)"
+    tool: Bash
+    command: "env | cut -d= -f1,2"
+    expect: block
+
+  - name: "block-env-dump: env | cut -d= -f1-2 (extracts key+value range)"
+    tool: Bash
+    command: "env | cut -d= -f1-2"
+    expect: block
+
+  - name: "block-env-dump: env | cut -d: -f1 (wrong delimiter leaks values)"
+    tool: Bash
+    command: "env | cut -d: -f1"
+    expect: block
+
+  - name: "block-env-dump: env -0 (null-delimited dump)"
+    tool: Bash
+    command: "env -0"
+    expect: block
+
+  - name: "block-env-dump: env -- (end-of-options dump)"
+    tool: Bash
+    command: "env --"
+    expect: block
+
+  - name: "block-env-dump: env --null (null-delimited dump)"
+    tool: Bash
+    command: "env --null"
+    expect: block
+
+  - name: "block-env-dump: env -0 | sort (flagged dump with pipe)"
+    tool: Bash
+    command: "env -0 | sort"
+    expect: block
+
+  - name: "block-env-dump: env -- | head (flagged dump with pipe)"
+    tool: Bash
+    command: "env -- | head"
+    expect: block
+
+  - name: "block-env-dump: env -- | cut -d= -f1 (flagged dump, safe pipe)"
+    tool: Bash
+    command: "env -- | cut -d= -f1"
+    expect: allow
+
+  - name: "block-env-dump: env | cut -d= -f1|sort (pipe without space after f1)"
+    tool: Bash
+    command: "env | cut -d= -f1|sort"
+    expect: allow
+
+  # Also proves env-dump allows this (tested in block-env-grep section too)
+  - name: "block-env-dump: allows env | cut -d= -f1 (keys only)"
+    tool: Bash
+    command: "env | cut -d= -f1"
+    expect: allow
+
+  # Also proves env-dump allows this (tested in block-env-grep section too)
+  - name: "block-env-dump: allows env | wc -l (count only)"
+    tool: Bash
+    command: "env | wc -l"
+    expect: allow
+
+  - name: "block-env-dump: allows env | wc (count only)"
+    tool: Bash
+    command: "env | wc"
+    expect: allow
+
+  - name: "block-env-dump: allows env | cut -d= -f1 | sort"
+    tool: Bash
+    command: "env | cut -d= -f1 | sort"
+    expect: allow
+
+  - name: "block-env-dump: env | cut -d= -f1 --complement (inverts to values)"
+    tool: Bash
+    command: "env | cut -d= -f1 --complement"
+    expect: block
+
+  - name: "block-env-dump: env | cut -d= -f1 -s (trailing flag after -f1)"
+    tool: Bash
+    command: "env | cut -d= -f1 -s"
+    expect: block
+
+  - name: "block-env-dump: allows env | cut -d= -f1; echo done"
+    tool: Bash
+    command: "env | cut -d= -f1; echo done"
+    expect: allow
+
+  - name: "block-env-dump: allows env VAR=value command"
+    tool: Bash
+    command: "env PATH=/bin command"
+    expect: allow
+
+  - name: "block-env-dump: env --zero --null (stacked dump flags)"
+    tool: Bash
+    command: "env --zero --null"
+    expect: block
+
+  - name: "block-env-dump: env -0 -- (stacked dump flags)"
+    tool: Bash
+    command: "env -0 --"
+    expect: block
+
+  - name: "block-env-dump: env -0 -- | cut -d= -f1 (stacked flags, safe pipe)"
+    tool: Bash
+    command: "env -0 -- | cut -d= -f1"
+    expect: allow
+
+  - name: "block-env-dump: allows env -i | sort (empty env, no secrets)"
+    tool: Bash
+    command: "env -i | sort"
+    expect: allow
+
+  - name: "block-env-dump: env > /tmp/file (redirect bypass blocked)"
+    tool: Bash
+    command: "env > /tmp/secrets.txt"
+    expect: block
+
+  - name: "block-env-dump: env >> /tmp/file (append redirect blocked)"
+    tool: Bash
+    command: "env >> /tmp/dump.txt"
+    expect: block
+
+  - name: "block-env-dump: env 1>/tmp/file (fd redirect blocked)"
+    tool: Bash
+    command: "env 1>/tmp/secrets.txt"
+    expect: block
+
+  - name: "block-env-dump: env &>/tmp/file (combined redirect blocked)"
+    tool: Bash
+    command: "env &>/tmp/secrets.txt"
+    expect: block
+
+  - name: "block-env-dump: env -u VARNAME (no command, dumps minus one var)"
+    tool: Bash
+    command: "env -u TERM"
+    expect: block
+
+  - name: "block-env-dump: env --unset=VARNAME (no command, dumps minus one var)"
+    tool: Bash
+    command: "env --unset=TERM"
+    expect: block
+
+  - name: "block-env-dump: env -u VAR1 -u VAR2 (stacked unset, still dumps)"
+    tool: Bash
+    command: "env -u TERM -u SHELL"
+    expect: block
+
+  - name: "block-env-dump: allows env -u SECRET command (unset var, runs cmd)"
+    tool: Bash
+    command: "env -u SECRET_KEY ./run.sh"
+    expect: allow
+
+  - name: "block-env-dump: allows env | cut --delimiter== --fields=1 (long form keys only)"
+    tool: Bash
+    command: "env | cut --delimiter== --fields=1"
+    expect: allow
+
+  - name: "block-env-dump: cross-line env + pipe not matched"
+    tool: Bash
+    command: "set environment\n| Name | Default |"
+    expect: allow
+
+  # =============================================================================
+  # Printenv (block-printenv)
+  # =============================================================================
+  - name: "block-printenv: standalone printenv"
+    tool: Bash
+    command: "printenv"
+    expect: block
+
+  - name: "block-printenv: printenv with variable"
+    tool: Bash
+    command: "printenv SECRET_KEY"
+    expect: block
+
+  - name: "block-printenv: chained printenv"
+    tool: Bash
+    command: "ls && printenv"
+    expect: block
+
+  - name: "block-printenv: printenv | sort (shows values)"
+    tool: Bash
+    command: "printenv | sort"
+    expect: block
+
+  - name: "block-printenv: printenv | cut -d= -f2 (extracts values)"
+    tool: Bash
+    command: "printenv | cut -d= -f2"
+    expect: block
+
+  - name: "block-printenv: printenv | cut -d= -f1,2 (extracts key+value)"
+    tool: Bash
+    command: "printenv | cut -d= -f1,2"
+    expect: block
+
+  - name: "block-printenv: printenv | cut -d= -f1-2 (extracts key+value range)"
+    tool: Bash
+    command: "printenv | cut -d= -f1-2"
+    expect: block
+
+  - name: "block-printenv: printenv | cut -d: -f1 (wrong delimiter leaks values)"
+    tool: Bash
+    command: "printenv | cut -d: -f1"
+    expect: block
+
+  - name: "block-printenv: allows printenv | cut -d= -f1 (keys only)"
+    tool: Bash
+    command: "printenv | cut -d= -f1"
+    expect: allow
+
+  - name: "block-printenv: allows printenv | wc -l (count only)"
+    tool: Bash
+    command: "printenv | wc -l"
+    expect: allow
+
+  - name: "block-printenv: allows printenv | wc (count only)"
+    tool: Bash
+    command: "printenv | wc"
+    expect: allow
+
+  - name: "block-printenv: allows printenv | cut -d= -f1 | sort"
+    tool: Bash
+    command: "printenv | cut -d= -f1 | sort"
+    expect: allow
+
+  - name: "block-printenv: allows printenv | cut -d= -f1|sort (pipe without space after f1)"
+    tool: Bash
+    command: "printenv | cut -d= -f1|sort"
+    expect: allow
+
+  - name: "block-printenv: printenv | cut -d= -f1 --complement (inverts to values)"
+    tool: Bash
+    command: "printenv | cut -d= -f1 --complement"
+    expect: block
+
+  - name: "block-printenv: printenv | cut -d= -f1 -s (trailing flag after -f1)"
+    tool: Bash
+    command: "printenv | cut -d= -f1 -s"
+    expect: block
+
+  - name: "block-printenv: allows printenv | cut -d= -f1; echo done"
+    tool: Bash
+    command: "printenv | cut -d= -f1; echo done"
+    expect: allow
+
+  - name: "block-printenv: printenv HOME (named variable blocked)"
+    tool: Bash
+    command: "printenv HOME"
+    expect: block
+
+  - name: "block-printenv: printenv > /tmp/file (redirect bypass blocked)"
+    tool: Bash
+    command: "printenv > /tmp/secrets.txt"
+    expect: block
+
+  - name: "block-printenv: printenv >> /tmp/file (append redirect blocked)"
+    tool: Bash
+    command: "printenv >> /tmp/dump.txt"
+    expect: block
+
+  - name: "block-printenv: printenv 1>/tmp/file (fd redirect blocked)"
+    tool: Bash
+    command: "printenv 1>/tmp/secrets.txt"
+    expect: block
+
+  - name: "block-printenv: printenv&>/tmp/file (no-space combined redirect blocked)"
+    tool: Bash
+    command: "printenv&>/tmp/secrets.txt"
+    expect: block
+
+  - name: "block-printenv: allows printenv | cut --delimiter== --fields=1 (long form keys only)"
+    tool: Bash
+    command: "printenv | cut --delimiter== --fields=1"
+    expect: allow
+
+  - name: "block-printenv: cross-line printenv + pipe not matched"
+    tool: Bash
+    command: "run printenv\n| Name | Value |"
+    expect: allow
+
+  # =============================================================================
+  # Process Environ (block-proc-environ)
+  # =============================================================================
+  - name: "block-proc-environ: cat /proc/self/environ"
+    tool: Bash
+    command: "cat /proc/self/environ"
+    expect: block
+
+  - name: "block-proc-environ: cat /proc/$$/environ"
+    tool: Bash
+    command: "cat /proc/$$/environ"
+    expect: block
+
+  - name: "block-proc-environ: cat /proc/1234/environ"
+    tool: Bash
+    command: "cat /proc/1234/environ"
+    expect: block
+
+  # NOTE: cat /proc/cpuinfo warns due to warn-use-read-tool (use Read tool instead)
+  - name: "block-proc-environ: cat /proc/cpuinfo warns"
+    tool: Bash
+    command: "cat /proc/cpuinfo"
+    expect: warn
+
+  # =============================================================================
+  # GPG Decrypt (block-gpg-decrypt)
+  # =============================================================================
+  - name: "block-gpg-decrypt: gpg -d"
+    tool: Bash
+    command: "gpg -d secrets.gpg"
+    expect: block
+
+  - name: "block-gpg-decrypt: gpg --decrypt"
+    tool: Bash
+    command: "gpg --decrypt secrets.gpg"
+    expect: block
+
+  - name: "block-gpg-decrypt: allows gpg --encrypt"
+    tool: Bash
+    command: "gpg --encrypt -r user@example.com file"
+    expect: allow
+
+  - name: "block-gpg-decrypt: allows gpg --list-keys"
+    tool: Bash
+    command: "gpg --list-keys"
+    expect: allow
+
+  # =============================================================================
+  # OpenSSL Decrypt (block-openssl-decrypt)
+  # =============================================================================
+  - name: "block-openssl-decrypt: openssl enc -d"
+    tool: Bash
+    command: "openssl enc -d -aes-256-cbc -in file.enc"
+    expect: block
+
+  - name: "block-openssl-decrypt: openssl pkcs12"
+    tool: Bash
+    command: "openssl pkcs12 -in cert.p12"
+    expect: block
+
+  - name: "block-openssl-decrypt: allows openssl x509"
+    tool: Bash
+    command: "openssl x509 -in cert.pem -text"
+    expect: allow
+
+  - name: "block-openssl-decrypt: allows openssl genrsa"
+    tool: Bash
+    command: "openssl genrsa -out key.pem 2048"
+    expect: allow
+
+  # =============================================================================
+  # Age Decrypt (block-age-decrypt)
+  # =============================================================================
+  - name: "block-age-decrypt: age -d"
+    tool: Bash
+    command: "age -d -i key.txt file.age"
+    expect: block
+
+  - name: "block-age-decrypt: age --decrypt"
+    tool: Bash
+    command: "age --decrypt file.age"
+    expect: block
+
+  - name: "block-age-decrypt: allows age encrypt"
+    tool: Bash
+    command: "age -r recipient -o file.age file"
+    expect: allow
+
+  - name: "block-age-decrypt: allows age-keygen"
+    tool: Bash
+    command: "age-keygen -o key.txt"
+    expect: allow
+
+  # =============================================================================
+  # Shell Wrappers (warn-shell-wrappers)
+  # =============================================================================
+  - name: "warn-shell-wrappers: sh -c"
+    tool: Bash
+    command: "sh -c 'echo hello'"
+    expect: warn
+
+  - name: "warn-shell-wrappers: bash -c"
+    tool: Bash
+    command: "bash -c 'cat file'"
+    expect: warn
+
+  - name: "warn-shell-wrappers: eval"
+    tool: Bash
+    command: "eval 'printenv'"
+    expect: warn
+
+  - name: "warn-shell-wrappers: chained sh -c"
+    tool: Bash
+    command: "mkdir /tmp && sh -c 'cat /etc/passwd'"
+    expect: warn
+
+  - name: "warn-shell-wrappers: allows plain bash"
+    tool: Bash
+    command: "bash script.sh"
+    expect: allow
+
+  # =============================================================================
+  # Use Read Tool (warn-use-read-tool)
+  # =============================================================================
+  - name: "warn-use-read-tool: cat file"
+    tool: Bash
+    command: "cat README.md"
+    expect: warn
+
+  - name: "warn-use-read-tool: cat chained"
+    tool: Bash
+    command: "cd /workspaces && cat /workspaces/providers.tf"
+    expect: warn
+
+  - name: "warn-use-read-tool: head file"
+    tool: Bash
+    command: "head -n 50 file.txt"
+    expect: warn
+
+  - name: "warn-use-read-tool: tail file"
+    tool: Bash
+    command: "tail -f logfile"
+    expect: warn
+
+  - name: "warn-use-read-tool: cat file | grep"
+    tool: Bash
+    command: "cat file.txt | grep pattern"
+    expect: warn
+
+  # =============================================================================
+  # Use Grep Tool (warn-use-grep-tool)
+  # =============================================================================
+  - name: "warn-use-grep-tool: grep pattern"
+    tool: Bash
+    command: "grep 'TODO' src/"
+    expect: warn
+
+  - name: "warn-use-grep-tool: rg pattern"
+    tool: Bash
+    command: "rg 'function' --type js"
+    expect: warn
+
+  # =============================================================================
+  # Use Edit Tool (warn-use-edit-tool)
+  # =============================================================================
+  - name: "warn-use-edit-tool: sed -i"
+    tool: Bash
+    command: "sed -i 's/old/new/g' file.txt"
+    expect: warn
+
+  - name: "warn-use-edit-tool: allows sed without -i"
+    tool: Bash
+    command: "sed 's/old/new/g' file.txt"
+    expect: allow
+
+  # =============================================================================
+  # Use Glob Tool (warn-use-glob-tool)
+  # =============================================================================
+  - name: "warn-use-glob-tool: find path"
+    tool: Bash
+    command: "find . -name '*.ts'"
+    expect: warn
+
+  - name: "warn-use-glob-tool: ls directory"
+    tool: Bash
+    command: "ls -la src/"
+    expect: warn
+
+  - name: "warn-use-glob-tool: allows bare ls"
+    tool: Bash
+    command: "ls"
+    expect: allow
+
+  # =============================================================================
+  # READ TOOL TESTS
+  # =============================================================================
+
+  # =============================================================================
+  # SSH/PKI Keys (block-read-ssh-keys)
+  # =============================================================================
+  - name: "block-read-ssh-keys: id_rsa in home .ssh"
+    tool: Read
+    file_path: "/home/user/.ssh/id_rsa"
+    expect: block
+
+  - name: "block-read-ssh-keys: id_ed25519 in home .ssh"
+    tool: Read
+    file_path: "/home/user/.ssh/id_ed25519"
+    expect: block
+
+  - name: "block-read-ssh-keys: id_ecdsa in home .ssh"
+    tool: Read
+    file_path: "/home/vscode/.ssh/id_ecdsa"
+    expect: block
+
+  - name: "block-read-ssh-keys: .pem file"
+    tool: Read
+    file_path: "/workspaces/project/certs/server.pem"
+    expect: block
+
+  - name: "block-read-ssh-keys: .key file"
+    tool: Read
+    file_path: "/workspaces/project/ssl/private.key"
+    expect: block
+
+  - name: "block-read-ssh-keys: .p12 file"
+    tool: Read
+    file_path: "/workspaces/project/certs/client.p12"
+    expect: block
+
+  - name: "block-read-ssh-keys: .pfx file"
+    tool: Read
+    file_path: "/workspaces/project/certs/server.pfx"
+    expect: block
+
+  - name: "block-read-ssh-keys: .jks file"
+    tool: Read
+    file_path: "/workspaces/project/keystore.jks"
+    expect: block
+
+  - name: "block-read-ssh-keys: .keystore file"
+    tool: Read
+    file_path: "/workspaces/project/app.keystore"
+    expect: block
+
+  - name: "block-read-ssh-keys: any file in .ssh directory"
+    tool: Read
+    file_path: "/home/user/.ssh/known_hosts"
+    expect: block
+
+  - name: "block-read-ssh-keys: config in .ssh directory"
+    tool: Read
+    file_path: "/home/user/.ssh/config"
+    expect: block
+
+  - name: "block-read-ssh-keys: allows id_rsa.pub (public key)"
+    tool: Read
+    file_path: "/home/user/keys/id_rsa.pub"
+    expect: allow
+
+  - name: "block-read-ssh-keys: allows README.md"
+    tool: Read
+    file_path: "/workspaces/project/README.md"
+    expect: allow
+
+  # =============================================================================
+  # Cloud Credentials (block-read-cloud-creds)
+  # =============================================================================
+  - name: "block-read-cloud-creds: aws credentials"
+    tool: Read
+    file_path: "/home/user/.aws/credentials"
+    expect: block
+
+  - name: "block-read-cloud-creds: kube config"
+    tool: Read
+    file_path: "/home/user/.kube/config"
+    expect: block
+
+  - name: "block-read-cloud-creds: kubeconfig in project"
+    tool: Read
+    file_path: "/workspaces/project/kubeconfig.yaml"
+    expect: block
+
+  - name: "block-read-cloud-creds: kubeconfig with prefix"
+    tool: Read
+    file_path: "/workspaces/project/dev-kubeconfig"
+    expect: block
+
+  - name: "block-read-cloud-creds: docker config.json"
+    tool: Read
+    file_path: "/home/user/.docker/config.json"
+    expect: block
+
+  - name: "block-read-cloud-creds: gh hosts.yml"
+    tool: Read
+    file_path: "/home/user/.config/gh/hosts.yml"
+    expect: block
+
+  - name: "block-read-cloud-creds: allows aws config (not credentials)"
+    tool: Read
+    file_path: "/home/user/.aws/config"
+    expect: allow
+
+  - name: "block-read-cloud-creds: allows docker compose file"
+    tool: Read
+    file_path: "/workspaces/project/docker-compose.yml"
+    expect: allow
+
+  # =============================================================================
+  # Environment Files (block-read-env-files)
+  # =============================================================================
+  - name: "block-read-env-files: .env file"
+    tool: Read
+    file_path: "/workspaces/project/.env"
+    expect: block
+
+  - name: "block-read-env-files: .env.local"
+    tool: Read
+    file_path: "/workspaces/project/.env.local"
+    expect: block
+
+  - name: "block-read-env-files: .env.production"
+    tool: Read
+    file_path: "/workspaces/project/.env.production"
+    expect: block
+
+  - name: "block-read-env-files: .env.development"
+    tool: Read
+    file_path: "/workspaces/project/.env.development"
+    expect: block
+
+  - name: "block-read-env-files: nested .env"
+    tool: Read
+    file_path: "/workspaces/project/apps/api/.env"
+    expect: block
+
+  - name: "block-read-env-files: .env.example (blocked - matches .env.*)"
+    tool: Read
+    file_path: "/workspaces/project/.env.example"
+    expect: block
+
+  - name: "block-read-env-files: allows environment.ts"
+    tool: Read
+    file_path: "/workspaces/project/src/environment.ts"
+    expect: allow
+
+  - name: "block-read-env-files: allows envconfig.json"
+    tool: Read
+    file_path: "/workspaces/project/envconfig.json"
+    expect: allow
+
+  # =============================================================================
+  # Package Manager Credentials (block-read-package-creds)
+  # =============================================================================
+  - name: "block-read-package-creds: .npmrc in home"
+    tool: Read
+    file_path: "/home/user/.npmrc"
+    expect: block
+
+  - name: "block-read-package-creds: .npmrc in project"
+    tool: Read
+    file_path: "/workspaces/project/.npmrc"
+    expect: block
+
+  - name: "block-read-package-creds: .pypirc"
+    tool: Read
+    file_path: "/home/user/.pypirc"
+    expect: block
+
+  - name: "block-read-package-creds: .netrc"
+    tool: Read
+    file_path: "/home/user/.netrc"
+    expect: block
+
+  - name: "block-read-package-creds: allows package.json"
+    tool: Read
+    file_path: "/workspaces/project/package.json"
+    expect: allow
+
+  - name: "block-read-package-creds: allows pyproject.toml"
+    tool: Read
+    file_path: "/workspaces/project/pyproject.toml"
+    expect: allow
+
+  # =============================================================================
+  # Generic Secrets (block-read-secrets-generic)
+  # =============================================================================
+  - name: "block-read-secrets-generic: secrets.yaml"
+    tool: Read
+    file_path: "/workspaces/project/secrets.yaml"
+    expect: block
+
+  - name: "block-read-secrets-generic: secrets.yml"
+    tool: Read
+    file_path: "/workspaces/project/secrets.yml"
+    expect: block
+
+  - name: "block-read-secrets-generic: secrets.json"
+    tool: Read
+    file_path: "/workspaces/project/secrets.json"
+    expect: block
+
+  - name: "block-read-secrets-generic: secret.txt"
+    tool: Read
+    file_path: "/workspaces/project/secret.txt"
+    expect: block
+
+  - name: "block-read-secrets-generic: token.json"
+    tool: Read
+    file_path: "/workspaces/project/token.json"
+    expect: block
+
+  - name: "block-read-secrets-generic: tokens.json"
+    tool: Read
+    file_path: "/workspaces/project/tokens.json"
+    expect: block
+
+  - name: "block-read-secrets-generic: credentials.json"
+    tool: Read
+    file_path: "/workspaces/project/credentials.json"
+    expect: block
+
+  - name: "block-read-secrets-generic: .credentials file"
+    tool: Read
+    file_path: "/workspaces/project/.credentials"
+    expect: block
+
+  - name: "block-read-secrets-generic: .htpasswd"
+    tool: Read
+    file_path: "/workspaces/project/.htpasswd"
+    expect: block
+
+  - name: "block-read-secrets-generic: .vault-token"
+    tool: Read
+    file_path: "/home/user/.vault-token"
+    expect: block
+
+  - name: "block-read-secrets-generic: allows token_utils.py (code file)"
+    tool: Read
+    file_path: "/workspaces/project/src/token_utils.py"
+    expect: allow
+
+  - name: "block-read-secrets-generic: allows secrets_manager.ts (code file)"
+    tool: Read
+    file_path: "/workspaces/project/src/secrets_manager.ts"
+    expect: allow
+
+  - name: "block-read-secrets-generic: allows tokenizer.js (code file)"
+    tool: Read
+    file_path: "/workspaces/project/lib/tokenizer.js"
+    expect: allow
+
+  - name: "block-read-secrets-generic: allows secret_test.go (test file)"
+    tool: Read
+    file_path: "/workspaces/project/secret_test.go"
+    expect: allow
+
+  # =============================================================================
+  # Encrypted Stores (block-read-encrypted-stores)
+  # =============================================================================
+  - name: "block-read-encrypted-stores: gnupg private keys"
+    tool: Read
+    file_path: "/home/user/.gnupg/private-keys-v1.d/key.key"
+    expect: block
+
+  - name: "block-read-encrypted-stores: gnupg pubring"
+    tool: Read
+    file_path: "/home/user/.gnupg/pubring.kbx"
+    expect: block
+
+  - name: "block-read-encrypted-stores: password-store entry"
+    tool: Read
+    file_path: "/home/user/.password-store/email/gmail.gpg"
+    expect: block
+
+  - name: "block-read-encrypted-stores: password-store root"
+    tool: Read
+    file_path: "/home/user/.password-store/.gpg-id"
+    expect: block
+
+  - name: "block-read-encrypted-stores: allows .gpg file outside stores"
+    tool: Read
+    file_path: "/workspaces/project/docs/guide.gpg"
+    expect: allow
+
+  # =============================================================================
+  # SOPS Read (block-sops-read) - existing rule
+  # =============================================================================
+  - name: "block-sops-read: .sops.yaml"
+    tool: Read
+    file_path: "/workspaces/project/secrets.sops.yaml"
+    expect: block
+
+  - name: "block-sops-read: .sops.yml"
+    tool: Read
+    file_path: "/workspaces/project/config.sops.yml"
+    expect: block
+
+  - name: "block-sops-read: .sops.json"
+    tool: Read
+    file_path: "/workspaces/project/secrets.sops.json"
+    expect: block
+
+  - name: "block-sops-read: allows regular yaml"
+    tool: Read
+    file_path: "/workspaces/project/config.yaml"
+    expect: allow
+
+  # =============================================================================
+  # Conventional Commits Warning (warn-conventional-commits)
+  # =============================================================================
+  - name: "warn-conventional-commits: non-conventional message"
+    tool: Bash
+    command: 'git commit -m "update something"'
+    expect: warn
+
+  - name: "warn-conventional-commits: missing type prefix"
+    tool: Bash
+    command: 'git commit -m "fix something without colon"'
+    expect: warn
+
+  - name: "warn-conventional-commits: git commit -a -m non-conventional"
+    tool: Bash
+    command: 'git commit -a -m "fix something"'
+    expect: warn
+
+  - name: "warn-conventional-commits: chained git add && git commit non-conventional"
+    tool: Bash
+    command: 'git add . && git commit -m "update readme"'
+    expect: warn
+
+  - name: "warn-conventional-commits: allows feat: prefix"
+    tool: Bash
+    command: 'git commit -m "feat: add new feature"'
+    expect: allow
+
+  - name: "warn-conventional-commits: allows fix: prefix"
+    tool: Bash
+    command: 'git commit -m "fix: resolve null pointer"'
+    expect: allow
+
+  - name: "warn-conventional-commits: allows chore(scope): prefix"
+    tool: Bash
+    command: 'git commit -m "chore(deps): update dependencies"'
+    expect: allow
+
+  - name: "warn-conventional-commits: allows refactor: prefix"
+    tool: Bash
+    command: 'git commit -m "refactor: simplify auth logic"'
+    expect: allow
+
+  - name: "warn-conventional-commits: git commit --amend without -m (no message to check)"
+    tool: Bash
+    command: "git commit --amend"
+    expect: allow
+
+  - name: "warn-conventional-commits: allows git add"
+    tool: Bash
+    command: "git add ."
+    expect: allow
+
+  - name: "warn-conventional-commits: allows git status"
+    tool: Bash
+    command: "git status"
+    expect: allow
+
+  - name: "warn-conventional-commits: allows git log"
+    tool: Bash
+    command: "git log --oneline"
+    expect: allow
+  # =============================================================================
+  # Echo Secrets (block-echo-secrets)
+  # =============================================================================
+  - name: "block-echo-secrets: echo $AZURE_DEVOPS_EXT_PAT"
+    tool: Bash
+    command: "echo $AZURE_DEVOPS_EXT_PAT"
+    expect: block
+
+  - name: "block-echo-secrets: echo with parameter expansion"
+    tool: Bash
+    command: 'echo "AZURE_DEVOPS_EXT_PAT is ${AZURE_DEVOPS_EXT_PAT:+set (hidden)}${AZURE_DEVOPS_EXT_PAT:-NOT SET}"'
+    expect: block
+
+  - name: "block-echo-secrets: echo GH_TOKEN"
+    tool: Bash
+    command: "echo $GH_TOKEN"
+    expect: block
+
+  - name: "block-echo-secrets: echo GITHUB_TOKEN"
+    tool: Bash
+    command: 'echo "Token: ${GITHUB_TOKEN}"'
+    expect: block
+
+  - name: "block-echo-secrets: echo AWS_SECRET_ACCESS_KEY"
+    tool: Bash
+    command: "echo $AWS_SECRET_ACCESS_KEY"
+    expect: block
+
+  - name: "block-echo-secrets: echo DATABASE_PASSWORD"
+    tool: Bash
+    command: 'echo "DB password is $DATABASE_PASSWORD"'
+    expect: block
+
+  - name: "block-echo-secrets: echo API_KEY"
+    tool: Bash
+    command: "echo $MY_API_KEY"
+    expect: block
+
+  - name: "block-echo-secrets: echo PRIVATE_KEY"
+    tool: Bash
+    command: "echo $SSH_PRIVATE_KEY"
+    expect: block
+
+  - name: "block-echo-secrets: printf with secret"
+    tool: Bash
+    command: 'printf "%s" "$SECRET_TOKEN"'
+    expect: block
+
+  - name: "block-echo-secrets: echo CREDENTIAL"
+    tool: Bash
+    command: "echo $AZURE_CREDENTIAL"
+    expect: block
+
+  - name: "block-echo-secrets: allows echo PATH (not PAT)"
+    tool: Bash
+    command: "echo $PATH"
+    expect: allow
+
+  - name: "block-echo-secrets: allows echo HOME"
+    tool: Bash
+    command: "echo $HOME"
+    expect: allow
+
+  - name: "block-echo-secrets: allows echo with literal string"
+    tool: Bash
+    command: 'echo "This is a test message"'
+    expect: allow
+
+  - name: "block-echo-secrets: allows echo USER"
+    tool: Bash
+    command: "echo $USER"
+    expect: allow
+
+  - name: "block-echo-secrets: allows echo PWD"
+    tool: Bash
+    command: "echo $PWD"
+    expect: allow
+
+  # Chained commands
+  - name: "block-echo-secrets: chained with &&"
+    tool: Bash
+    command: "cd /tmp && echo $SECRET_TOKEN"
+    expect: block
+
+  - name: "block-echo-secrets: chained with ||"
+    tool: Bash
+    command: "false || echo $GH_TOKEN"
+    expect: block
+
+  - name: "block-echo-secrets: chained with semicolon"
+    tool: Bash
+    command: "ls; echo $DATABASE_PASSWORD"
+    expect: block
+
+  - name: "block-echo-secrets: secret echo then other command"
+    tool: Bash
+    command: "echo $API_KEY && ls"
+    expect: block
+
+  - name: "block-echo-secrets: in subshell"
+    tool: Bash
+    command: "(echo $SECRET_TOKEN)"
+    expect: block
+
+  - name: "block-echo-secrets: backtick substitution"
+    tool: Bash
+    command: "echo `echo $AWS_SECRET_ACCESS_KEY`"
+    expect: block
+
+  # More valid use cases
+  - name: "block-echo-secrets: allows echo SHELL"
+    tool: Bash
+    command: "echo $SHELL"
+    expect: allow
+
+  - name: "block-echo-secrets: allows echo TERM"
+    tool: Bash
+    command: "echo $TERM"
+    expect: allow
+
+  - name: "block-echo-secrets: allows echo with arithmetic"
+    tool: Bash
+    command: "echo $((1+1))"
+    expect: allow
+
+  - name: "block-echo-secrets: allows echo exit status"
+    tool: Bash
+    command: "echo $?"
+    expect: allow
+
+  - name: "block-echo-secrets: allows echo PID"
+    tool: Bash
+    command: "echo $$"
+    expect: allow
+
+  - name: "block-echo-secrets: allows chained safe echo"
+    tool: Bash
+    command: "cd /tmp && echo $HOME"
+    expect: allow
+
+  - name: "block-echo-secrets: allows echo with command substitution"
+    tool: Bash
+    command: "echo $(pwd)"
+    expect: allow
+
+  - name: "block-echo-secrets: allows printf safe variable"
+    tool: Bash
+    command: 'printf "%s\n" "$HOME"'
+    expect: allow
+
+  # =============================================================================
+  # Heredoc Secrets (block-heredoc-secrets)
+  # =============================================================================
+  - name: "block-heredoc-secrets: heredoc with SECRET_TOKEN"
+    tool: Bash
+    command: "cat <<EOF\nToken is $SECRET_TOKEN\nEOF"
+    expect: block
+
+  - name: "block-heredoc-secrets: heredoc with AZURE_DEVOPS_EXT_PAT"
+    tool: Bash
+    command: "cat <<EOF\nPAT: $AZURE_DEVOPS_EXT_PAT\nEOF"
+    expect: block
+
+  - name: "block-heredoc-secrets: heredoc with API_KEY"
+    tool: Bash
+    command: "cat <<-EOF\nKey: ${MY_API_KEY}\nEOF"
+    expect: block
+
+  - name: "block-heredoc-secrets: heredoc with PASSWORD"
+    tool: Bash
+    command: "cat <<END\nPassword is $DB_PASSWORD\nEND"
+    expect: block
+
+  # NOTE: These warn (not allow) because `cat` triggers warn-use-read-tool
+  - name: "block-heredoc-secrets: heredoc without secrets warns (cat rule)"
+    tool: Bash
+    command: "cat <<EOF\nHello world\nEOF"
+    expect: warn
+
+  - name: "block-heredoc-secrets: heredoc with PATH warns (cat rule, not blocked)"
+    tool: Bash
+    command: "cat <<EOF\nPATH is $PATH\nEOF"
+    expect: warn
+
+  # =============================================================================
+  # Echo Subshell Secrets (block-echo-subshell-secrets)
+  # =============================================================================
+  - name: "block-echo-subshell-secrets: echo $(env)"
+    tool: Bash
+    command: "echo $(env)"
+    expect: block
+
+  - name: "block-echo-subshell-secrets: echo $(printenv)"
+    tool: Bash
+    command: "echo $(printenv)"
+    expect: block
+
+  - name: "block-echo-subshell-secrets: echo $(set)"
+    tool: Bash
+    command: "echo $(set)"
+    expect: block
+
+  - name: "block-echo-subshell-secrets: printf with env"
+    tool: Bash
+    command: 'printf "%s" "$(env)"'
+    expect: block
+
+  - name: "block-echo-subshell-secrets: allows echo $(date)"
+    tool: Bash
+    command: "echo $(date)"
+    expect: allow
+
+  - name: "block-echo-subshell-secrets: allows echo $(whoami)"
+    tool: Bash
+    command: "echo $(whoami)"
+    expect: allow
+
+  # Chained commands
+  - name: "block-echo-subshell-secrets: chained with &&"
+    tool: Bash
+    command: "cd /tmp && echo $(env)"
+    expect: block
+
+  - name: "block-echo-subshell-secrets: chained with semicolon"
+    tool: Bash
+    command: "ls; echo $(printenv)"
+    expect: block
+
+  - name: "block-echo-subshell-secrets: in subshell"
+    tool: Bash
+    command: "(echo $(set))"
+    expect: block
+
+  # More valid use cases
+  - name: "block-echo-subshell-secrets: allows echo $(ls)"
+    tool: Bash
+    command: "echo $(ls)"
+    expect: allow
+
+  - name: "block-echo-subshell-secrets: allows echo $(pwd)"
+    tool: Bash
+    command: "echo $(pwd)"
+    expect: allow
+
+  - name: "block-echo-subshell-secrets: allows echo $(uname -a)"
+    tool: Bash
+    command: "echo $(uname -a)"
+    expect: allow
+
+  - name: "block-echo-subshell-secrets: allows printf with date"
+    tool: Bash
+    command: 'printf "%s" "$(date)"'
+    expect: allow
+
+  # =============================================================================
+  # Set Dump (block-set-dump)
+  # =============================================================================
+  - name: "block-set-dump: standalone set"
+    tool: Bash
+    command: "set"
+    expect: block
+
+  - name: "block-set-dump: set with pipe"
+    tool: Bash
+    command: "set | head"
+    expect: block
+
+  - name: "block-set-dump: set with grep"
+    tool: Bash
+    command: "set | grep SECRET"
+    expect: block
+
+  - name: "block-set-dump: chained set"
+    tool: Bash
+    command: "cd /tmp && set"
+    expect: block
+
+  - name: "block-set-dump: allows set -e"
+    tool: Bash
+    command: "set -e"
+    expect: allow
+
+  - name: "block-set-dump: allows set -x"
+    tool: Bash
+    command: "set -x"
+    expect: allow
+
+  - name: "block-set-dump: allows set -o pipefail"
+    tool: Bash
+    command: "set -o pipefail"
+    expect: allow
+
+  - name: "block-set-dump: allows set +e"
+    tool: Bash
+    command: "set +e"
+    expect: allow
+
+  # More chaining tests
+  - name: "block-set-dump: set in subshell"
+    tool: Bash
+    command: "(set)"
+    expect: block
+
+  - name: "block-set-dump: set with ||"
+    tool: Bash
+    command: "false || set"
+    expect: block
+
+  - name: "block-set-dump: backtick set"
+    tool: Bash
+    command: "echo `set`"
+    expect: block
+
+  # More valid use cases
+  - name: "block-set-dump: allows set -- args"
+    tool: Bash
+    command: "set -- arg1 arg2 arg3"
+    expect: allow
+
+  - name: "block-set-dump: allows set -euo pipefail"
+    tool: Bash
+    command: "set -euo pipefail"
+    expect: allow
+
+  - name: "block-set-dump: allows set +x in chained"
+    tool: Bash
+    command: "set -x && echo test && set +x"
+    expect: allow
+
+  - name: "block-set-dump: allows set -a"
+    tool: Bash
+    command: "set -a"
+    expect: allow
+
+  - name: "block-set-dump: set > /tmp/file (redirect bypass blocked)"
+    tool: Bash
+    command: "set > /tmp/vars.txt"
+    expect: block
+
+  - name: "block-set-dump: set >> /tmp/file (append redirect blocked)"
+    tool: Bash
+    command: "set >> /tmp/dump.txt"
+    expect: block
+
+  - name: "block-set-dump: set 1>/tmp/file (fd redirect blocked)"
+    tool: Bash
+    command: "set 1>/tmp/vars.txt"
+    expect: block
+
+  - name: "block-set-dump: set &>/tmp/file (combined redirect blocked)"
+    tool: Bash
+    command: "set &>/tmp/vars.txt"
+    expect: block
+
+  - name: "block-set-dump: cross-line set + pipe not matched"
+    tool: Bash
+    command: "Variables need to be set\n| Name | Default |"
+    expect: allow
+
+  # =============================================================================
+  # Declare Dump (block-declare-dump)
+  # =============================================================================
+  - name: "block-declare-dump: declare -p (dumps all vars)"
+    tool: Bash
+    command: "declare -p"
+    expect: block
+
+  - name: "block-declare-dump: typeset -p (alias for declare -p)"
+    tool: Bash
+    command: "typeset -p"
+    expect: block
+
+  - name: "block-declare-dump: declare --print"
+    tool: Bash
+    command: "declare --print"
+    expect: block
+
+  - name: "block-declare-dump: declare -p | grep"
+    tool: Bash
+    command: "declare -p | grep SECRET"
+    expect: block
+
+  - name: "block-declare-dump: chained declare -p"
+    tool: Bash
+    command: "cd /tmp && declare -p"
+    expect: block
+
+  - name: "block-declare-dump: declare -px (p not last in flags)"
+    tool: Bash
+    command: "declare -px"
+    expect: block
+
+  - name: "block-declare-dump: declare -pA (p not last in flags)"
+    tool: Bash
+    command: "declare -pA"
+    expect: block
+
+  - name: "block-declare-dump: declare -pa (p not last in flags)"
+    tool: Bash
+    command: "declare -pa"
+    expect: block
+
+  - name: "block-declare-dump: declare -p -- (end-of-options dumps all)"
+    tool: Bash
+    command: "declare -p --"
+    expect: block
+
+  - name: "block-declare-dump: allows declare -p VARNAME (specific var)"
+    tool: Bash
+    command: "declare -p HOME"
+    expect: allow
+
+  - name: "block-declare-dump: allows declare -i VAR=1"
+    tool: Bash
+    command: "declare -i count=0"
+    expect: allow
+
+  - name: "block-declare-dump: allows declare -a ARR"
+    tool: Bash
+    command: "declare -a my_array"
+    expect: allow
+
+  - name: "block-declare-dump: allows declare -x VAR=value"
+    tool: Bash
+    command: "declare -x PATH=/usr/bin"
+    expect: allow
+
+  - name: "block-declare-dump: allows declare -f (functions only, no values)"
+    tool: Bash
+    command: "declare -f my_function"
+    expect: allow
+
+  # =============================================================================
+  # Export Dump (block-export-dump)
+  # =============================================================================
+  - name: "block-export-dump: export -p (dumps all exports)"
+    tool: Bash
+    command: "export -p"
+    expect: block
+
+  - name: "block-export-dump: export --print"
+    tool: Bash
+    command: "export --print"
+    expect: block
+
+  - name: "block-export-dump: export -p | grep"
+    tool: Bash
+    command: "export -p | grep TOKEN"
+    expect: block
+
+  - name: "block-export-dump: chained export -p"
+    tool: Bash
+    command: "cd /tmp && export -p"
+    expect: block
+
+  - name: "block-export-dump: export -pn (p not last in flags)"
+    tool: Bash
+    command: "export -pn"
+    expect: block
+
+  - name: "block-export-dump: allows export VAR=value"
+    tool: Bash
+    command: "export MY_VAR=hello"
+    expect: allow
+
+  - name: "block-export-dump: allows export -n VAR"
+    tool: Bash
+    command: "export -n MY_VAR"
+    expect: allow
+
+  - name: "block-export-dump: allows export PATH"
+    tool: Bash
+    command: "export PATH"
+    expect: allow
+
+  # =============================================================================
+  # IP Leakage in GitHub Commands (block-ip-in-github)
+  # =============================================================================
+  - name: "block-ip-in-github: gh issue create with 192.168.x IP"
+    tool: Bash
+    command: 'gh issue create --title "fix node" --body "node 192.168.20.11 is down"'
+    expect: block
+
+  - name: "block-ip-in-github: gh pr create with 10.x IP"
+    tool: Bash
+    command: 'gh pr create --title "update config" --body "changed CIDR to 10.244.0.0/16"'
+    expect: block
+
+  - name: "block-ip-in-github: gh issue comment with 172.16.x IP"
+    tool: Bash
+    command: 'gh issue comment 123 --body "gateway at 172.16.0.1 unreachable"'
+    expect: block
+
+  - name: "block-ip-in-github: gh pr edit with 192.168.x IP"
+    tool: Bash
+    command: 'gh pr edit 45 --body "endpoint moved to 192.168.1.100"'
+    expect: block
+
+  - name: "block-ip-in-github: gh issue create without IP is allowed"
+    tool: Bash
+    command: 'gh issue create --title "fix node" --body "control plane node E2-1 is down"'
+    expect: allow
+
+  - name: "block-ip-in-github: gh pr create without IP is allowed"
+    tool: Bash
+    command: 'gh pr create --title "update config" --body "uses TRAEFIK_IP4 substitution"'
+    expect: allow
+
+  - name: "block-ip-in-github: gh issue view with IP in args is allowed (read-only)"
+    tool: Bash
+    command: "gh issue view 123"
+    expect: allow
+
+  - name: "block-ip-in-github: gh pr list is allowed (read-only)"
+    tool: Bash
+    command: "gh pr list"
+    expect: allow
+
+  # =============================================================================
+  # IP Leakage in Commit Messages (block-ip-in-commits)
+  # =============================================================================
+  - name: "block-ip-in-commits: git commit with 192.168.x IP in message"
+    tool: Bash
+    command: 'git commit -m "fix: update endpoint to 192.168.20.11"'
+    expect: block
+
+  - name: "block-ip-in-commits: git commit with 10.x CIDR in message"
+    tool: Bash
+    command: 'git commit -m "chore: assign 10.244.0.0/16 as pod CIDR"'
+    expect: block
+
+  - name: "block-ip-in-commits: git commit with 172.16.x IP in message"
+    tool: Bash
+    command: 'git commit -m "fix: gateway 172.16.0.1 config"'
+    expect: block
+
+  - name: "block-ip-in-commits: git commit without IP is allowed"
+    tool: Bash
+    command: 'git commit -m "fix: update endpoint to use Flux substitution"'
+    expect: allow
+
+  - name: "block-ip-in-commits: git commit with variable reference is allowed"
+    tool: Bash
+    command: 'git commit -m "chore: configure pod CIDR via cluster secrets"'
+    expect: allow
+
+  - name: "block-ip-in-commits: git add is not affected"
+    tool: Bash
+    command: "git add some-file.yaml"
+    expect: allow
+
+  - name: "block-ip-in-commits: git status is not affected"
+    tool: Bash
+    command: "git status"
+    expect: allow
