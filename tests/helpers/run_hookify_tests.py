@@ -9,6 +9,8 @@ import sys
 import os
 import argparse
 import glob
+import shutil
+import tempfile
 
 # Add plugin core to path for hookify module
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -72,11 +74,24 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
     """
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    # Set CLAUDE_PLUGIN_ROOT so engine discovers sibling plugins
-    hookify_root = os.path.join(repo_root, "hookify-plus")
-    os.environ["CLAUDE_PLUGIN_ROOT"] = hookify_root
+    # Build a temp cache layout: {marketplace}/{plugin}/{version}/
+    # _get_plugin_rules() traverses two levels up from CLAUDE_PLUGIN_ROOT
+    # and only scans version dirs with .in_use markers.
+    cache_dir = tempfile.mkdtemp(prefix="hookify-test-cache-")
+    hp_version = os.path.join(cache_dir, "hookify-plus", "test")
+    os.makedirs(hp_version)
 
-    # Change to repo root so load_rules() finds .claude/ if present
+    for plugin in os.listdir(repo_root):
+        rules_src = os.path.join(repo_root, plugin, "hookify-plus")
+        if plugin == "hookify-plus" or not os.path.isdir(rules_src):
+            continue
+        version_dir = os.path.join(cache_dir, plugin, "test")
+        os.makedirs(version_dir)
+        os.makedirs(os.path.join(version_dir, ".in_use"))
+        shutil.copytree(rules_src, os.path.join(version_dir, "hookify-plus"))
+
+    os.environ["CLAUDE_PLUGIN_ROOT"] = hp_version
+
     original_cwd = os.getcwd()
     os.chdir(repo_root)
 
@@ -147,6 +162,7 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
         return failures
     finally:
         os.chdir(original_cwd)
+        shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 def main():
