@@ -9,7 +9,7 @@
     {
       "name": "hookify-plus",
       "description": "Rule engine with rate-limited warnings, stderr fix for #12446, and convention-based discovery",
-      "version": "2.2.0",
+      "version": "2.2.1",
       "author": {
         "name": "anthony-spruyt"
       },
@@ -27,7 +27,7 @@
     {
       "name": "best-practices",
       "description": "Warning rules for conventional commits, tool usage, and shell wrappers",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": {
         "name": "anthony-spruyt"
       },

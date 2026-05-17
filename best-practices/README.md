@@ -12,7 +12,7 @@ Without the engine, these rule files are inert markdown with no effect.
 | Rule | Warns About |
 |------|-------------|
 | warn-conventional-commits | Non-conventional commit messages |
-| warn-shell-wrappers | Using `./lint.sh` etc. instead of native tools |
+| warn-shell-wrappers | `sh -c` / `bash -c` / `eval` instead of dedicated tools |
 | warn-use-edit-tool | Using `sed`/`awk` instead of Edit tool |
 | warn-use-glob-tool | Using `find`/`ls` instead of Glob tool |
 | warn-use-grep-tool | Using `grep` instead of Grep tool |
