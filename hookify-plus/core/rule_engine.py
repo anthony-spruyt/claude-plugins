@@ -21,7 +21,7 @@ def compile_regex(pattern: str) -> re.Pattern:
     Returns:
         Compiled regex pattern
     """
-    return re.compile(pattern, re.IGNORECASE)
+    return re.compile(pattern, re.IGNORECASE | re.DOTALL)
 
 
 class RuleEngine:

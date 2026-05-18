@@ -1475,6 +1475,36 @@ test_cases:
     command: "gh pr list"
     expect: allow
 
+  - name: "block-ip-in-github: gh issue create with heredoc body containing 192.168.x IP"
+    tool: Bash
+    command: |
+      gh issue create --title "fix(talos): VIP on wrong interface" --body "$(cat <<'EOF'
+      ## Description
+      The Kubernetes API VIP (192.168.20.10) was assigned to enp1s0 instead of enp1s0.20.
+      EOF
+      )"
+    expect: block
+
+  - name: "block-ip-in-github: gh pr create with heredoc body containing 10.x IP"
+    tool: Bash
+    command: |
+      gh pr create --title "update pod CIDR" --body "$(cat <<'EOF'
+      ## Summary
+      Changed pod CIDR to 10.244.0.0/16
+      EOF
+      )"
+    expect: block
+
+  - name: "block-ip-in-github: gh issue comment with multiline body containing 172.16.x IP"
+    tool: Bash
+    command: |
+      gh issue comment 123 --body "$(cat <<'EOF'
+      Gateway at 172.16.0.1 is unreachable.
+      Tried from multiple nodes.
+      EOF
+      )"
+    expect: block
+
   # =============================================================================
   # IP Leakage in Commit Messages (block-ip-in-commits)
   # =============================================================================
