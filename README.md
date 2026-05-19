@@ -4,11 +4,11 @@ Plugin monorepo for Claude Code by [@anthony-spruyt](https://github.com/anthony-
 
 ## Plugins
 
-| Plugin | Description |
-|--------|-------------|
-| [hookify-plus](./hookify-plus/) | Rule engine with convention-based discovery |
+| Plugin                              | Description                                  |
+| ----------------------------------- | -------------------------------------------- |
+| [hookify-plus](./hookify-plus/)     | Rule engine with convention-based discovery  |
 | [security-hooks](./security-hooks/) | 23 blocking rules preventing secret exposure |
-| [best-practices](./best-practices/) | 6 warning rules for better tool usage |
+| [best-practices](./best-practices/) | 6 warning rules for better tool usage        |
 
 ## Installation
 

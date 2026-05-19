@@ -3,26 +3,26 @@
 ## Rule File Creation Fails
 
 1. Check the current working directory with `pwd`
-1. Ensure `.claude/` directory exists — create with `mkdir -p .claude` if needed
-1. Use an absolute path if relative paths fail: `{cwd}/.claude/hookify-plus/{name}.md`
-1. Verify the file was created with `ls .claude/hookify-plus/*.md`
+2. Ensure `.claude/` directory exists — create with `mkdir -p .claude` if needed
+3. Use an absolute path if relative paths fail: `{cwd}/.claude/hookify-plus/{name}.md`
+4. Verify the file was created with `ls .claude/hookify-plus/*.md`
 
 ## Rule Does Not Trigger
 
 1. Verify the file is in the project's `.claude/hookify-plus/` directory, not the plugin's
-1. Read the rule file to confirm the pattern is correct
-1. Test the pattern directly:
+2. Read the rule file to confirm the pattern is correct
+3. Test the pattern directly:
    ```bash
    python3 -c "import re; print(re.search(r'pattern', 'test text'))"
    ```
-1. Confirm `enabled: true` in frontmatter
-1. Rules load dynamically — no restart is needed
+4. Confirm `enabled: true` in frontmatter
+5. Rules load dynamically — no restart is needed
 
 ## Blocking Is Too Strict
 
 1. Change `action: block` to `action: warn` in the rule file
-1. Or narrow the pattern to be more specific
-1. Changes take effect on the next tool use
+2. Or narrow the pattern to be more specific
+3. Changes take effect on the next tool use
 
 ## Example End-to-End Workflow
 
@@ -31,9 +31,9 @@
 **Expected flow:**
 
 1. Analyze: the user wants to prevent `rm -rf` commands
-1. Ask: "Should this block the command or just warn?"
-1. User selects: "Just warn"
-1. Create `.claude/hookify-plus/dangerous-rm.md`:
+2. Ask: "Should this block the command or just warn?"
+3. User selects: "Just warn"
+4. Create `.claude/hookify-plus/dangerous-rm.md`:
 
 ```markdown
 ---

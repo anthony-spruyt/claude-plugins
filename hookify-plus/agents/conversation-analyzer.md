@@ -186,8 +186,7 @@ Recommend creating rules for high and medium severity issues.
 - "I prefer X over Y"
 - Mark as low severity, let user decide
 
-**Return Results:**
-Provide your analysis in the structured format above. The /hookify command will use this to:
+**Return Results:** Provide your analysis in the structured format above. The /hookify command will use this to:
 
 1. Present findings to user
 2. Ask which rules to create

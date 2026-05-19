@@ -19,5 +19,4 @@ Look for test commands like:
 - `pytest`
 - `cargo test`
 
-**Note:** This rule blocks stopping if no test commands appear in the transcript.
-Enable this rule only when you want strict test enforcement.
+**Note:** This rule blocks stopping if no test commands appear in the transcript. Enable this rule only when you want strict test enforcement.

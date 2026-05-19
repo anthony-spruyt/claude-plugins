@@ -132,11 +132,11 @@ Bad names: `rule1.md` (not descriptive), `my-rule.txt` (wrong extension)
 ### Creating a Rule
 
 1. Identify unwanted behavior
-1. Determine which tool is involved (Bash, Edit, etc.)
-1. Choose event type (bash, file, stop, etc.)
-1. Write a regex pattern
-1. Create `.claude/hookify-plus/{name}.md` in project root
-1. Test immediately — rules load dynamically on next tool use
+2. Determine which tool is involved (Bash, Edit, etc.)
+3. Choose event type (bash, file, stop, etc.)
+4. Write a regex pattern
+5. Create `.claude/hookify-plus/{name}.md` in project root
+6. Test immediately — rules load dynamically on next tool use
 
 ### Disabling a Rule
 

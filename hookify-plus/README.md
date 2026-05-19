@@ -1,7 +1,6 @@
 # Hookify Plus
 
-![Version](https://img.shields.io/badge/version-2.2.1-blue)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Version](https://img.shields.io/badge/version-2.2.1-blue) [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **A rule engine for Claude Code with convention-based rule discovery.**
 
@@ -27,22 +26,16 @@ It originated from Anthropic's [hookify](https://github.com/anthropics/claude-co
 
 These ship with the engine — install and you have them:
 
-| Fix                                                          | Issue     |
-| ------------------------------------------------------------ | --------- |
-| Claude actually sees block/warn messages (stderr + exit 2)   | [#12446]  |
-| Read/Glob/Grep no longer misfire `file` rules                | [#14588]  |
-| Write tool `new_text` field extracts content correctly       | [#16081]  |
-| Python 3.8 type-hint compatibility                           | [#14588]  |
-| Windows paths with spaces work                               | [#16152]  |
-| `require-tests` example uses the correct operator            | [#13464]  |
+| Fix                                                        | Issue                                                            |
+| ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| Claude actually sees block/warn messages (stderr + exit 2) | [#12446](https://github.com/anthropics/claude-code/issues/12446) |
+| Read/Glob/Grep no longer misfire `file` rules              | [#14588](https://github.com/anthropics/claude-code/issues/14588) |
+| Write tool `new_text` field extracts content correctly     | [#16081](https://github.com/anthropics/claude-code/pull/16081)   |
+| Python 3.8 type-hint compatibility                         | [#14588](https://github.com/anthropics/claude-code/issues/14588) |
+| Windows paths with spaces work                             | [#16152](https://github.com/anthropics/claude-code/issues/16152) |
+| `require-tests` example uses the correct operator          | [#13464](https://github.com/anthropics/claude-code/issues/13464) |
 
-[#12446]: https://github.com/anthropics/claude-code/issues/12446
-[#13464]: https://github.com/anthropics/claude-code/issues/13464
-[#14588]: https://github.com/anthropics/claude-code/issues/14588
-[#16081]: https://github.com/anthropics/claude-code/pull/16081
-[#16152]: https://github.com/anthropics/claude-code/issues/16152
-
----
+______________________________________________________________________
 
 ## Installation
 
@@ -52,13 +45,11 @@ Hookify Plus is distributed through this marketplace:
 /plugin marketplace add anthony-spruyt/claude-plugins
 ```
 
-Then enable **hookify-plus** in your Claude Code settings. Companion rule
-plugins from the same marketplace (`security-hooks`, `best-practices`) are
-discovered automatically once the engine is enabled.
+Then enable **hookify-plus** in your Claude Code settings. Companion rule plugins from the same marketplace (`security-hooks`, `best-practices`) are discovered automatically once the engine is enabled.
 
 Run `claude plugins update` to pick up new versions.
 
----
+______________________________________________________________________
 
 ## Quick Start
 
@@ -80,7 +71,7 @@ EOF
 
 The rule is active immediately — no restart needed.
 
----
+______________________________________________________________________
 
 ## Rule Syntax
 
@@ -181,22 +172,21 @@ Use the Glob tool instead of find/ls for better performance.
 | `stop`   | `reason`, `transcript`                         |
 | `prompt` | `user_prompt`                                  |
 
----
+______________________________________________________________________
 
 ## Rule Discovery
 
 The engine scans three locations, in order:
 
-| Location                       | Scope                                     |
-| ------------------------------ | ----------------------------------------- |
-| `.claude/hookify-plus/*.md`    | Current project only                      |
-| `~/.claude/hookify-plus/*.md`  | All projects (global)                     |
+| Location                             | Scope                                             |
+| ------------------------------------ | ------------------------------------------------- |
+| `.claude/hookify-plus/*.md`          | Current project only                              |
+| `~/.claude/hookify-plus/*.md`        | All projects (global)                             |
 | `<sibling_plugin>/hookify-plus/*.md` | Provided by other plugins in the same marketplace |
 
-This is how `security-hooks` and `best-practices` ship their rules — they're
-plain rule files the engine picks up automatically.
+This is how `security-hooks` and `best-practices` ship their rules — they're plain rule files the engine picks up automatically.
 
----
+______________________________________________________________________
 
 ## Versioning
 
@@ -206,19 +196,17 @@ Standard [semver](https://semver.org/): `MAJOR.MINOR.PATCH`.
 - **minor** — new rules / features
 - **major** — breaking changes
 
-The version is read from `.claude-plugin/plugin.json`. `claude plugins update`
-compares the installed version string against the manifest, so a version bump
-is required for users to pick up changes.
+The version is read from `.claude-plugin/plugin.json`. `claude plugins update` compares the installed version string against the manifest, so a version bump is required for users to pick up changes.
 
----
+______________________________________________________________________
 
 ## Credits
 
-| Contributor                                          | Contribution                                                                             |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [@adrozdenko](https://github.com/adrozdenko)         | `not_regex_match`, `value` key, `read` event                                             |
-| [@kp222x](https://github.com/kp222x)                 | Global rules ([#13916](https://github.com/anthropics/claude-code/pull/13916))            |
-| [@heathdutton](https://github.com/heathdutton)       | Write fix + Update tool ([#16081](https://github.com/anthropics/claude-code/pull/16081)) |
+| Contributor                                          | Contribution                                                                                                                                       |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [@adrozdenko](https://github.com/adrozdenko)         | `not_regex_match`, `value` key, `read` event                                                                                                       |
+| [@kp222x](https://github.com/kp222x)                 | Global rules ([#13916](https://github.com/anthropics/claude-code/pull/13916))                                                                      |
+| [@heathdutton](https://github.com/heathdutton)       | Write fix + Update tool ([#16081](https://github.com/anthropics/claude-code/pull/16081))                                                           |
 | [@anthony-spruyt](https://github.com/anthony-spruyt) | Maintainer; rate limiting (`warn_once`, `warn_interval`), stderr + exit 2 fix for [#12446](https://github.com/anthropics/claude-code/issues/12446) |
 
 ## Contributing
