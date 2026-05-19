@@ -89,11 +89,11 @@ Without arguments, hookify analyzes recent conversation to find behaviors to pre
    /hookify Warn me when I try to use rm -rf
    ```
 
-1. Trigger it by asking Claude to run `rm -rf /tmp/test`. The warning should appear.
+2. Trigger it by asking Claude to run `rm -rf /tmp/test`. The warning should appear.
 
-1. Refine the rule by editing `.claude/hookify-plus/warn-rm.md`.
+3. Refine the rule by editing `.claude/hookify-plus/warn-rm.md`.
 
-1. Create more rules as unwanted behaviors are encountered.
+4. Create more rules as unwanted behaviors are encountered.
 
 For more examples, check the `${CLAUDE_PLUGIN_ROOT}/examples/` directory.
 

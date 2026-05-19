@@ -15,14 +15,17 @@ action: block
 **Safe alternatives:**
 
 1. **Use generic descriptions instead of IPs:**
+
    - ❌ `node at 192.168.20.11 is unreachable`
    - ✅ `control plane node E2-1 is unreachable`
 
 2. **Reference file paths instead of values:**
+
    - ❌ `updated CIDR to 10.244.0.0/16`
    - ✅ `updated pod CIDR in cluster-secrets.sops.yaml`
 
 3. **Use substitution variable names:**
+
    - ❌ `Traefik LoadBalancer IP: 192.168.20.100`
    - ✅ `Traefik LoadBalancer uses ${TRAEFIK_IP4} substitution`
 

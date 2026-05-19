@@ -29,6 +29,7 @@ pytest tests/unit/ -v
 Plugin versions are read from `plugin.json` manifests. `claude plugins update` compares the installed version string against the manifest — same string means "already at latest" even if code changed.
 
 **When making changes in a PR**, bump the version in both files:
+
 1. `<plugin>/.claude-plugin/plugin.json` — the plugin's own manifest
 2. `.claude-plugin/marketplace.json` — the marketplace registry
 
@@ -39,6 +40,7 @@ If you forget, users must uninstall/reinstall to pick up changes.
 ## Plugin Discovery Convention
 
 Rules live in `hookify-plus/` directories. The engine scans:
+
 1. `.claude/hookify-plus/*.md` — project-level
 2. `~/.claude/hookify-plus/*.md` — global
 3. `<sibling_plugin>/hookify-plus/*.md` — plugin-provided (same marketplace)
