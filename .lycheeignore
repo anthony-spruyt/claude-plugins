@@ -8,8 +8,15 @@ https://api.github.com/.*
 # VS Code site returns 403 to automated link checkers
 https://code.visualstudio.com/.*
 
+# VS Code Marketplace (intermittent 503s)
+https://marketplace.visualstudio.com/
+
+
 # LAN server URLs use private .lan domains with shell variable substitution
 .*\.lan/.*
+
+# Internal MCP server hostname (not publicly accessible)
+https://litellm/
 
 # Localhost URLs are not reachable in CI/lint environments
 http://localhost.*
@@ -19,6 +26,3 @@ https://127\.0\.0\.1.*
 
 # Schema store times out intermittently in CI
 https://json\.schemastore\.org/.*
-
-# Marketplace schema URL does not exist yet
-https://anthropic\.com/claude-code/marketplace\.schema\.json
