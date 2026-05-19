@@ -127,11 +127,11 @@ conditions:
 
    - If not, create it: `mkdir -p .claude/hookify-plus`
 
-1. Use the Write tool to create each `.claude/hookify-plus/{name}.md` file.
+2. Use the Write tool to create each `.claude/hookify-plus/{name}.md` file.
 
    - Use the project's `.claude/hookify-plus/` path, not the plugin's.
 
-1. Show the user what was created:
+3. Show the user what was created:
 
    ```
    Created 3 hookify rules:
@@ -145,9 +145,9 @@ conditions:
    - sensitive-files: Edits to .env or credentials files
    ```
 
-1. Verify files were created in the correct location by listing them.
+4. Verify files were created in the correct location by listing them.
 
-1. Inform the user: **"Rules are active immediately — no restart needed!"**
+5. Inform the user: **"Rules are active immediately — no restart needed!"**
 
    The hookify hooks are already loaded and read new rules on the next tool use.
 

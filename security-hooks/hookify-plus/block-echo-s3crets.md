@@ -29,10 +29,10 @@ echo "${VAR:+set (hidden)}${VAR:-NOT SET}"
    [ -n "$VAR_NAME" ] && echo "set" || echo "not set"
    ```
 
-2. **Ask the user directly:**
-   "Is the environment variable `VAR_NAME` set?"
+2. **Ask the user directly:** "Is the environment variable `VAR_NAME` set?"
 
 3. **Use printenv with existence check only:**
+
    ```bash
    printenv VAR_NAME >/dev/null 2>&1 && echo "set" || echo "not set"
    ```

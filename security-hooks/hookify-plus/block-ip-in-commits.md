@@ -15,10 +15,12 @@ action: block
 **Safe alternatives for commit messages:**
 
 1. **Describe the change, not the value:**
+
    - ❌ `fix: update API endpoint to 192.168.20.11`
    - ✅ `fix: update API endpoint to use Flux substitution variable`
 
 2. **Reference variable names:**
+
    - ❌ `chore: assign 10.244.0.0/16 as pod CIDR`
    - ✅ `chore: configure pod CIDR via cluster secrets`
 

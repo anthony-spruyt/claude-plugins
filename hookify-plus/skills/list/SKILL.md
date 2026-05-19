@@ -17,13 +17,13 @@ Display all configured hookify rules in the project.
    pattern: ".claude/hookify-plus/*.md"
    ```
 
-1. For each file found:
+2. For each file found:
 
    - Read the file with the Read tool.
    - Extract frontmatter fields: name, enabled, event, pattern.
    - Extract message preview (first 100 chars).
 
-1. Present results in a table:
+3. Present results in a table:
 
 ```
 ## Configured Hookify Rules
