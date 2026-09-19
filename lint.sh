@@ -8,6 +8,9 @@ set -euo pipefail
 # Usage:
 #   ./lint.sh       - Local mode (with fixes, user permissions)
 #   ./lint.sh --ci  - CI mode (no fixes, passes GitHub env vars)
+#
+# Local mode honors APPLY_FIXES (default: all); set APPLY_FIXES=none to lint
+# without modifying any files.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -81,7 +84,7 @@ else
     -e HOME=/tmp \
     -e MEGALINTER_FLAVOR="$MEGALINTER_FLAVOR" \
     -e VALIDATE_ALL_CODEBASE="true" \
-    -e APPLY_FIXES="all" \
+    -e APPLY_FIXES="${APPLY_FIXES:-all}" \
     -e UPDATED_SOURCES_REPORTER="true" \
     -e REPORT_OUTPUT_FOLDER="/tmp/lint/.output" \
     -v "$REPO_ROOT:/tmp/lint:rw" \
@@ -89,7 +92,8 @@ else
     "$MEGALINTER_IMAGE" >/dev/null 2>&1 ||
     LINT_EXIT_CODE=$?
 
-  # Copy fixed files back to workspace
+  # Linters fix in place in the mounted workspace; this only restores files a
+  # linter rewrote outside it (e.g. via a temp copy).
   if compgen -G "$REPO_ROOT/.output/updated_sources/*" >/dev/null; then
     cp -r "$REPO_ROOT/.output/updated_sources"/* "$REPO_ROOT/"
   fi
