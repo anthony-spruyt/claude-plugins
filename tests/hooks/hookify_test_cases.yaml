@@ -549,6 +549,41 @@ test_cases:
     command: "sed 's/old/new/g' file.txt"
     expect: allow
 
+  - name: "warn-use-edit-tool: sed -i.bak"
+    tool: Bash
+    command: "sed -i.bak 's/old/new/' file.txt"
+    expect: warn
+
+  - name: "warn-use-edit-tool: sed -Ei"
+    tool: Bash
+    command: "sed -Ei 's/a+/b/' file.txt"
+    expect: warn
+
+  - name: "warn-use-edit-tool: sed --in-place"
+    tool: Bash
+    command: "sed --in-place 's/old/new/' file.txt"
+    expect: warn
+
+  - name: "warn-use-edit-tool: awk -i inplace"
+    tool: Bash
+    command: "awk -i inplace '{print}' file.txt"
+    expect: warn
+
+  - name: "warn-use-edit-tool: allows -i in a later command after ;"
+    tool: Bash
+    command: "sed -n 1,40p file.txt; uniq -i file.txt"
+    expect: allow
+
+  - name: "warn-use-edit-tool: allows -i in a later command after &&"
+    tool: Bash
+    command: "sed -n 1p file.txt && uniq -i file.txt"
+    expect: allow
+
+  - name: "warn-use-edit-tool: allows -i in a piped command"
+    tool: Bash
+    command: "sed 's/a/b/' file.txt | uniq -i"
+    expect: allow
+
   # =============================================================================
   # READ TOOL TESTS
   # =============================================================================

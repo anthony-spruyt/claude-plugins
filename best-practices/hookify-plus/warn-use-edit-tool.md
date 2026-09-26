@@ -3,7 +3,7 @@ name: warn-use-edit-tool
 enabled: true
 event: bash
 tool_matcher: Bash|PowerShell
-pattern: (^|\s|&&|\|\||;|\(|`)(sed|awk)\s+.*-i
+pattern: (^|\s|&&|\|\||;|\(|`)(sed|awk)\s+([^;&|\n]*\s)?(-[a-zA-Z]*i|--in-place)
 action: warn
 warn_once: true
 ---
