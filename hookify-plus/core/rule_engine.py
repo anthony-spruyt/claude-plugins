@@ -229,9 +229,8 @@ class RuleEngine:
             elif field in ['new_text', 'content']:
                 return tool_input.get('new_source', '')
 
-        elif tool_name in ['Glob', 'Grep']:
-            if field == 'file_path':
-                return tool_input.get('path', '')
+        elif tool_name in ['Glob', 'Grep'] and field == 'file_path':
+            return tool_input.get('path', '')
 
         return None
 
