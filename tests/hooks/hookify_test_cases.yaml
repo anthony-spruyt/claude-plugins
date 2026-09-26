@@ -64,20 +64,20 @@ test_cases:
     command: "env | wc -l"
     expect: allow
 
-  - name: "block-env-grep: cross-line env + grep not blocked (grep-tool warns)"
+  - name: "block-env-grep: cross-line env + grep not blocked"
     tool: Bash
     command: "echo environment\n| grep pattern"
-    expect: warn
+    expect: allow
 
-  - name: "block-env-grep: myenv | grep not blocked (word boundary, grep-tool warns)"
+  - name: "block-env-grep: myenv | grep not blocked (word boundary)"
     tool: Bash
     command: "myenv | grep foo"
-    expect: warn
+    expect: allow
 
-  - name: "block-env-grep: setenv | grep not blocked (word boundary, grep-tool warns)"
+  - name: "block-env-grep: setenv | grep not blocked (word boundary)"
     tool: Bash
     command: "setenv | grep bar"
-    expect: warn
+    expect: allow
 
   # =============================================================================
   # Environment Dump (block-env-dump)
@@ -537,19 +537,6 @@ test_cases:
     expect: warn
 
   # =============================================================================
-  # Use Grep Tool (warn-use-grep-tool)
-  # =============================================================================
-  - name: "warn-use-grep-tool: grep pattern"
-    tool: Bash
-    command: "grep 'TODO' src/"
-    expect: warn
-
-  - name: "warn-use-grep-tool: rg pattern"
-    tool: Bash
-    command: "rg 'function' --type js"
-    expect: warn
-
-  # =============================================================================
   # Use Edit Tool (warn-use-edit-tool)
   # =============================================================================
   - name: "warn-use-edit-tool: sed -i"
@@ -563,26 +550,43 @@ test_cases:
     expect: allow
 
   # =============================================================================
-  # Use Glob Tool (warn-use-glob-tool)
-  # =============================================================================
-  - name: "warn-use-glob-tool: find path"
-    tool: Bash
-    command: "find . -name '*.ts'"
-    expect: warn
-
-  - name: "warn-use-glob-tool: ls directory"
-    tool: Bash
-    command: "ls -la src/"
-    expect: warn
-
-  - name: "warn-use-glob-tool: allows bare ls"
-    tool: Bash
-    command: "ls"
-    expect: allow
-
-  # =============================================================================
   # READ TOOL TESTS
   # =============================================================================
+
+  # =============================================================================
+  # Non-Bash tools reach the same rules
+  # =============================================================================
+  - name: "block-printenv: PowerShell command"
+    tool: PowerShell
+    tool_input: {command: "printenv"}
+    expect: block
+
+  - name: "block-printenv: Monitor command"
+    tool: Monitor
+    tool_input: {command: "printenv", description: "watch env"}
+    expect: block
+
+  - name: "block-read-ssh-keys: Edit on key file"
+    tool: Edit
+    file_path: "/home/user/.ssh/id_rsa"
+    old_string: "a"
+    new_string: "b"
+    expect: block
+
+  - name: "block-read-ssh-keys: Grep in .ssh"
+    tool: Grep
+    tool_input: {pattern: "BEGIN", path: "/home/user/.ssh"}
+    expect: block
+
+  - name: "block-read-env-files: NotebookEdit on .env"
+    tool: NotebookEdit
+    tool_input: {notebook_path: "/workspaces/project/.env", new_source: "x"}
+    expect: block
+
+  - name: "block-read-ssh-keys: Grep in src allowed"
+    tool: Grep
+    tool_input: {pattern: "TODO", path: "/workspaces/project/src"}
+    expect: allow
 
   # =============================================================================
   # SSH/PKI Keys (block-read-ssh-keys)

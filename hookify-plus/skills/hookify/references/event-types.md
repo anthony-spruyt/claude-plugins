@@ -2,7 +2,7 @@
 
 ## bash
 
-Match Bash tool commands. The `pattern` field matches against the `command` field.
+Match Bash, PowerShell, and Monitor commands. The `pattern` field matches against the `command` field.
 
 ```markdown
 ---
@@ -22,7 +22,7 @@ Dangerous command detected!
 
 ## file
 
-Match Edit, Write, MultiEdit, and Update operations. The `pattern` field matches against `new_text` by default. Use `conditions` to match against `file_path`, `old_text`, or `content`.
+Match Edit, Write, and NotebookEdit operations. The `pattern` field matches against `new_text` by default. Use `conditions` to match against `file_path`, `old_text`, or `content`.
 
 ```markdown
 ---
@@ -58,7 +58,7 @@ Console.log in TypeScript file!
 
 ## read
 
-Match Read, Glob, Grep, and LS tool invocations. The `pattern` field matches against `file_path`.
+Match Read, Glob, and Grep tool invocations. The `pattern` field matches against `file_path`.
 
 ```markdown
 ---

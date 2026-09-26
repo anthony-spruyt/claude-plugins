@@ -42,6 +42,7 @@ sys.path.insert(0, find_hookify_plugin())
 
 import yaml
 from core import load_rules, RuleEngine
+from core.tools import event_for_tool
 
 
 def get_result_type(result: dict) -> str:
@@ -133,11 +134,7 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
                     "tool_input": test.get('tool_input', {})
                 }
 
-            # Determine event type for rule loading
-            event = "bash" if tool == "Bash" else "file"
-
-            # Load rules (hookify-plus uses cwd, not rules_dir param)
-            rules = load_rules(event=event)
+            rules = load_rules(event=event_for_tool(tool))
             result = engine.evaluate_rules(rules, input_data)
 
             # Check expectation

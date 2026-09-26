@@ -9,7 +9,7 @@
     {
       "name": "hookify-plus",
       "description": "Rule engine with rate-limited warnings, stderr fix for #12446, and convention-based discovery",
-      "version": "2.2.4",
+      "version": "2.3.0",
       "author": {
         "name": "anthony-spruyt"
       },
@@ -18,7 +18,7 @@
     {
       "name": "security-hooks",
       "description": "23 blocking rules preventing secret exposure via CLI commands and file reads",
-      "version": "2.2.3",
+      "version": "2.2.4",
       "author": {
         "name": "anthony-spruyt"
       },
@@ -27,7 +27,7 @@
     {
       "name": "best-practices",
       "description": "Warning rules for conventional commits, tool usage, and shell wrappers",
-      "version": "2.2.3",
+      "version": "3.0.0",
       "author": {
         "name": "anthony-spruyt"
       },

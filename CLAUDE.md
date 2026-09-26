@@ -8,7 +8,7 @@ Plugin monorepo for Claude Code. Contains the hookify-plus engine and rule plugi
 
 - `hookify-plus/` — Rule engine plugin (convention-based discovery)
 - `security-hooks/` — 23 blocking rules (requires hookify-plus)
-- `best-practices/` — 6 warning rules (requires hookify-plus)
+- `best-practices/` — 4 warning rules (requires hookify-plus)
 - `tests/` — Integration tests for all rules
 
 ## Commands

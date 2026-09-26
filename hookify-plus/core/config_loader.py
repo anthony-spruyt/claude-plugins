@@ -69,6 +69,8 @@ class Rule:
                 field = 'command'
             elif event == 'file':
                 field = 'new_text'
+            elif event == 'read':
+                field = 'file_path'
             else:
                 field = 'content'
 

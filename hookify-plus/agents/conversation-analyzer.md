@@ -45,7 +45,7 @@ Read through user messages in reverse chronological order (most recent first). L
 
 For each issue, determine:
 
-- **Which tool**: Bash, Edit, Write, MultiEdit
+- **Which tool**: Bash, Edit, Write
 - **What action**: Specific command or code pattern
 - **When it happened**: During what task/phase
 - **Why problematic**: User's stated reason or implicit concern
