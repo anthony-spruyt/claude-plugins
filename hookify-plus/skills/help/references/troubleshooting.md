@@ -28,6 +28,6 @@
 
 ## Multiple Rules Conflicting
 
-- List all active rules with `/hookify:list`.
+- List all active rules with `/hookify-plus:list`.
 - Disable conflicting rules by setting `enabled: false`.
 - More specific patterns take precedence - narrow overly broad patterns.

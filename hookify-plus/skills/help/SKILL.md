@@ -22,7 +22,7 @@ Hookify installs generic hooks that run on these events:
 - **Stop**: When Claude wants to stop working
 - **UserPromptSubmit**: When user submits a prompt
 
-These hooks read configuration files from `.claude/hookify-plus/*.md` and check if any rules match the current operation.
+These hooks read rule files from `.claude/hookify-plus/*.md` (project), `~/.claude/hookify-plus/*.md` (global), and `<sibling_plugin>/hookify-plus/*.md` (plugins in the same marketplace), and check if any rules match the current operation.
 
 ### Configuration Files
 
@@ -45,7 +45,7 @@ This command could delete important files. Verify the path.
 
 - `name`: Unique identifier for the rule
 - `enabled`: true/false to activate/deactivate
-- `event`: bash, file, stop, prompt, or all
+- `event`: bash, file, read, stop, prompt, or all
 - `pattern`: Regex pattern to match (case-insensitive)
 - `warn_once`: Only warn once per session (optional)
 - `warn_interval`: Warn every N matches; 0 = every time (optional)
@@ -77,9 +77,9 @@ Without arguments, hookify analyzes recent conversation to find behaviors to pre
 ## Available Commands
 
 - **`/hookify`** - Create hooks from conversation analysis or explicit instructions
-- **`/hookify:help`** - Show this help
-- **`/hookify:list`** - List all configured hooks
-- **`/hookify:configure`** - Enable/disable existing hooks interactively
+- **`/hookify-plus:help`** - Show this help
+- **`/hookify-plus:list`** - List all configured hooks
+- **`/hookify-plus:configure`** - Enable/disable existing hooks interactively
 
 ## Getting Started
 

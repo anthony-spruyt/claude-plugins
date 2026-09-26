@@ -6,11 +6,9 @@ import sys
 from functools import lru_cache
 from typing import List, Dict, Any, Optional
 
-# Import from local module
 from core.config_loader import Rule, Condition
 
 
-# Cache compiled regexes (max 128 patterns)
 @lru_cache(maxsize=128)
 def compile_regex(pattern: str) -> re.Pattern:
     """Compile regex pattern with caching.
@@ -29,7 +27,6 @@ class RuleEngine:
 
     def __init__(self):
         """Initialize rule engine."""
-        # No need for instance cache anymore - using global lru_cache
         pass
 
     def evaluate_rules(self, rules: List[Rule], input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -57,12 +54,10 @@ class RuleEngine:
                 else:
                     warning_rules.append(rule)
 
-        # If any blocking rules matched, block the operation
         if blocking_rules:
             messages = [f"**[{r.name}]**\n{r.message}" for r in blocking_rules]
             combined_message = "\n\n".join(messages)
 
-            # Use appropriate blocking format based on event type
             if hook_event == 'Stop':
                 return {
                     "decision": "block",
@@ -79,19 +74,16 @@ class RuleEngine:
                     "systemMessage": combined_message
                 }
             else:
-                # For other events, just show message
                 return {
                     "systemMessage": combined_message
                 }
 
-        # If only warnings, show them but allow operation
         if warning_rules:
             messages = [f"**[{r.name}]**\n{r.message}" for r in warning_rules]
             return {
                 "systemMessage": "\n\n".join(messages)
             }
 
-        # No matches - allow operation
         return {}
 
     def _rule_matches(self, rule: Rule, input_data: Dict[str, Any]) -> bool:
@@ -104,21 +96,16 @@ class RuleEngine:
         Returns:
             True if rule matches, False otherwise
         """
-        # Extract tool information
         tool_name = input_data.get('tool_name', '')
         tool_input = input_data.get('tool_input', {})
 
-        # Check tool matcher if specified
         if rule.tool_matcher:
             if not self._matches_tool(rule.tool_matcher, tool_name):
                 return False
 
-        # If no conditions, don't match
-        # (Rules must have at least one condition to be valid)
         if not rule.conditions:
             return False
 
-        # All conditions must match
         for condition in rule.conditions:
             if not self._check_condition(condition, tool_name, tool_input, input_data):
                 return False
@@ -138,7 +125,6 @@ class RuleEngine:
         if matcher == '*':
             return True
 
-        # Split on | for OR matching
         patterns = matcher.split('|')
         return tool_name in patterns
 
@@ -155,12 +141,10 @@ class RuleEngine:
         Returns:
             True if condition matches
         """
-        # Extract the field value to check
         field_value = self._extract_field(condition.field, tool_name, tool_input, input_data)
         if field_value is None:
             return False
 
-        # Apply operator
         operator = condition.operator
         pattern = condition.pattern
 
@@ -179,7 +163,6 @@ class RuleEngine:
         elif operator == 'ends_with':
             return field_value.endswith(pattern)
         else:
-            # Unknown operator
             return False
 
     def _extract_field(self, field: str, tool_name: str,
@@ -195,20 +178,16 @@ class RuleEngine:
         Returns:
             Field value as string, or None if not found
         """
-        # Direct tool_input fields
         if field in tool_input:
             value = tool_input[field]
             if isinstance(value, str):
                 return value
             return str(value)
 
-        # For Stop events and other non-tool events, check input_data
         if input_data:
-            # Stop event specific fields
             if field == 'reason':
                 return input_data.get('reason', '')
             elif field == 'transcript':
-                # Read transcript file if path provided
                 transcript_path = input_data.get('transcript_path')
                 if transcript_path:
                     try:
@@ -227,15 +206,13 @@ class RuleEngine:
                         print(f"Warning: Encoding error in transcript {transcript_path}: {e}", file=sys.stderr)
                         return ''
             elif field == 'user_prompt':
-                # For UserPromptSubmit events
                 return input_data.get('user_prompt', '')
 
-        # Handle special cases by tool type
         if tool_name == 'Bash':
             if field == 'command':
                 return tool_input.get('command', '')
 
-        elif tool_name in ['Write', 'Edit', 'Update']:
+        elif tool_name in ['Write', 'Edit']:
             if field == 'content':
                 # Write uses 'content', Edit has 'new_string'
                 return tool_input.get('content') or tool_input.get('new_string', '')
@@ -246,15 +223,28 @@ class RuleEngine:
             elif field == 'file_path':
                 return tool_input.get('file_path', '')
 
-        elif tool_name == 'MultiEdit':
+        elif tool_name == 'NotebookEdit':
             if field == 'file_path':
-                return tool_input.get('file_path', '')
-            elif field in ['new_text', 'content']:
-                # Concatenate all edits
-                edits = tool_input.get('edits', [])
-                return ' '.join(e.get('new_string', '') for e in edits)
+                return tool_input.get('notebook_path', '')
+            elif field in ['new_text', 'new_string', 'content']:
+                return tool_input.get('new_source', '')
+
+        elif tool_name == 'Grep' and field == 'file_path':
+            return self._grep_target(tool_input)
+
+        elif tool_name == 'Glob' and field == 'file_path':
+            return tool_input.get('path', '')
 
         return None
+
+    @staticmethod
+    def _grep_target(tool_input: Dict[str, Any]) -> str:
+        path = tool_input.get('path', '')
+        # Trailing wildcards stripped so `.env*` meets the rules' `$`-anchored patterns
+        name = tool_input.get('glob', '').rstrip('*?.')
+        if not name:
+            return path
+        return path.rstrip('/\\') + '/' + name
 
     def _regex_match(self, pattern: str, text: str) -> bool:
         """Check if pattern matches text using regex.
@@ -267,7 +257,6 @@ class RuleEngine:
             True if pattern matches
         """
         try:
-            # Use cached compiled regex (LRU cache with max 128 patterns)
             regex = compile_regex(pattern)
             return bool(regex.search(text))
 
@@ -276,11 +265,9 @@ class RuleEngine:
             return False
 
 
-# For testing
 if __name__ == '__main__':
     from core.config_loader import Condition, Rule
 
-    # Test rule evaluation
     rule = Rule(
         name="test-rm",
         enabled=True,
@@ -293,7 +280,6 @@ if __name__ == '__main__':
 
     engine = RuleEngine()
 
-    # Test matching input
     test_input = {
         "tool_name": "Bash",
         "tool_input": {
@@ -304,7 +290,6 @@ if __name__ == '__main__':
     result = engine.evaluate_rules([rule], test_input)
     print("Match result:", result)
 
-    # Test non-matching input
     test_input2 = {
         "tool_name": "Bash",
         "tool_input": {

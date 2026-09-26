@@ -1,7 +1,7 @@
 ---
 name: block-read-package-creds
 enabled: true
-event: file
+event: all
 action: block
 conditions:
   - field: file_path

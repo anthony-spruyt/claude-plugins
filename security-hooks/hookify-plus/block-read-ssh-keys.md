@@ -1,12 +1,12 @@
 ---
 name: block-read-ssh-keys
 enabled: true
-event: file
+event: all
 action: block
 conditions:
   - field: file_path
     operator: regex_match
-    pattern: (id_rsa|id_ed25519|id_ecdsa|\.pem|\.key|\.p12|\.pfx|\.jks|\.keystore)$|[/\\]\.ssh[/\\]
+    pattern: (id_rsa|id_ed25519|id_ecdsa|\.pem|\.key|\.p12|\.pfx|\.jks|\.keystore)$|[/\\]\.ssh([/\\]|$)
 ---
 
 **Blocked: Reading SSH/PKI key file**

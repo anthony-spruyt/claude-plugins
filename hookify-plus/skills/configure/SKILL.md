@@ -13,11 +13,7 @@ Enable or disable existing hookify rules via an interactive selection interface.
 
 ### 1. Find Existing Rules
 
-Use Glob tool to find all hookify rule files:
-
-```
-pattern: ".claude/hookify-plus/*.md"
-```
+Find all hookify rule files matching `.claude/hookify-plus/*.md`.
 
 If no rules found, inform the user:
 
@@ -110,6 +106,6 @@ Changes apply immediately - no restart needed.
 - Changes take effect immediately on next tool use.
 - To manually edit rules, modify files in `.claude/hookify-plus/` directly.
 - To permanently remove a rule, delete its `.md` file from `.claude/hookify-plus/`.
-- Run `/hookify:list` to see all configured rules.
+- Run `/hookify-plus:list` to see all configured rules.
 - If no rules are selected, report that no changes were made.
 - On file read/write errors, report the specific error and suggest manual editing as fallback.

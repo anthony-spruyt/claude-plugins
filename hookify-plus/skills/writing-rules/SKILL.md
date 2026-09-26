@@ -38,9 +38,9 @@ Include markdown formatting, warnings, and suggestions.
 
 **event** (required): Hook event to trigger on.
 
-- `bash` — Bash tool commands
-- `file` — Edit, Write, MultiEdit, Update tools
-- `read` — Read, Glob, Grep, LS tools (reads, not modifications)
+- `bash` — Bash, PowerShell, and Monitor commands
+- `file` — Edit, Write, NotebookEdit tools
+- `read` — Read, Glob, Grep tools (reads, not modifications)
 - `stop` — When the agent wants to stop
 - `prompt` — When the user submits a prompt
 - `all` — All events
@@ -58,7 +58,7 @@ Include markdown formatting, warnings, and suggestions.
 
 **pattern** (simple format): Regex pattern to match (case-insensitive).
 
-- Matches against `command` (bash) or `new_text` (file).
+- Matches against `command` (bash), `new_text` (file), or `file_path` (read).
 - Use Python regex syntax.
 
 Example:

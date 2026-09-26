@@ -1,7 +1,7 @@
 ---
 name: block-read-env-files
 enabled: true
-event: file
+event: all
 action: block
 conditions:
   - field: file_path

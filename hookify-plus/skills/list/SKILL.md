@@ -1,21 +1,21 @@
 ---
 name: list
-description: This skill should be used when the user asks to "list hookify rules", "show my hooks", "what hookify rules are configured", "show active rules", or invokes /hookify:list.
+description: This skill should be used when the user asks to "list hookify rules", "show my hooks", "what hookify rules are configured", "show active rules", or invokes /hookify-plus:list.
 ---
 
 # List Hookify Rules
 
 **Load hookify-plus:writing-rules skill first** to understand rule format.
 
-Display all configured hookify rules in the project.
+Display all hookify rules the engine loads.
 
 ## Steps
 
-1. Use Glob tool to find all hookify rule files:
+1. Find rule files in all three locations the engine scans:
 
-   ```
-   pattern: ".claude/hookify-plus/*.md"
-   ```
+   - `.claude/hookify-plus/*.md` (project)
+   - `~/.claude/hookify-plus/*.md` (global)
+   - `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/hookify-plus/*.md` (sibling plugins, but only the marketplace hookify-plus itself is installed in, and only version dirs with an `.in_use` marker). Find that marketplace dir by looking under `~/.claude/plugins/cache/` for the one that contains a `hookify-plus/` subdirectory.
 
 2. For each file found:
 
@@ -75,7 +75,7 @@ No hookify rules created yet.
 To get started:
 1. Use `/hookify` to analyze conversation and create rules
 2. Or manually create `.claude/hookify-plus/my-rule.md` files
-3. See `/hookify:help` for documentation
+3. See `/hookify-plus:help` for documentation
 
 Example:
 ```
