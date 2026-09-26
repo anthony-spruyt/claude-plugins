@@ -24,7 +24,7 @@ class WarningState:
     """Manages rate limiting state for hookify warnings.
 
     Uses session_id from Claude Code hook input for state scoping.
-    State resets when a new subagent is spawned (via PreToolUse for Task tool).
+    State resets when a new subagent is spawned (via PreToolUse for Agent tool).
     """
 
     def __init__(self, session_id: str):
@@ -49,7 +49,7 @@ class WarningState:
                     if f.stat().st_mtime < cutoff:
                         f.unlink()
                 except (OSError, IOError):
-                    pass  # Ignore cleanup errors
+                    pass
         except (OSError, IOError):
             pass  # Ignore if /tmp is inaccessible
 
@@ -62,7 +62,6 @@ class WarningState:
             with open(self.state_file) as f:
                 state = json.load(f)
 
-            # Check if state is stale (>24h old)
             created_str = state.get("created_at", "1970-01-01T00:00:00")
             try:
                 created = datetime.fromisoformat(created_str)
@@ -85,7 +84,6 @@ class WarningState:
         Returns:
             True if warning should be shown, False if suppressed
         """
-        # No rate limiting configured
         if not rule.warn_once and rule.warn_interval <= 0:
             return True
 
@@ -93,7 +91,6 @@ class WarningState:
         warn_count = rule_state.get("warn_count", 0)
 
         if rule.warn_once:
-            # Only warn if never warned before
             return warn_count == 0
         elif rule.warn_interval > 0:
             # Warn on 0, N, 2N, 3N, ...
@@ -125,7 +122,6 @@ class WarningState:
                 json.dump(self.state, f, indent=2)
             tmp_file.rename(self.state_file)  # Atomic on POSIX
         except (IOError, OSError) as e:
-            # Log but don't fail if state can't be saved
             import sys
             print(f"Warning: Could not save hookify state: {e}", file=sys.stderr)
 
@@ -133,7 +129,7 @@ class WarningState:
 def reset_warning_state(session_id: str):
     """Reset warning state for a session.
 
-    Called when a new subagent starts (Task tool invoked) to give
+    Called when a new subagent starts (Agent tool invoked) to give
     each subagent fresh warning counts.
 
     Args:
@@ -147,4 +143,4 @@ def reset_warning_state(session_id: str):
         try:
             state_file.unlink()
         except (IOError, OSError):
-            pass  # Ignore errors
+            pass

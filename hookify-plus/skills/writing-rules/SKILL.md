@@ -172,16 +172,16 @@ Warning message here
 
 **Operators:** `regex_match`, `not_regex_match`, `contains`, `equals`, `not_contains`, `starts_with`, `ends_with`
 
-**hookify-plus extras:** `not_regex_match` operator, `value` key alias for `pattern`, global rules in `~/.claude/`, `read` event type
+`value` is accepted as an alias for `pattern` in conditions.
 
 ## Examples
 
 See `${CLAUDE_PLUGIN_ROOT}/examples/` for complete examples:
 
-- `dangerous-rm.md` — Block dangerous rm commands
-- `console-log-warning.md` — Warn about console.log
-- `sensitive-files-warning.md` — Warn about editing .env files
-- `require-tests-stop.md` — Require tests before stopping
+- `dangerous-rm.local.md` — Block dangerous rm commands
+- `console-log-warning.local.md` — Warn about console.log
+- `sensitive-files-warning.local.md` — Warn about editing .env files
+- `require-tests-stop.local.md` — Require tests before stopping
 
 ## Additional Resources
 
