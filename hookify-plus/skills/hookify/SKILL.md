@@ -18,7 +18,7 @@ Create hook rules to prevent problematic behaviors by analyzing the conversation
 
 **If `$ARGUMENTS` is empty:**
 
-- Launch the `hookify-plus:conversation-analyzer` agent via the Agent tool to find problematic behaviors.
+- Launch the `hookify-plus:conversation-analyzer` agent via the Agent tool to find problematic behaviors. The agent does not see this conversation - include the relevant user messages and tool calls, or the transcript path, in its prompt.
 
 ## Step 2: Present Findings to the User
 
@@ -89,7 +89,7 @@ conditions:
 
 ## Step 4: Create Files and Confirm
 
-**IMPORTANT:** Rule files must be created in the current working directory's `.claude/hookify-plus/` folder, NOT the plugin directory.
+Create rule files in the current working directory's `.claude/hookify-plus/` folder, not the plugin directory - the plugin directory is replaced on every plugin update.
 
 1. Check if `.claude/hookify-plus/` directory exists in the current working directory.
 

@@ -12,15 +12,14 @@ It originated from Anthropic's [hookify](https://github.com/anthropics/claude-co
 
 ### Features
 
-| Feature           | What it does                                             |
-| ----------------- | -------------------------------------------------------- |
-| `not_regex_match` | Exclude patterns (e.g., skip test files from rules)      |
-| `value` key       | Clearer syntax for non-regex operators                   |
-| `read` event      | Separate event for Read/Glob/Grep/LS (no false triggers) |
-| Global rules      | Rules in `~/.claude/` apply to ALL projects              |
-| `Update` tool     | File events also fire for the Update tool                |
-| `warn_once`       | Rate limiting — only warn once per session               |
-| `warn_interval`   | Rate limiting — warn every N matches                     |
+| Feature           | What it does                                          |
+| ----------------- | ----------------------------------------------------- |
+| `not_regex_match` | Exclude patterns (e.g., skip test files from rules)   |
+| `value` key       | Clearer syntax for non-regex operators                |
+| `read` event      | Separate event for Read/Glob/Grep (no false triggers) |
+| Global rules      | Rules in `~/.claude/` apply to ALL projects           |
+| `warn_once`       | Rate limiting — only warn once per session            |
+| `warn_interval`   | Rate limiting — warn every N matches                  |
 
 ### Fixes
 
@@ -111,14 +110,14 @@ You're editing a .env file. Make sure it's in .gitignore!
 
 ### Event Types
 
-| Event    | Triggers On                    |
-| -------- | ------------------------------ |
-| `bash`   | Bash tool                      |
-| `file`   | Edit, Write, MultiEdit, Update |
-| `read`   | Read, Glob, Grep, LS           |
-| `stop`   | Agent completion               |
-| `prompt` | User prompt submit             |
-| `all`    | All of the above               |
+| Event    | Triggers On               |
+| -------- | ------------------------- |
+| `bash`   | Bash, PowerShell, Monitor |
+| `file`   | Edit, Write, NotebookEdit |
+| `read`   | Read, Glob, Grep          |
+| `stop`   | Agent completion          |
+| `prompt` | User prompt submit        |
+| `all`    | All of the above          |
 
 ### Operators
 
@@ -138,16 +137,16 @@ Reduce context waste from repetitive warnings with rate limiting:
 
 ```yaml
 ---
-name: warn-use-glob-tool
+name: warn-use-read-tool
 enabled: true
 event: bash
-pattern: (^|\s)(find|ls)\s+\S
+pattern: (^|\s)(cat|head|tail)\s+\S
 action: warn
 warn_once: true # Only warn once per session
 # OR
 warn_interval: 5 # Warn every 5th match
 ---
-Use the Glob tool instead of find/ls for better performance.
+Use the Read tool instead of cat/head/tail.
 ```
 
 | Field           | Type | Default | Description                           |
@@ -168,7 +167,7 @@ Use the Glob tool instead of find/ls for better performance.
 | -------- | ---------------------------------------------- |
 | `bash`   | `command`                                      |
 | `file`   | `file_path`, `new_text`, `old_text`, `content` |
-| `read`   | `file_path`                                    |
+| `read`   | `file_path` (Glob/Grep: their `path`)          |
 | `stop`   | `reason`, `transcript`                         |
 | `prompt` | `user_prompt`                                  |
 

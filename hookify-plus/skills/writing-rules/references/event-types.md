@@ -2,7 +2,7 @@
 
 ## bash Events
 
-Match Bash command patterns.
+Match Bash, PowerShell, and Monitor command patterns.
 
 ```markdown
 ---
@@ -21,7 +21,7 @@ Dangerous command detected!
 
 ## file Events
 
-Match Edit, Write, MultiEdit, and Update operations.
+Match Edit, Write, and NotebookEdit operations.
 
 ```markdown
 ---
@@ -58,7 +58,7 @@ Console.log in TypeScript file!
 
 ## read Events
 
-Match Read, Glob, Grep, and LS tool invocations.
+Match Read, Glob, and Grep tool invocations.
 
 ```markdown
 ---

@@ -18,6 +18,7 @@ try:
     from core.config_loader import load_rules
     from core.rule_engine import RuleEngine
     from core.state import reset_warning_state
+    from core.tools import event_for_tool
 except ImportError as e:
     print(f"Hookify import error: {e}", file=sys.stderr)
     sys.exit(0)
@@ -35,15 +36,7 @@ def main():
         if tool_name in ('Agent', 'Task'):
             reset_warning_state(session_id)
 
-        event = None
-        if tool_name == 'Bash':
-            event = 'bash'
-        elif tool_name in ['Edit', 'Write', 'MultiEdit', 'Update']:
-            event = 'file'
-        elif tool_name in ['Read', 'Glob', 'Grep', 'LS']:
-            event = 'read'
-
-        rules = load_rules(event=event)
+        rules = load_rules(event=event_for_tool(tool_name))
 
         block_rules = [r for r in rules if r.action == 'block']
 

@@ -64,20 +64,20 @@ test_cases:
     command: "env | wc -l"
     expect: allow
 
-  - name: "block-env-grep: cross-line env + grep not blocked (grep-tool warns)"
+  - name: "block-env-grep: cross-line env + grep not blocked"
     tool: Bash
     command: "echo environment\n| grep pattern"
-    expect: warn
+    expect: allow
 
-  - name: "block-env-grep: myenv | grep not blocked (word boundary, grep-tool warns)"
+  - name: "block-env-grep: myenv | grep not blocked (word boundary)"
     tool: Bash
     command: "myenv | grep foo"
-    expect: warn
+    expect: allow
 
-  - name: "block-env-grep: setenv | grep not blocked (word boundary, grep-tool warns)"
+  - name: "block-env-grep: setenv | grep not blocked (word boundary)"
     tool: Bash
     command: "setenv | grep bar"
-    expect: warn
+    expect: allow
 
   # =============================================================================
   # Environment Dump (block-env-dump)
@@ -537,19 +537,6 @@ test_cases:
     expect: warn
 
   # =============================================================================
-  # Use Grep Tool (warn-use-grep-tool)
-  # =============================================================================
-  - name: "warn-use-grep-tool: grep pattern"
-    tool: Bash
-    command: "grep 'TODO' src/"
-    expect: warn
-
-  - name: "warn-use-grep-tool: rg pattern"
-    tool: Bash
-    command: "rg 'function' --type js"
-    expect: warn
-
-  # =============================================================================
   # Use Edit Tool (warn-use-edit-tool)
   # =============================================================================
   - name: "warn-use-edit-tool: sed -i"
@@ -560,24 +547,6 @@ test_cases:
   - name: "warn-use-edit-tool: allows sed without -i"
     tool: Bash
     command: "sed 's/old/new/g' file.txt"
-    expect: allow
-
-  # =============================================================================
-  # Use Glob Tool (warn-use-glob-tool)
-  # =============================================================================
-  - name: "warn-use-glob-tool: find path"
-    tool: Bash
-    command: "find . -name '*.ts'"
-    expect: warn
-
-  - name: "warn-use-glob-tool: ls directory"
-    tool: Bash
-    command: "ls -la src/"
-    expect: warn
-
-  - name: "warn-use-glob-tool: allows bare ls"
-    tool: Bash
-    command: "ls"
     expect: allow
 
   # =============================================================================
@@ -893,6 +862,176 @@ test_cases:
   - name: "block-sops-read: allows regular yaml"
     tool: Read
     file_path: "/workspaces/project/config.yaml"
+    expect: allow
+
+  # =============================================================================
+  # Non-Bash tools reach the same rules
+  # =============================================================================
+  - name: "block-printenv: PowerShell command"
+    tool: PowerShell
+    tool_input: {command: "printenv"}
+    expect: block
+
+  - name: "block-printenv: Monitor command"
+    tool: Monitor
+    tool_input: {command: "printenv", description: "watch env"}
+    expect: block
+
+  - name: "block-read-ssh-keys: Edit on key file"
+    tool: Edit
+    file_path: "/home/user/.ssh/id_rsa"
+    old_string: "a"
+    new_string: "b"
+    expect: block
+
+  - name: "block-read-ssh-keys: Grep in .ssh"
+    tool: Grep
+    tool_input: {pattern: "BEGIN", path: "/home/user/.ssh"}
+    expect: block
+
+  - name: "block-read-env-files: NotebookEdit on .env"
+    tool: NotebookEdit
+    tool_input: {notebook_path: "/workspaces/project/.env", new_source: "x"}
+    expect: block
+
+  - name: "block-read-ssh-keys: Grep in src allowed"
+    tool: Grep
+    tool_input: {pattern: "TODO", path: "/workspaces/project/src"}
+    expect: allow
+
+  # =============================================================================
+  # Grep filter reaching secret files (block-read-*)
+  # =============================================================================
+  - name: "block-read-env-files: Grep glob .env*"
+    tool: Grep
+    tool_input: {pattern: "KEY", path: "/project", glob: ".env*"}
+    expect: block
+
+  - name: "block-read-ssh-keys: Grep glob id_rsa"
+    tool: Grep
+    tool_input: {pattern: "BEGIN", path: "/home/u", glob: "id_rsa"}
+    expect: block
+
+  - name: "block-read-env-files: Grep glob *.ts allowed"
+    tool: Grep
+    tool_input: {pattern: "TODO", path: "/project", glob: "*.ts"}
+    expect: allow
+
+  - name: "block-read-env-files: Grep with no glob allowed"
+    tool: Grep
+    tool_input: {pattern: "TODO", path: "/project"}
+    expect: allow
+
+  - name: "block-read-env-files: Glob listing .env allowed (names only)"
+    tool: Glob
+    tool_input: {pattern: "**/.env", path: "/project"}
+    expect: allow
+
+  # =============================================================================
+  # Monitor skips tool-choice advice (best-practices)
+  # =============================================================================
+  - name: "warn-use-read-tool: Monitor tail -f allowed"
+    tool: Monitor
+    tool_input: {command: "tail -f app.log", description: "watch log"}
+    expect: allow
+
+  - name: "warn-shell-wrappers: Monitor bash -c allowed"
+    tool: Monitor
+    tool_input: {command: "bash -c 'tail -f a.log | grep ERROR'", description: "watch errors"}
+    expect: allow
+
+  - name: "warn-use-read-tool: Bash tail -f still warns"
+    tool: Bash
+    command: "tail -f app.log"
+    expect: warn
+
+  # =============================================================================
+  # PowerShell environment dump (block-powershell-env-dump)
+  # =============================================================================
+  - name: "block-powershell-env-dump: Get-ChildItem Env:"
+    tool: PowerShell
+    tool_input: {command: "Get-ChildItem Env:"}
+    expect: block
+
+  - name: "block-powershell-env-dump: gci env:"
+    tool: PowerShell
+    tool_input: {command: "gci env:"}
+    expect: block
+
+  - name: "block-powershell-env-dump: dir Env:"
+    tool: PowerShell
+    tool_input: {command: "dir Env:"}
+    expect: block
+
+  - name: "block-powershell-env-dump: ls env:\\"
+    tool: PowerShell
+    tool_input: {command: "ls env:\\"}
+    expect: block
+
+  - name: "block-powershell-env-dump: Get-Item Env:*"
+    tool: PowerShell
+    tool_input: {command: "Get-Item Env:*"}
+    expect: block
+
+  - name: "block-powershell-env-dump: GetEnvironmentVariables()"
+    tool: PowerShell
+    tool_input: {command: "[Environment]::GetEnvironmentVariables()"}
+    expect: block
+
+  - name: "block-powershell-env-dump: Get-ChildItem on a folder allowed"
+    tool: PowerShell
+    tool_input: {command: "Get-ChildItem C:\\src"}
+    expect: allow
+
+  - name: "block-powershell-env-dump: Bash ls env allowed"
+    tool: Bash
+    command: "ls env:"
+    expect: allow
+
+  # =============================================================================
+  # PowerShell secret variables (block-powershell-secret-vars)
+  # =============================================================================
+  - name: "block-powershell-secret-vars: $env:GITHUB_TOKEN"
+    tool: PowerShell
+    tool_input: {command: "echo $env:GITHUB_TOKEN"}
+    expect: block
+
+  - name: "block-powershell-secret-vars: Write-Output $env:AWS_SECRET_ACCESS_KEY"
+    tool: PowerShell
+    tool_input: {command: "Write-Output $env:AWS_SECRET_ACCESS_KEY"}
+    expect: block
+
+  - name: "block-powershell-secret-vars: GetEnvironmentVariable API_KEY"
+    tool: PowerShell
+    tool_input: {command: "[Environment]::GetEnvironmentVariable('OPENAI_API_KEY')"}
+    expect: block
+
+  - name: "block-powershell-secret-vars: $env:PATH allowed"
+    tool: PowerShell
+    tool_input: {command: "echo $env:PATH"}
+    expect: allow
+
+  - name: "block-powershell-secret-vars: $env:USERPROFILE allowed"
+    tool: PowerShell
+    tool_input: {command: "cd $env:USERPROFILE"}
+    expect: allow
+
+  # =============================================================================
+  # Process environ via file tools (block-proc-environ)
+  # =============================================================================
+  - name: "block-proc-environ: Read /proc/self/environ"
+    tool: Read
+    file_path: "/proc/self/environ"
+    expect: block
+
+  - name: "block-proc-environ: Read /proc/1234/environ"
+    tool: Read
+    file_path: "/proc/1234/environ"
+    expect: block
+
+  - name: "block-proc-environ: Read /proc/cpuinfo allowed"
+    tool: Read
+    file_path: "/proc/cpuinfo"
     expect: allow
 
   # =============================================================================

@@ -1,7 +1,7 @@
 ---
 name: block-read-secrets-generic
 enabled: true
-event: file
+event: all
 action: block
 conditions:
   - field: file_path
