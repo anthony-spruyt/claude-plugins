@@ -15,7 +15,7 @@ Display all hookify rules the engine loads.
 
    - `.claude/hookify-plus/*.md` (project)
    - `~/.claude/hookify-plus/*.md` (global)
-   - `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/hookify-plus/*.md` (sibling plugins; the engine only loads version dirs that contain an `.in_use` marker)
+   - `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/hookify-plus/*.md` (sibling plugins, but only the marketplace hookify-plus itself is installed in, and only version dirs with an `.in_use` marker). Find that marketplace dir by looking under `~/.claude/plugins/cache/` for the one that contains a `hookify-plus/` subdirectory.
 
 2. For each file found:
 

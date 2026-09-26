@@ -2,6 +2,7 @@
 name: warn-use-read-tool
 enabled: true
 event: bash
+tool_matcher: Bash|PowerShell
 pattern: (^|\s|&&|\|\||;|\(|`)(cat|head|tail|less|more)\s+[^|]
 action: warn
 warn_once: true

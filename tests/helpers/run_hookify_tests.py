@@ -12,17 +12,14 @@ import glob
 import shutil
 import tempfile
 
-# Add plugin core to path for hookify module
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def find_hookify_plugin():
     """Find hookify plugin path - local monorepo or installed."""
-    # Local monorepo (preferred for testing)
     local_path = os.path.join(REPO_ROOT, "hookify-plus")
     if os.path.isdir(local_path):
         return local_path
 
-    # Fall back to installed plugin
     home = os.path.expanduser("~")
     installed_patterns = [
         os.path.join(home, ".claude/plugins/cache/claude-plugins/hookify-plus/*/"),
@@ -109,7 +106,6 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
             tool = test.get('tool', 'Bash')
             expect = test.get('expect', 'allow')
 
-            # Build input JSON based on tool type
             if tool == 'Bash':
                 input_data = {
                     "hook_event_name": "PreToolUse",
@@ -137,22 +133,20 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
             rules = load_rules(event=event_for_tool(tool))
             result = engine.evaluate_rules(rules, input_data)
 
-            # Check expectation
             actual = get_result_type(result)
 
             if actual != expect:
                 msg = f"FAIL: {name}: expected {expect}, got {actual}"
                 failures.append(msg)
                 if verbose:
-                    print(f"\033[91m{msg}\033[0m")  # Red
+                    print(f"\033[91m{msg}\033[0m")
                     print(f"  Input: {input_data}")
                     print(f"  Result: {result}")
             else:
                 passed += 1
                 if verbose:
-                    print(f"\033[92mPASS: {name}\033[0m")  # Green
+                    print(f"\033[92mPASS: {name}\033[0m")
 
-        # Summary
         total = passed + len(failures)
         print(f"\n{passed}/{total} tests passed")
 

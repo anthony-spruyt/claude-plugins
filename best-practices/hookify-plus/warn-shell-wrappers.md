@@ -2,6 +2,7 @@
 name: warn-shell-wrappers
 enabled: true
 event: bash
+tool_matcher: Bash|PowerShell
 pattern: (^|\s|&&|\|\||;)(sh|bash|dash|zsh)\s+-c\s|(\s|^)eval\s
 action: warn
 warn_once: true

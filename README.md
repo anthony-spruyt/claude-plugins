@@ -7,7 +7,7 @@ Plugin monorepo for Claude Code by [@anthony-spruyt](https://github.com/anthony-
 | Plugin                              | Description                                  |
 | ----------------------------------- | -------------------------------------------- |
 | [hookify-plus](./hookify-plus/)     | Rule engine with convention-based discovery  |
-| [security-hooks](./security-hooks/) | 23 blocking rules preventing secret exposure |
+| [security-hooks](./security-hooks/) | 26 blocking rules preventing secret exposure |
 | [best-practices](./best-practices/) | 4 warning rules for better tool usage        |
 
 ## Installation

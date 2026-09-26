@@ -226,13 +226,25 @@ class RuleEngine:
         elif tool_name == 'NotebookEdit':
             if field == 'file_path':
                 return tool_input.get('notebook_path', '')
-            elif field in ['new_text', 'content']:
+            elif field in ['new_text', 'new_string', 'content']:
                 return tool_input.get('new_source', '')
 
-        elif tool_name in ['Glob', 'Grep'] and field == 'file_path':
+        elif tool_name == 'Grep' and field == 'file_path':
+            return self._grep_target(tool_input)
+
+        elif tool_name == 'Glob' and field == 'file_path':
             return tool_input.get('path', '')
 
         return None
+
+    @staticmethod
+    def _grep_target(tool_input: Dict[str, Any]) -> str:
+        path = tool_input.get('path', '')
+        # Trailing wildcards stripped so `.env*` meets the rules' `$`-anchored patterns
+        name = tool_input.get('glob', '').rstrip('*?.')
+        if not name:
+            return path
+        return path.rstrip('/\\') + '/' + name
 
     def _regex_match(self, pattern: str, text: str) -> bool:
         """Check if pattern matches text using regex.

@@ -42,8 +42,51 @@ class TestFieldExtraction:
     def test_notebook_edit_new_text_is_new_source(self):
         assert self.extract("new_text", "NotebookEdit", {"new_source": "API_KEY=1"}) == "API_KEY=1"
 
+    @pytest.mark.parametrize("field", ["new_text", "new_string", "content"])
+    def test_notebook_edit_new_content_fields_are_new_source(self, field):
+        assert self.extract(field, "NotebookEdit", {"new_source": "API_KEY=1"}) == "API_KEY=1"
+
     def test_grep_file_path_is_path(self):
         assert self.extract("file_path", "Grep", {"pattern": "x", "path": "/home/u/.ssh/id_rsa"}) == "/home/u/.ssh/id_rsa"
+
+    def test_grep_file_path_joins_glob_filter(self):
+        assert self.extract("file_path", "Grep", {"pattern": "x", "path": "/home/u", "glob": "id_rsa"}) == "/home/u/id_rsa"
+
+    def test_grep_glob_without_path(self):
+        assert self.extract("file_path", "Grep", {"pattern": "x", "glob": ".env"}) == "/.env"
+
+    @pytest.mark.parametrize("filter_, expected", [
+        (".env*", "/project/.env"),
+        (".env.*", "/project/.env"),
+        (".*", "/project"),
+        ("id_rsa?*", "/project/id_rsa"),
+        ("*", "/project"),
+        ("**", "/project"),
+    ])
+    def test_trailing_wildcards_are_stripped(self, filter_, expected):
+        assert self.extract("file_path", "Grep", {"pattern": "x", "path": "/project", "glob": filter_}) == expected
+
+    def test_glob_lists_names_so_only_path_counts(self):
+        assert self.extract("file_path", "Glob", {"pattern": "**/.env", "path": "/project"}) == "/project"
+
+    def test_grep_trailing_slash_on_path(self):
+        assert self.extract("file_path", "Grep", {"pattern": "x", "path": "/project/", "glob": "*.ts"}) == "/project/*.ts"
+
+
+class TestNotebookEditNewString:
+    def test_new_string_rule_matches_notebook_edit(self):
+        rule = Rule.from_dict({
+            "name": "r",
+            "event": "file",
+            "action": "block",
+            "conditions": [{"field": "new_string", "operator": "contains", "pattern": "API_KEY"}],
+        }, "blocked")
+        result = RuleEngine().evaluate_rules([rule], {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "NotebookEdit",
+            "tool_input": {"notebook_path": "/p/n.ipynb", "new_source": "API_KEY=1"},
+        })
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 class TestSimplePatternField:
