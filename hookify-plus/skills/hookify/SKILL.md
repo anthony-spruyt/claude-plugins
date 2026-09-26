@@ -18,39 +18,7 @@ Create hook rules to prevent problematic behaviors by analyzing the conversation
 
 **If `$ARGUMENTS` is empty:**
 
-- Launch the conversation-analyzer agent via the Task tool to find problematic behaviors.
-- The agent scans user messages for frustration signals, corrections, repeated issues, and explicit avoidance requests.
-
-**Conversation-analyzer agent prompt:**
-
-```
-{
-  "subagent_type": "general-purpose",
-  "description": "Analyze conversation for unwanted behaviors",
-  "prompt": "You are analyzing a Claude Code conversation to find behaviors the user wants to prevent.
-
-Read user messages in the current conversation and identify:
-1. Explicit requests to avoid something (\"don't do X\", \"stop doing Y\")
-2. Corrections or reversions (user fixing Claude's actions)
-3. Frustrated reactions (\"why did you do X?\", \"I didn't ask for that\")
-4. Repeated issues (same problem multiple times)
-
-For each issue found, extract:
-- What tool was used (Bash, Edit, Write, etc.)
-- Specific pattern or command
-- Why it was problematic
-- User's stated reason
-
-Return findings as a structured list with:
-- category: Type of issue
-- tool: Which tool was involved
-- pattern: Regex or literal pattern to match
-- context: What happened
-- severity: high/medium/low
-
-Focus on the most recent issues (last 20-30 messages). Don't go back further unless explicitly asked."
-}
-```
+- Launch the `hookify-plus:conversation-analyzer` agent via the Agent tool to find problematic behaviors.
 
 ## Step 2: Present Findings to the User
 
