@@ -1716,3 +1716,116 @@ test_cases:
     tool: Bash
     command: "git status"
     expect: allow
+
+  # =============================================================================
+  # Secret files read via shell (block-shell-read-secret-files)
+  # =============================================================================
+  - name: "block-shell-read-secret-files: cat secrets.yaml"
+    tool: Bash
+    command: "cat config/secrets.yaml"
+    expect: block
+
+  - name: "block-shell-read-secret-files: grep in secrets.yml"
+    tool: Bash
+    command: "grep -n api_key config/secrets.yml"
+    expect: block
+
+  - name: "block-shell-read-secret-files: head after cd"
+    tool: Bash
+    command: "cd config && head -5 secrets.yaml"
+    expect: block
+
+  - name: "block-shell-read-secret-files: input redirect"
+    tool: Bash
+    command: "while read -r l; do :; done < secrets.json"
+    expect: block
+
+  - name: "block-shell-read-secret-files: python one-liner"
+    tool: Bash
+    command: "python3 -c \"print(open('secrets.yaml').read())\""
+    expect: block
+
+  - name: "block-shell-read-secret-files: cat .env"
+    tool: Bash
+    command: "cat .env"
+    expect: block
+
+  - name: "block-shell-read-secret-files: grep .env.local"
+    tool: Bash
+    command: "grep DB_ ./app/.env.local"
+    expect: block
+
+  - name: "block-shell-read-secret-files: cat ~/.npmrc"
+    tool: Bash
+    command: "cat ~/.npmrc"
+    expect: block
+
+  - name: "block-shell-read-secret-files: cat ssh private key"
+    tool: Bash
+    command: "cat ~/.ssh/id_ed25519"
+    expect: block
+
+  - name: "block-shell-read-secret-files: cat aws credentials"
+    tool: Bash
+    command: "cat ~/.aws/credentials"
+    expect: block
+
+  - name: "block-shell-read-secret-files: less kube config"
+    tool: Bash
+    command: "less ~/.kube/config"
+    expect: block
+
+  - name: "block-shell-read-secret-files: cat gh hosts"
+    tool: Bash
+    command: "cat ~/.config/gh/hosts.yml"
+    expect: block
+
+  - name: "block-shell-read-secret-files: tail password store entry"
+    tool: Bash
+    command: "tail ~/.password-store/github.gpg"
+    expect: block
+
+  - name: "block-shell-read-secret-files: cat sops file"
+    tool: Bash
+    command: "cat cluster/app.sops.yaml"
+    expect: block
+
+  - name: "block-shell-read-secret-files: allows appending to secrets.yaml"
+    tool: Bash
+    command: "printf 'new_key: x\\n' >> config/secrets.yaml"
+    expect: allow
+
+  - name: "block-shell-read-secret-files: allows sops encrypt"
+    tool: Bash
+    command: "sops -e -i cluster/app.sops.yaml"
+    expect: allow
+
+  - name: "block-shell-read-secret-files: allows ssh public key"
+    tool: Bash
+    command: "ssh-keygen -lf ~/.ssh/id_ed25519.pub"
+    expect: allow
+
+  - name: "block-shell-read-secret-files: allows searching for process.env"
+    tool: Bash
+    command: "grep -rn 'process.env.API_URL' src/"
+    expect: allow
+
+  - name: "block-shell-read-secret-files: allows .envrc"
+    tool: Bash
+    command: "grep DIRENV .envrc"
+    expect: allow
+
+  - name: "block-shell-read-secret-files: allows listing ssh dir"
+    tool: Bash
+    command: "ls -la ~/.ssh"
+    expect: allow
+
+  - name: "block-shell-read-secret-files: allows writing to a secrets-named temp file"
+    tool: Bash
+    command: "date > /tmp/secrets.txt"
+    expect: allow
+
+  - name: "block-shell-read-secret-files: allows .env as a substring"
+    tool: Bash
+    command: "grep -n 'import.meta.env.MODE' src/main.ts"
+    expect: allow
