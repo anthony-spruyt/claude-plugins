@@ -44,5 +44,7 @@
         "jetmartin.bats"
       ]
     }
-  }
+  },
+  "waitFor": "postStartCommand",
+  "postStartCommand": "bash -lc \"cd ${containerWorkspaceFolder} && bash .devcontainer/update-claude-plugins.sh\""
 }
