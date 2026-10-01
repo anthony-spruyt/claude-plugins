@@ -9,6 +9,7 @@ from __future__ import annotations  # Python 3.8 compatibility (PEP 563)
 import os
 import sys
 import glob
+import json
 import re
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass, field
@@ -213,8 +214,54 @@ def _get_global_rules() -> List[str]:
 IN_USE_DIR = ".in_use"
 
 
-def _active_version_dirs(plugin_path: str) -> List[str]:
-    """Return version dirs under a plugin that have an .in_use marker."""
+def _read_proc_stat(pid: int) -> Optional[List[str]]:
+    """Return /proc/<pid>/stat fields after comm, or None if unavailable."""
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as f:
+            return f.read().rsplit(")", 1)[1].split()
+    except (OSError, IndexError):
+        return None
+
+
+def _session_holders() -> Dict[int, str]:
+    """Map each ancestor pid of this hook to its process start time."""
+    holders = {}
+    pid = os.getpid()
+    while pid > 1 and pid not in holders:
+        fields = _read_proc_stat(pid)
+        if not fields:
+            break
+        holders[pid] = fields[19]
+        pid = int(fields[1])
+    return holders
+
+
+def _held_by(version_dir: str, holders: Dict[int, str]) -> bool:
+    """True if a marker in version_dir belongs to a live ancestor of this hook."""
+    marker_dir = os.path.join(version_dir, IN_USE_DIR)
+    try:
+        names = os.listdir(marker_dir)
+    except OSError:
+        return False
+    for name in names:
+        try:
+            with open(os.path.join(marker_dir, name), encoding="utf-8") as f:
+                marker = json.load(f)
+            pid = int(marker["pid"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if holders.get(pid) == str(marker.get("procStart")):
+            return True
+    return False
+
+
+def _active_version_dirs(plugin_path: str, holders: Optional[Dict[int, str]] = None) -> List[str]:
+    """Return version dirs under a plugin that are in use.
+
+    With holders, only dirs held by this session count. Claude Code leaves
+    .in_use markers from other and dead sessions, so a bare marker dir is not
+    enough to tell an old version from the current one.
+    """
     try:
         entries = os.listdir(plugin_path)
     except OSError:
@@ -225,7 +272,9 @@ def _active_version_dirs(plugin_path: str) -> List[str]:
         full = os.path.join(plugin_path, entry)
         if not os.path.isdir(full):
             continue
-        if os.path.isdir(os.path.join(full, IN_USE_DIR)):
+        if not os.path.isdir(os.path.join(full, IN_USE_DIR)):
+            continue
+        if holders is None or _held_by(full, holders):
             active_dirs.append(full)
 
     return active_dirs
@@ -248,6 +297,10 @@ def _get_plugin_rules() -> List[str]:
     self_plugin_name = os.path.basename(plugin_dir)
     rule_files = []
 
+    holders = _session_holders()
+    if not _held_by(plugin_root, holders):
+        holders = None
+
     try:
         for sibling in os.listdir(marketplace_dir):
             if sibling == self_plugin_name:
@@ -255,7 +308,7 @@ def _get_plugin_rules() -> List[str]:
             sibling_path = os.path.join(marketplace_dir, sibling)
             if not os.path.isdir(sibling_path) or os.path.islink(sibling_path):
                 continue
-            for version_dir in _active_version_dirs(sibling_path):
+            for version_dir in _active_version_dirs(sibling_path, holders):
                 try:
                     hookify_dir = os.path.join(version_dir, RULE_DIR_NAME)
                     if os.path.isdir(hookify_dir):
