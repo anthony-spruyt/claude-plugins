@@ -148,7 +148,7 @@ class RuleEngine:
         field_value = self._extract_field(condition.field, tool_name, tool_input, input_data)
         if field_value is None:
             return False
-        if mask and condition.field == 'command':
+        if mask and tool_name == 'Bash' and condition.field == 'command':
             field_value = mask_data(field_value)
 
         operator = condition.operator

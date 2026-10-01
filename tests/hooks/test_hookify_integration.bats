@@ -20,6 +20,12 @@ setup() {
   # Isolate from project and global rules on this machine
   export HOME="$BATS_TEST_TMPDIR"
   cd "$BATS_TEST_TMPDIR" || return
+  # state.py keys warn_once state on the first 12 chars of session_id
+  SESSION_ID="$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
+}
+
+teardown() {
+  rm -f /tmp/claude-hookify-state-"$SESSION_ID"*.json
 }
 
 hook() {
@@ -28,7 +34,7 @@ hook() {
   pretooluse.py) event=PreToolUse ;;
   posttooluse.py) event=PostToolUse ;;
   esac
-  jq -nc --arg cmd "$command" --arg sid "bats-$BATS_TEST_NUMBER-$$" --arg ev "$event" \
+  jq -nc --arg cmd "$command" --arg sid "$SESSION_ID" --arg ev "$event" \
     '{session_id: $sid, hook_event_name: $ev, tool_name: "Bash", tool_input: {command: $cmd}}' |
     python3 "$CLAUDE_PLUGIN_ROOT/hooks/$script"
 }

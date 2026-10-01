@@ -2,7 +2,7 @@
 name: block-echo-subshell-secrets
 enabled: true
 event: bash
-pattern: (echo|printf)\s+.*\$\((env|printenv|set)\b
+pattern: \b(echo|printf)\b(?:(?!echo|printf)[^\n])*?\$\((env|printenv|set)\b
 action: block
 mask_data: true
 ---

@@ -2,7 +2,7 @@
 name: block-set-dump
 enabled: true
 event: bash
-pattern: (?:^|[\n;&({`]|(?<![\w\\])\||\$\(|\b(?:then|do|else|time|builtin|command|exec|nohup|sudo|xargs|nice)[^\S\n]+|[^\S\n]--[^\S\n]+|\b(?:docker|podman|kubectl)[^\S\n]+exec\b[^\n;&|]*?[^\S\n]|\bssh[^\S\n]+\S+[^\S\n]+|(?<![^\s;&|(`'"])(?:/usr)?/bin/|(?:^|(?<=\s))\\|[^\S\n]-c[^\S\n]+)[^\S\n]*[\'"]?(?-i:set)(?:[^\S\n]*(?:$|\n|;|&|\|(?!\|)|\|\||[0-9]*>|\)|`|[\'"](?:[^\S\n]|$)))
+pattern: (?:^|[\n;&({`)]|(?<![\w\\])\||\$\(|\b(?:then|do|else|time|builtin|command|exec|eval|nohup|sudo|xargs|nice|timeout(?:[^\S\n]+-\S+)*[^\S\n]+\S+|watch(?:[^\S\n]+-\S+)*)[^\S\n]+|(?:^|\n)[^\S\n]*(?:@\w+|(?:[0-9*/,-]+[^\S\n]+){4}[0-9*/,-]+)[^\S\n]+|[^\S\n]--[^\S\n]+|\b(?:docker|podman|kubectl)[^\S\n]+exec\b[^\n;&|]*?[^\S\n]|\bssh[^\S\n]+\S+[^\S\n]+|(?<![^\s;&|(`'"])(?:/usr)?/bin/|(?:^|(?<=\s))\\|[^\S\n]-c[^\S\n]+)[^\S\n]*[\'"]?(?-i:set)(?:[^\S\n]*(?:$|\n|;|&|\|(?!\|)|\|\||[0-9]*>|\)|`|[\'"](?:[^\S\n]|$)))
 action: block
 mask_data: true
 ---

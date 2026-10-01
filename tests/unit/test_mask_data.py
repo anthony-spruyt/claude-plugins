@@ -1,69 +1,110 @@
 #!/usr/bin/env python3
-"""Unit tests for mask_data: blanking non-executing text before matching."""
+"""Unit tests for mask_data: blanking prose in gh/git message arguments."""
 
 import os
 import sys
+
+import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
 from core.config_loader import Condition, Rule, extract_frontmatter
-from core.masking import mask_data
+from core.masking import MAX_LENGTH, mask_data
 from core.rule_engine import RuleEngine
 
-
-class TestHeredocMasking:
-    def test_quoted_heredoc_body_to_cat_is_blanked(self):
-        cmd = "cat > /tmp/body.md <<'EOF'\nWe set `env` here\nEOF"
-        assert "env" not in mask_data(cmd).split("<<'EOF'")[1].replace("EOF", "")
-
-    def test_unquoted_heredoc_keeps_only_expansions(self):
-        cmd = "cat <<EOF\nprose set here $GITHUB_TOKEN and $(env)\nEOF"
-        masked = mask_data(cmd)
-        assert "$GITHUB_TOKEN" in masked
-        assert "$(env)" in masked
-        assert "prose" not in masked
-
-    def test_heredoc_to_interpreter_is_untouched(self):
-        cmd = "bash <<'EOF'\nenv\nEOF"
-        assert mask_data(cmd) == cmd
-
-    def test_heredoc_piped_to_shell_is_untouched(self):
-        cmd = "cat <<'EOF' | sh\nenv\nEOF"
-        assert mask_data(cmd) == cmd
-
-    def test_heredoc_to_source_is_untouched(self):
-        cmd = "source /dev/stdin <<'EOF'\nenv\nEOF"
-        assert mask_data(cmd) == cmd
-
-    def test_commands_after_heredoc_are_kept(self):
-        cmd = "cat > /tmp/x <<'EOF'\nhello\nEOF\nenv"
-        assert mask_data(cmd).endswith("EOF\nenv")
+PROSE = "We set `env` here"
 
 
-class TestMessageArgMasking:
-    def test_single_quoted_gh_body_is_blanked(self):
+class TestMasksMessageArguments:
+    def test_single_quoted_body(self):
         assert "set" not in mask_data("gh issue comment 5 --body 'Value is set'")
 
-    def test_double_quoted_gh_body_keeps_expansions(self):
-        masked = mask_data('gh pr create --title "set it" --body "run `env` and $GITHUB_TOKEN"')
-        assert "`env`" in masked
+    def test_double_quoted_body_keeps_variables(self):
+        masked = mask_data('gh pr create --title "set it" --body "uses $GITHUB_TOKEN here"')
         assert "$GITHUB_TOKEN" in masked
-        assert "run" not in masked
+        assert "set it" not in masked
+        assert "uses" not in masked
 
-    def test_double_quoted_body_with_nested_quotes_is_untouched(self):
-        cmd = 'gh pr create --body "$(cat ".env")"'
-        assert mask_data(cmd) == cmd
+    def test_equals_form(self):
+        assert "set" not in mask_data('gh pr edit 1 --body="Value is set"')
 
-    def test_git_commit_message_is_masked(self):
+    def test_git_commit_message(self):
         assert "set" not in mask_data('git commit -m "chore: set executable file modes"')
 
-    def test_message_flag_on_other_tools_is_untouched(self):
-        cmd = 'kubectl run x -m "set"'
-        assert mask_data(cmd) == cmd
+    def test_git_dash_c_dir_commit(self):
+        assert "set" not in mask_data('git -C /repo commit -m "chore: set modes"')
 
-    def test_commands_chained_after_message_are_kept(self):
+    def test_cat_heredoc_message(self):
+        cmd = f"git commit -m \"$(cat <<'EOF'\nfix: x\n\n{PROSE}\nEOF\n)\""
+        assert "env" not in mask_data(cmd)
+
+    def test_stdin_heredoc_body(self):
+        cmd = f"gh pr create --title x --body-file - <<'EOF'\n{PROSE}\nEOF"
+        assert "env" not in mask_data(cmd)
+
+    def test_only_message_segment_is_masked(self):
+        cmd = f"git add -A && git commit -m \"$(cat <<'EOF'\n{PROSE}\nEOF\n)\" && git push"
+        masked = mask_data(cmd)
+        assert "env" not in masked
+        assert masked.startswith("git add -A && git commit -m ")
+        assert masked.endswith(" && git push")
+
+    def test_cd_before_commit(self):
+        assert "set" not in mask_data("cd /repo && git commit -m 'chore: set modes'")
+
+    def test_chained_command_after_message_is_kept(self):
         assert mask_data('git commit -m "fix: x" && env').endswith("&& env")
+
+
+@pytest.mark.parametrize("cmd", [
+    f"cat > /tmp/s <<'EOF'\n{PROSE}\nEOF",
+    f"bash <<'EOF'\n{PROSE}\nEOF",
+    f"gh pr create --body-file - <<EOF\n{PROSE}\nEOF",
+    "kubectl run x -m 'set'",
+    "git -c alias.x='!sh' x -m 'set'",
+    "git status && sh -c 'eval \"$1\"' -m 'set'",
+    "git log -m 'set'",
+], ids=["heredoc-to-cat", "heredoc-to-bash", "unquoted-delimiter",
+        "not-gh-or-git", "git-config-override", "git-earlier-on-line", "git-non-message"])
+def test_leaves_non_message_text_alone(cmd):
+    assert mask_data(cmd) == cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    "git commit -m 'set' \\\n&& env",
+    "echo $((1<<2)) && git commit -m 'set'",
+    "git commit -m 'set' # note",
+    "git commit -m 'set' | sh",
+    "git commit -m 'set' > /tmp/out",
+    "git commit -m 'set' 2>&1",
+    'gh issue comment 5 --body "Never run `env`"',
+    'git commit -m "$(env)"',
+    'gh pr create --body "$( $(echo env) )"',
+    'gh pr create --body "$(case x in x) env;; esac)"',
+    'git commit -m "costs $5"',
+    "git commit -m 'unterminated",
+    "git commit -F - <<'EOF'\nno terminator",
+    "cat <<<'EOF'\nset\nEOF",
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF)\"\necho PWNED\n: \"\nEOF\n)\"",
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF )\"; echo PWNED; : \"\nEOF\n)\"",
+    "git commit -F - <<'E'\"OF\"\nx\nEOF\necho PWNED\nE",
+    "git commit -F - <<'E'OF\nx\nEOF\necho PWNED\nE",
+    "alias git=eval; shopt -s expand_aliases\ngit commit -m ';echo PWNED'",
+    "eval 'git(){ eval \"$3\"; }'; git commit -m 'echo PWNED'",
+    "unalias git; git commit -m 'set'",
+], ids=["line-continuation", "arithmetic", "comment", "pipe", "redirect", "fd-redirect",
+        "backtick", "command-substitution", "nested-substitution", "case-in-substitution",
+        "positional-param", "unterminated-quote", "unterminated-heredoc", "here-string",
+        "paren-after-delimiter", "space-paren-after-delimiter", "glued-delimiter-double",
+        "glued-delimiter-bare", "alias-redefines-git", "eval-redefines-git", "other-command-first"])
+def test_gives_up_on_anything_it_cannot_parse(cmd):
+    assert mask_data(cmd) == cmd
+
+
+def test_gives_up_on_long_commands():
+    cmd = "git commit -m '" + "set " * (MAX_LENGTH // 4) + "'"
+    assert mask_data(cmd) == cmd
 
 
 class TestRuleOptIn:
@@ -79,8 +120,14 @@ class TestRuleOptIn:
         return Rule(name="r", enabled=True, event="bash", action="block", mask_data=mask,
                     conditions=[Condition("command", "regex_match", r"\bset\b")])
 
+    def _data(self, tool="Bash"):
+        return {"tool_name": tool, "tool_input": {"command": 'git commit -m "fix: set x"'}}
+
     def test_engine_masks_only_when_rule_opts_in(self):
-        data = {"tool_name": "Bash", "tool_input": {"command": 'git commit -m "fix: set x"'}}
         engine = RuleEngine()
-        assert engine._rule_matches(self._rule(False), data)
-        assert not engine._rule_matches(self._rule(True), data)
+        assert engine._rule_matches(self._rule(False), self._data())
+        assert not engine._rule_matches(self._rule(True), self._data())
+
+    @pytest.mark.parametrize("tool", ["PowerShell", "Monitor", "mcp__x__run"])
+    def test_engine_masks_bash_only(self, tool):
+        assert RuleEngine()._rule_matches(self._rule(True), self._data(tool))

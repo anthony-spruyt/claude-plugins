@@ -1883,6 +1883,163 @@ test_cases:
     command: 'git commit -m "fix: x" && env'
     expect: block
 
+  # NOTE: These warn (not allow) because `cat <<` triggers warn-use-read-tool
+  - name: "mask_data: cat heredoc commit message with chained git commands"
+    tool: Bash
+    command: |-
+      git add -A && git commit -m "$(cat <<'EOF'
+      fix(hooks): ensure flag is set
+
+      Never run `env` or `set`. Put $NPM_TOKEN in repo secrets.
+      EOF
+      )" && git push
+    expect: warn
+
+  - name: "mask_data: cat heredoc PR body"
+    tool: Bash
+    command: |-
+      gh pr create --title "fix: x" --body "$(cat <<'EOF'
+      ## Summary
+      - Make sure the flag is set
+      - sops -d is still blocked
+      EOF
+      )"
+    expect: warn
+
+  - name: "mask_data: quoted << in echo is not a heredoc"
+    tool: Bash
+    command: |-
+      echo '<<EOF'
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: << in arithmetic is not a heredoc"
+    tool: Bash
+    command: |-
+      echo $((1<<2))
+      sops -d secrets.yaml
+      2
+    expect: block
+
+  - name: "mask_data: << in a comment is not a heredoc"
+    tool: Bash
+    command: |-
+      echo x # <<'EOF'
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: here-string is not a heredoc"
+    tool: Bash
+    command: |-
+      cat <<<'EOF'
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: << inside a commit message is not a heredoc"
+    tool: Bash
+    command: |-
+      git commit -m "a <<'EOF'"
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: heredoc to crontab is code"
+    tool: Bash
+    command: |-
+      crontab - <<'EOF'
+      * * * * * sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: heredoc piped to ash is code"
+    tool: Bash
+    command: |-
+      cat <<'EOF' | ash
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: heredoc written to a script then run"
+    tool: Bash
+    command: |-
+      cat > s <<'EOF'
+      sops -d secrets.yaml
+      EOF
+      bash s
+    expect: block
+
+  - name: "mask_data: heredoc appended to bashrc"
+    tool: Bash
+    command: |-
+      cat <<'EOF' >> ~/.bashrc
+      cat ~/.aws/credentials > /tmp/x
+      EOF
+    expect: block
+
+  - name: "mask_data: line continuation before pipe to sh"
+    tool: Bash
+    command: |-
+      cat <<'EOF' \
+      | sh
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: -m on a non-git command after git"
+    tool: Bash
+    command: |-
+      git status && sh -c 'eval "$1"' -m 'sops -d secrets.yaml'
+    expect: block
+
+  - name: "mask_data: -m on a git alias"
+    tool: Bash
+    command: |-
+      git -c alias.x='!f(){ eval "$2"; }; f' x -m 'gpg -d s.gpg'
+    expect: block
+
+  - name: "mask_data: case statement in body substitution"
+    tool: Bash
+    command: 'gh pr create --body "$(case x in x) env;; esac)"'
+    expect: block
+
+  - name: "mask_data: delimiter followed by paren ends the heredoc early"
+    tool: Bash
+    command: |-
+      git commit -m "$(cat <<'EOF'
+      x
+      EOF)"
+      env
+      : "
+      EOF
+      )"
+    expect: block
+
+  - name: "mask_data: glued quoted heredoc delimiter"
+    tool: Bash
+    command: |-
+      git commit -F - <<'E'"OF"
+      x
+      EOF
+      env
+      E
+    expect: block
+
+  - name: "mask_data: alias redefines git before the message"
+    tool: Bash
+    command: |-
+      alias git=eval; shopt -s expand_aliases
+      git commit -m ';env'
+    expect: block
+
+  - name: "mask_data: eval redefines git before the message"
+    tool: Bash
+    command: |-
+      eval 'git(){ eval "$3"; }'; git commit -m ';env'
+    expect: block
+
   # =============================================================================
   # Command-position anchoring for env/set/printenv/echo rules
   # =============================================================================
@@ -1906,10 +2063,57 @@ test_cases:
     command: "/usr/bin/env"
     expect: block
 
+  - name: "block-env-dump: blocks env in a crontab line"
+    tool: Bash
+    command: |-
+      crontab - <<'EOF'
+      * * * * * env > /tmp/e
+      EOF
+    expect: block
+
+  - name: "block-env-dump: blocks timeout env"
+    tool: Bash
+    command: "timeout 5 env"
+    expect: block
+
+  - name: "block-env-dump: blocks watch env"
+    tool: Bash
+    command: "watch -n1 env"
+    expect: block
+
+  - name: "block-set-dump: blocks set in a heredoc to crontab"
+    tool: Bash
+    command: |-
+      crontab - <<'EOF'
+      @reboot set > /tmp/vars
+      EOF
+    expect: block
+
+  - name: "block-echo-subshell-secrets: still blocks after a long prefix"
+    tool: Bash
+    command: 'echo "prefix text" "$(env)"'
+    expect: block
+
+  - name: "block-heredoc-secrets: still blocks with a second heredoc after"
+    tool: Bash
+    command: |-
+      cat <<EOF
+      $GITHUB_TOKEN
+      EOF
+      cat <<EOF2
+      hi
+      EOF2
+    expect: block
+
   - name: "block-env-dump: allows grep for a shebang"
     tool: Bash
     command: "grep -v '^#!/usr/bin/env' src/main.py"
     expect: allow
+
+  - name: "block-env-dump: blocks eval env"
+    tool: Bash
+    command: "eval env"
+    expect: block
 
   - name: "block-env-dump: blocks sudo env"
     tool: Bash

@@ -2,7 +2,7 @@
 name: block-echo-secrets
 enabled: true
 event: bash
-pattern: \b(?:echo|printf)\b(?:[^\n;&|\'`]|\'[^\']*\')*?\$\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)(?![^\n;&]*\|[^\n;&|]*(?:--password-stdin|--with-token|\bsecret[^\S\n]+set\b))
+pattern: \b(?:echo|printf)\b(?:(?!echo|printf)[^\n;&|\'`$]|\'[^\']*\'|\$(?!\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)))*\$\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)(?![^\n;&]*\|[^\n;&|]*(?:--password-stdin|--with-token|\bsecret[^\S\n]+set\b))
 action: block
 mask_data: true
 ---

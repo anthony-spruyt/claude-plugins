@@ -54,8 +54,12 @@ Include markdown formatting, warnings, and suggestions.
 
 **warn_interval** (optional): Integer. Warn every N matches. Set to 0 to warn every time (default behavior).
 
-**mask_data** (optional): Boolean. Before matching `command`, blank text that the shell never runs: quoted heredoc bodies (`<<'EOF'`), and quoted `--body`/`--title`/`-m`/`--message`/`--notes`/`--subject` values on `gh`, `git` and `glab`. Expansions (`$VAR`, `${...}`, `$(...)`, backticks) in double quotes and unquoted heredocs are kept, because they execute. Heredocs fed to an interpreter (`bash`,
-`python`, `ssh`, ...) are not masked. Use it on rules that should not fire on prose in PR, issue and commit text.
+**mask_data** (optional): Boolean (`true` only). For Bash commands, blank the message text of `gh pr|issue|release` and `git commit|tag` before matching `command`:
+
+- quoted `--body`/`--title`/`--notes`/`--subject`/`-m`/`--message` values, including `"$(cat <<'EOF' ... EOF)"`
+- a quoted-delimiter heredoc fed to `--body-file -` or `-F -`
+
+`$VAR` and `${VAR}` in double quotes are kept, because they expand. Any command the scanner cannot fully parse (pipes, redirects, `$(...)` other than `cat <<'EOF'`, backticks, unquoted heredocs, over 20,000 characters) is matched unmasked. Use it on rules that should not fire on prose in PR, issue and commit text.
 
 **tool_matcher** (optional): String. Override which tools a rule matches, instead of using the default tool set for the event type.
 
