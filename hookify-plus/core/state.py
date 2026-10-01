@@ -2,16 +2,17 @@
 """Rate limiting state management for hookify-plus.
 
 Tracks warning counts per rule to support warn_once and warn_interval.
-State is stored in /tmp/claude-hookify-state-{session_id}.json with 24h TTL.
+State is stored in /tmp/claude-hookify-state-{session_id}[-{agent_id}].json with 24h TTL.
 
-Session ID is provided by Claude Code in hook input.
+Session ID and, inside subagents, agent_id are provided by Claude Code in hook input.
 """
 
 import json
+import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .config_loader import Rule
@@ -23,19 +24,22 @@ STATE_DIR = Path("/tmp")
 class WarningState:
     """Manages rate limiting state for hookify warnings.
 
-    Uses session_id from Claude Code hook input for state scoping.
-    State resets when a new subagent is spawned (via PreToolUse for Agent tool).
+    Scoped per session, and per subagent via agent_id, so the main thread
+    and each subagent warn independently.
     """
 
-    def __init__(self, session_id: str):
-        """Initialize state manager with session-based scope.
+    def __init__(self, session_id: str, agent_id: Optional[str] = None):
+        """Initialize state manager.
 
         Args:
             session_id: Session ID from Claude Code hook input
+            agent_id: Subagent ID from hook input; absent on the main thread
         """
         self.session_id = session_id
-        # Use first 12 chars of session_id for shorter filenames
         self.scope_id = session_id[:12] if session_id else "unknown"
+        agent_scope = re.sub(r"[^A-Za-z0-9_-]", "", agent_id or "")[:32]
+        if agent_scope:
+            self.scope_id += f"-{agent_scope}"
         self.state_file = STATE_DIR / f"claude-hookify-state-{self.scope_id}.json"
         self._cleanup_old_state_files()
         self.state = self._load_state()
@@ -124,23 +128,3 @@ class WarningState:
         except (IOError, OSError) as e:
             import sys
             print(f"Warning: Could not save hookify state: {e}", file=sys.stderr)
-
-
-def reset_warning_state(session_id: str):
-    """Reset warning state for a session.
-
-    Called when a new subagent starts (Agent tool invoked) to give
-    each subagent fresh warning counts.
-
-    Args:
-        session_id: Session ID from Claude Code hook input
-    """
-    if not session_id:
-        return
-    scope_id = session_id[:12]
-    state_file = STATE_DIR / f"claude-hookify-state-{scope_id}.json"
-    if state_file.exists():
-        try:
-            state_file.unlink()
-        except (IOError, OSError):
-            pass

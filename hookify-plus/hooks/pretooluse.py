@@ -2,7 +2,6 @@
 """PreToolUse hook executor for hookify-plus.
 
 Evaluates blocking rules before tool execution.
-Resets warning state when a subagent is spawned (Agent tool).
 Uses stderr + exit 2 to ensure messages reach Claude (fix for #12446).
 """
 
@@ -17,7 +16,6 @@ if PLUGIN_ROOT and PLUGIN_ROOT not in sys.path:
 try:
     from core.config_loader import load_rules
     from core.rule_engine import RuleEngine
-    from core.state import reset_warning_state
     from core.tools import event_for_tool
 except ImportError as e:
     print(f"Hookify import error: {e}", file=sys.stderr)
@@ -30,11 +28,6 @@ def main():
         input_data = json.load(sys.stdin)
 
         tool_name = input_data.get('tool_name', '')
-        session_id = input_data.get('session_id', '')
-
-        # Task is the pre-rename name of the Agent tool, still sent by older Claude Code
-        if tool_name in ('Agent', 'Task'):
-            reset_warning_state(session_id)
 
         rules = load_rules(event=event_for_tool(tool_name))
 

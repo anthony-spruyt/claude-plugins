@@ -18,7 +18,7 @@ It originated from Anthropic's [hookify](https://github.com/anthropics/claude-co
 | `value` key       | Clearer syntax for non-regex operators                |
 | `read` event      | Separate event for Read/Glob/Grep (no false triggers) |
 | Global rules      | Rules in `~/.claude/` apply to ALL projects           |
-| `warn_once`       | Rate limiting — only warn once per session            |
+| `warn_once`       | Rate limiting — only warn once per agent              |
 | `warn_interval`   | Rate limiting — warn every N matches                  |
 
 ### Fixes
@@ -142,7 +142,7 @@ enabled: true
 event: bash
 pattern: (^|\s)(cat|head|tail)\s+\S
 action: warn
-warn_once: true # Only warn once per session
+warn_once: true # Only warn once per agent
 # OR
 warn_interval: 5 # Warn every 5th match
 ---
@@ -151,13 +151,13 @@ Use the Read tool instead of cat/head/tail.
 
 | Field           | Type | Default | Description                           |
 | --------------- | ---- | ------- | ------------------------------------- |
-| `warn_once`     | bool | false   | Only warn once per agent session      |
+| `warn_once`     | bool | false   | Only warn once per agent              |
 | `warn_interval` | int  | 0       | Warn every N matches (0 = every time) |
 
 **How it works:**
 
-- State stored in `/tmp/claude-hookify-state-{ppid}.json`
-- PPID-scoped: main agent and subagents have independent state
+- State stored in `/tmp/claude-hookify-state-{session_id}[-{agent_id}].json`
+- Main thread and each subagent have independent state (keyed by the hook's `agent_id`)
 - 24-hour TTL with auto-cleanup
 - `warn_once: true` takes precedence over `warn_interval`
 

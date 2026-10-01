@@ -50,7 +50,7 @@ Include markdown formatting, warnings, and suggestions.
 - `warn` — Show message but allow operation (default)
 - `block` — Prevent operation (PreToolUse) or stop session (Stop events)
 
-**warn_once** (optional): Boolean. Only warn once per session. Subsequent matches are silently ignored.
+**warn_once** (optional): Boolean. Only warn once per agent (main thread and each subagent). Subsequent matches are silently ignored.
 
 **warn_interval** (optional): Integer. Warn every N matches. Set to 0 to warn every time (default behavior).
 
