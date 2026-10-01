@@ -47,7 +47,7 @@ This command could delete important files. Verify the path.
 - `enabled`: true/false to activate/deactivate
 - `event`: bash, file, read, stop, prompt, or all
 - `pattern`: Regex pattern to match (case-insensitive)
-- `warn_once`: Only warn once per session (optional)
+- `warn_once`: Only warn once per agent (main thread and each subagent) (optional)
 - `warn_interval`: Warn every N matches; 0 = every time (optional)
 
 The message body is what Claude sees when the rule triggers.

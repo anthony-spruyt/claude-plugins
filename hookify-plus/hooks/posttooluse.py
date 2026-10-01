@@ -39,7 +39,7 @@ def main():
         if not warn_rules:
             sys.exit(0)
 
-        state = WarningState(session_id)
+        state = WarningState(session_id, input_data.get('agent_id'))
 
         engine = RuleEngine()
         matching_rules = []

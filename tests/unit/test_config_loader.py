@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for config_loader discovery logic."""
 
+import json
 import os
 import sys
 import tempfile
@@ -11,6 +12,21 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
 from core.config_loader import _get_project_rules, _get_global_rules, _get_plugin_rules, _active_version_dirs, discover_rule_files
+
+
+DEAD_PID = 2 ** 31 - 1
+
+
+def _proc_start(pid):
+    with open(f"/proc/{pid}/stat") as f:
+        return f.read().rsplit(")", 1)[1].split()[19]
+
+
+def _write_marker(version_dir, pid, proc_start=None):
+    if proc_start is None and os.path.exists(f"/proc/{pid}/stat"):
+        proc_start = _proc_start(pid)
+    marker = {"pid": pid, "procStart": proc_start or "0"}
+    (version_dir / ".in_use" / str(pid)).write_text(json.dumps(marker))
 
 
 class TestProjectRules:
@@ -177,6 +193,47 @@ class TestPluginRules:
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(marketplace / "hookify-plus" / "2.0.0"))
         result = _get_plugin_rules()
         assert len(result) == 0
+
+
+    def test_skips_versions_held_only_by_other_sessions(self, tmp_path, monkeypatch):
+        """With live markers, only versions in use by this session load."""
+        marketplace = tmp_path / "marketplace"
+        own_root = marketplace / "hookify-plus" / "2.0.0"
+        (own_root / ".in_use").mkdir(parents=True)
+        _write_marker(own_root, os.getpid())
+
+        for ver, pid in [("0.9.0", DEAD_PID), ("1.0.0", os.getpid())]:
+            version_dir = marketplace / "best-practices" / ver
+            (version_dir / "hookify-plus").mkdir(parents=True)
+            (version_dir / "hookify-plus" / f"rule-{ver}.md").write_text(f"---\nname: r-{ver}\n---\n")
+            (version_dir / ".in_use").mkdir()
+            _write_marker(version_dir, pid)
+
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(own_root))
+        result = _get_plugin_rules()
+        assert len(result) == 1
+        assert "rule-1.0.0.md" in result[0]
+
+    def test_skips_versions_whose_marker_pid_was_reused(self, tmp_path, monkeypatch):
+        """A marker whose procStart no longer matches the live pid is stale."""
+        if not os.path.exists(f"/proc/{os.getpid()}/stat"):
+            pytest.skip("needs /proc")
+        marketplace = tmp_path / "marketplace"
+        own_root = marketplace / "hookify-plus" / "2.0.0"
+        (own_root / ".in_use").mkdir(parents=True)
+        _write_marker(own_root, os.getpid())
+
+        for ver, proc_start in [("0.9.0", "1"), ("1.0.0", None)]:
+            version_dir = marketplace / "best-practices" / ver
+            (version_dir / "hookify-plus").mkdir(parents=True)
+            (version_dir / "hookify-plus" / f"rule-{ver}.md").write_text(f"---\nname: r-{ver}\n---\n")
+            (version_dir / ".in_use").mkdir()
+            _write_marker(version_dir, os.getpid(), proc_start)
+
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(own_root))
+        result = _get_plugin_rules()
+        assert len(result) == 1
+        assert "rule-1.0.0.md" in result[0]
 
 
 class TestDiscoverRuleFiles:
