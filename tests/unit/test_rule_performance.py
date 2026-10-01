@@ -42,4 +42,4 @@ def test_rules_finish_quickly(name):
         start = time.perf_counter()
         engine._rule_matches(rule, data)
         elapsed = time.perf_counter() - start
-        assert elapsed < 0.1, f"{rule.name} took {elapsed * 1000:.0f}ms on {name}"
+        assert elapsed < 0.05, f"{rule.name} took {elapsed * 1000:.0f}ms on {name}"
