@@ -2,8 +2,9 @@
 name: block-heredoc-secrets
 enabled: true
 event: bash
-pattern: <<-?\s*["']?\w+["']?[\s\S]*\$\{?[A-Za-z_][A-Za-z0-9_]*(_PAT|TOKEN|SECRET|PASSWORD|PASSPHRASE|CREDENTIAL|PRIVATE_KEY|API_KEY|SECRET_KEY|ACCESS_KEY)\b
+pattern: (?:<<-?[^\S\n]*(?![\'"\\])(\w+)\b[^\n]*\n(?:(?!\n[^\S\n]*\1[^\S\n]*(?:\n|$|\))).)*?|\b(?:cat|tee|base64|xxd|od|hexdump|rev)\b[^\n;&|]*<<<[^\S\n]*"?)\$\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: Heredoc referencing sensitive environment variable**

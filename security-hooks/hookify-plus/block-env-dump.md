@@ -6,8 +6,9 @@ event: bash
 # -f1 boundary: require command terminator or pipe after -f1 — blocks trailing flags like --complement.
 # Flags: (-0|--null|--zero|--|--unset=X|-u X) still dump all vars, so block them too.
 # -i is excluded: env -i outputs empty env (no secrets) or runs a command.
-pattern: (^|\s|&&|\|\||;|\(|`)env([^\S\n]+(-0|--null|--zero|--|--unset=\S+|-u[^\S\n]+\S+))*[^\S\n]*($|;|&&|\|\||\)|`|([0-9]*|&)?>[^\S\n]*\S|\|[^\S\n]*(?![^\S\n]*(cut[^\S\n]+(-d=|--delimiter==)[^\S\n]+(-f1|--fields=1)([^\S\n]*($|;|&&|\|\||\)|`|\|))|wc([^\S\n]|$))))
+pattern: (?:^|[\n;&({`]|(?<![\w\\])\||\$\(|\b(?:then|do|else|time|builtin|command|exec|nohup|sudo|xargs|nice)[^\S\n]+|[^\S\n]--[^\S\n]+|\b(?:docker|podman|kubectl)[^\S\n]+exec\b[^\n;&|]*?[^\S\n]|\bssh[^\S\n]+\S+[^\S\n]+|(?<![^\s;&|(`'"])(?:/usr)?/bin/|(?:^|(?<=\s))\\|[^\S\n]-c[^\S\n]+)[^\S\n]*[\'"]?(?-i:env)(?:[^\S\n]+(?:-0|--null|--zero|--|--unset=\S+|-u[^\S\n]+\S+))*(?:[^\S\n]*(?:$|\n|;|&(?!&)|&&|\|\||\)|`|[\'"](?:[^\S\n]|$)|[0-9&]*>[^\S\n]*\S)|[^\S\n]*\|(?!\|)(?![^\S\n]*(?:cut[^\S\n]+(?:-d=|--delimiter==)[^\S\n]+(?:-f1|--fields=1)(?:[^\S\n]*(?:$|\n|;|&&|\|\||\)|`|\|))|wc[^\S\n]+-l\b|wc[^\S\n]*(?:$|\n|;|&|\|))))
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: Dumping environment variables**

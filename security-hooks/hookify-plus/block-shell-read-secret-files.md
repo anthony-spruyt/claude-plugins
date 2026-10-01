@@ -3,6 +3,7 @@ name: block-shell-read-secret-files
 enabled: true
 event: bash
 action: block
+mask_data: true
 conditions:
   - field: command
     operator: regex_match

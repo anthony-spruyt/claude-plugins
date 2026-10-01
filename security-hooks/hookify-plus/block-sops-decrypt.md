@@ -4,6 +4,7 @@ enabled: true
 event: bash
 pattern: sops\s+(-d|--decrypt|exec-env|exec-file)
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: SOPS decryption**

@@ -6,6 +6,7 @@ event: bash
 # Allow: export VAR=value, export -n VAR
 pattern: (^|\s|&&|\|\||;|\(|`)export[^\S\n]+(-[a-zA-Z]*p[a-zA-Z]*|--(print))([^\S\n]*$|[^\S\n]*\||[^\S\n]*;|[^\S\n]*&&|[^\S\n]*\|\||[^\S\n]*\)|[^\S\n]*`|[^\S\n]*([0-9]*|&)?>[^\S\n]*\S)
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: Dumping exported variables with `export -p`**

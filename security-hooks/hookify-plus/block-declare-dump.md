@@ -6,6 +6,7 @@ event: bash
 # Allow: declare -x, declare -i VAR, declare -a ARR, declare -f (functions only)
 pattern: (^|\s|&&|\|\||;|\(|`)(declare|typeset)[^\S\n]+(-[a-zA-Z]*p[a-zA-Z]*|--(print))([^\S\n]*$|[^\S\n]*\||[^\S\n]*;|[^\S\n]*&&|[^\S\n]*\|\||[^\S\n]*\)|[^\S\n]*`|[^\S\n]*([0-9]*|&)?>[^\S\n]*\S|[^\S\n]+--[^\S\n]*$|[^\S\n]+--[^\S\n]*[|;)])
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: Dumping variables with `declare -p`**

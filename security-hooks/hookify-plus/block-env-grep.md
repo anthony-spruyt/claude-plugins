@@ -2,8 +2,9 @@
 name: block-env-grep
 enabled: true
 event: bash
-pattern: (^|\s|&&|\|\||;|\(|`)(env|printenv)[^\S\n]*\|[^\S\n]*grep
+pattern: (?:^|[\n;&({`]|(?<![\w\\])\||\$\(|\b(?:then|do|else|time|builtin|command|exec|nohup|sudo|xargs|nice)[^\S\n]+|[^\S\n]--[^\S\n]+|\b(?:docker|podman|kubectl)[^\S\n]+exec\b[^\n;&|]*?[^\S\n]|\bssh[^\S\n]+\S+[^\S\n]+|(?<![^\s;&|(`'"])(?:/usr)?/bin/|(?:^|(?<=\s))\\|[^\S\n]-c[^\S\n]+)[^\S\n]*[\'"]?(?-i:env|printenv)[^\S\n]*\|[^\S\n]*grep
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: Searching environment variables**

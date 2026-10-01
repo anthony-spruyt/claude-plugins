@@ -2,8 +2,9 @@
 name: block-echo-secrets
 enabled: true
 event: bash
-pattern: (echo|printf)\s+.*\$\{?[A-Za-z_]*(_PAT|TOKEN|SECRET|PASSWORD|PASSPHRASE|CREDENTIAL|PRIVATE_KEY|API_KEY|SECRET_KEY|ACCESS_KEY)\b
+pattern: \b(?:echo|printf)\b(?:[^\n;&|\'`]|\'[^\']*\')*?\$\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)(?![^\n;&]*\|[^\n;&|]*(?:--password-stdin|--with-token|\bsecret[^\S\n]+set\b))
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: Echoing sensitive environment variable**

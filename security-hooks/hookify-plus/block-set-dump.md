@@ -2,8 +2,9 @@
 name: block-set-dump
 enabled: true
 event: bash
-pattern: (^|\s|&&|\|\||;|\(|`)set([^\S\n]*$|[^\S\n]*\||[^\S\n]*;|[^\S\n]*&&|[^\S\n]*\|\||[^\S\n]*\)|[^\S\n]*`|[^\S\n]*([0-9]*|&)?>[^\S\n]*\S)
+pattern: (?:^|[\n;&({`]|(?<![\w\\])\||\$\(|\b(?:then|do|else|time|builtin|command|exec|nohup|sudo|xargs|nice)[^\S\n]+|[^\S\n]--[^\S\n]+|\b(?:docker|podman|kubectl)[^\S\n]+exec\b[^\n;&|]*?[^\S\n]|\bssh[^\S\n]+\S+[^\S\n]+|(?<![^\s;&|(`'"])(?:/usr)?/bin/|(?:^|(?<=\s))\\|[^\S\n]-c[^\S\n]+)[^\S\n]*[\'"]?(?-i:set)(?:[^\S\n]*(?:$|\n|;|&|\|(?!\|)|\|\||[0-9]*>|\)|`|[\'"](?:[^\S\n]|$)))
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: Dumping shell variables with `set`**

@@ -1829,3 +1829,133 @@ test_cases:
     tool: Bash
     command: "grep -n 'import.meta.env.MODE' src/main.ts"
     expect: allow
+
+  # =============================================================================
+  # mask_data: prose in PR/issue/commit text and quoted heredocs is not code
+  # =============================================================================
+  - name: "mask_data: set prose in gh body"
+    tool: Bash
+    command: 'gh issue comment 5 --body "Once the env is set; rerun the job."'
+    expect: allow
+
+  - name: "mask_data: set prose in commit message"
+    tool: Bash
+    command: 'git commit -m "docs: explain set > file is blocked"'
+    expect: allow
+
+  - name: "mask_data: markdown in quoted heredoc PR body"
+    tool: Bash
+    command: |-
+      gh pr create --title "fix: log level" --body-file - <<'EOF'
+      Set `MCP_LOG_LEVEL=warn` on the server (not set by default).
+      Never run `env` or `set` in CI. Put $NPM_TOKEN in repo secrets.
+      EOF
+    expect: allow
+
+  - name: "mask_data: env prose in gh body"
+    tool: Bash
+    command: 'gh pr create --title "docs: priority" --body "prod env > staging env in priority"'
+    expect: allow
+
+  - name: "mask_data: backtick in double-quoted gh body still runs"
+    tool: Bash
+    command: 'gh issue comment 5 --body "Never run `env` in CI"'
+    expect: block
+
+  - name: "mask_data: unquoted heredoc still expands secrets"
+    tool: Bash
+    command: |-
+      gh pr create --title "ci: x" --body-file - <<EOF
+      token is $GITHUB_TOKEN
+      EOF
+    expect: block
+
+  - name: "mask_data: heredoc fed to bash is still code"
+    tool: Bash
+    command: |-
+      bash <<'EOF'
+      set
+      EOF
+    expect: block
+
+  - name: "mask_data: command chained after commit message"
+    tool: Bash
+    command: 'git commit -m "fix: x" && env'
+    expect: block
+
+  # =============================================================================
+  # Command-position anchoring for env/set/printenv/echo rules
+  # =============================================================================
+  - name: "block-set-dump: allows echo set in existence check"
+    tool: Bash
+    command: '[ -n "$GITHUB_TOKEN" ] && echo set || echo unset'
+    expect: allow
+
+  - name: "block-env-dump: allows venv named env"
+    tool: Bash
+    command: "python3 -m venv env && source env/bin/activate"
+    expect: allow
+
+  - name: "block-env-dump: allows cd into env dir"
+    tool: Bash
+    command: "cd env && ls"
+    expect: allow
+
+  - name: "block-env-dump: blocks /usr/bin/env"
+    tool: Bash
+    command: "/usr/bin/env"
+    expect: block
+
+  - name: "block-env-dump: allows grep for a shebang"
+    tool: Bash
+    command: "grep -v '^#!/usr/bin/env' src/main.py"
+    expect: allow
+
+  - name: "block-env-dump: blocks sudo env"
+    tool: Bash
+    command: "sudo env"
+    expect: block
+
+  - name: "block-env-dump: blocks bash -c env"
+    tool: Bash
+    command: "bash -c 'env'"
+    expect: block
+
+  - name: "block-printenv: allows existence check to /dev/null"
+    tool: Bash
+    command: 'printenv GH_TOKEN >/dev/null && echo "GH_TOKEN present"'
+    expect: allow
+
+  - name: "block-echo-secrets: allows :+ presence check"
+    tool: Bash
+    command: 'echo "GH_TOKEN present: ${GH_TOKEN:+yes}"'
+    expect: allow
+
+  - name: "block-echo-secrets: allows pipe to --password-stdin"
+    tool: Bash
+    command: 'echo "$CR_PAT" | docker login ghcr.io -u me --password-stdin'
+    expect: allow
+
+  - name: "block-echo-secrets: allows token in a later command"
+    tool: Bash
+    command: 'echo start && curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com'
+    expect: allow
+
+  - name: "block-echo-secrets: blocks _PASS suffix"
+    tool: Bash
+    command: 'echo "$DB_PASS"'
+    expect: block
+
+  - name: "block-heredoc-secrets: allows token after heredoc ends"
+    tool: Bash
+    command: |-
+      tee /tmp/req.json >/dev/null <<EOF
+      {"a":1}
+      EOF
+      curl -H "Authorization: token $GITHUB_TOKEN" -d @/tmp/req.json https://api.github.com
+    expect: allow
+
+  - name: "block-heredoc-secrets: blocks here-string to tee"
+    tool: Bash
+    command: 'tee /tmp/t <<< "$GITHUB_TOKEN"'
+    expect: block
