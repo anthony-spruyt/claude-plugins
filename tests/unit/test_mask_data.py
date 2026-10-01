@@ -93,13 +93,42 @@ def test_leaves_non_message_text_alone(cmd):
     "alias git=eval; shopt -s expand_aliases\ngit commit -m ';echo PWNED'",
     "eval 'git(){ eval \"$3\"; }'; git commit -m 'echo PWNED'",
     "unalias git; git commit -m 'set'",
+    "git commit -m '$(echo PWNED)'; git commit -m \"${_@P}\"",
+    "git commit -m 'x[$(echo PWNED)]'; git commit -m \"${!_}\"",
+    "git commit -m \"${x:-set}\"",
+    "gh release create v1 --target -b .env",
+    "gh release create v1 -R o/r --discussion-category -t ~/.aws/credentials",
+    "gh release create v1 -- -t .env",
+    "gh release create v1 --notes x .env",
+    "gh pr create --unknown-flag -b 'set'",
+    "gh pr create -b'set'",
+    "git commit --pathspec-from-file -m 'set'",
 ], ids=["line-continuation", "arithmetic", "comment", "pipe", "redirect", "fd-redirect",
         "backtick", "command-substitution", "nested-substitution", "case-in-substitution",
         "positional-param", "unterminated-quote", "unterminated-heredoc", "here-string",
         "paren-after-delimiter", "space-paren-after-delimiter", "glued-delimiter-double",
-        "glued-delimiter-bare", "alias-redefines-git", "eval-redefines-git", "other-command-first"])
+        "glued-delimiter-bare", "alias-redefines-git", "eval-redefines-git", "other-command-first",
+        "prompt-expansion-of-last-arg", "indirect-last-arg", "parameter-operator",
+        "message-flag-as-value", "message-flag-as-value-long", "end-of-options",
+        "release-asset", "unknown-flag", "glued-message-value", "unknown-git-flag"])
 def test_gives_up_on_anything_it_cannot_parse(cmd):
     assert mask_data(cmd) == cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    'git commit -am "chore: set modes"',
+    'git tag -a v1 -m "set things"',
+    'gh pr create --base main --head feat --title "fix: set x" --body "env is set" --draft',
+    'gh pr merge 5 --squash --subject "fix: set x" --body "env set"',
+    'gh issue create --title "set is noisy" --body "env" --label bug --repo o/r',
+    'gh release create v1.2.0 --title "v1.2.0" --notes "env and set fixes" --latest',
+    'gh pr close 5 --comment "env set"',
+], ids=["combined-short-flags", "annotated-tag", "pr-create-flags", "pr-merge-squash",
+        "issue-create-flags", "release-create", "pr-close-comment"])
+def test_masks_messages_among_known_flags(cmd):
+    masked = mask_data(cmd)
+    assert "set" not in masked.replace("--subject", "")
+    assert "env" not in masked
 
 
 def test_gives_up_on_long_commands():

@@ -12,25 +12,71 @@ from typing import List, Optional, Tuple
 
 MAX_LENGTH = 20000
 
-GH_SUBCOMMANDS = {
-    ('pr', s) for s in ('create', 'comment', 'edit', 'review', 'close', 'merge', 'reopen')
-} | {
-    ('issue', s) for s in ('create', 'comment', 'edit', 'close', 'reopen')
-} | {
-    ('release', s) for s in ('create', 'edit')
+
+@dataclass(frozen=True)
+class Spec:
+    message: frozenset
+    stdin: frozenset
+    value: frozenset = frozenset()
+    boolean: frozenset = frozenset()
+    positionals: int = 0
+    short_cluster: str = ''
+
+
+def _spec(message, stdin, value='', boolean='', positionals=0, short_cluster=''):
+    return Spec(frozenset(message.split()), frozenset(stdin.split()), frozenset(value.split()),
+                frozenset(boolean.split()), positionals, short_cluster)
+
+
+GH_REPO = '-R --repo '
+PR_EDIT_VALUES = ('--add-label --remove-label --add-assignee --remove-assignee --add-reviewer '
+                  '--remove-reviewer --add-project --remove-project -m --milestone ')
+# Every word of a masked segment must be listed here, so the scanner parses it as gh/git would
+SPECS = {
+    ('gh', 'pr', 'create'): _spec('-t --title -b --body', '-F --body-file',
+                                  GH_REPO + '-B --base -H --head -l --label -a --assignee -r --reviewer '
+                                  '-m --milestone -p --project -T --template',
+                                  '-d --draft -f --fill --fill-first --fill-verbose --no-maintainer-edit --dry-run'),
+    ('gh', 'pr', 'comment'): _spec('-b --body', '-F --body-file', GH_REPO,
+                                   '--edit-last --create-if-none', 1),
+    ('gh', 'pr', 'edit'): _spec('-t --title -b --body', '-F --body-file', GH_REPO + '-B --base ' + PR_EDIT_VALUES,
+                                '--remove-milestone', 1),
+    ('gh', 'pr', 'review'): _spec('-b --body', '-F --body-file', GH_REPO,
+                                  '-a --approve -c --comment -r --request-changes', 1),
+    ('gh', 'pr', 'close'): _spec('-c --comment', '', GH_REPO, '-d --delete-branch', 1),
+    ('gh', 'pr', 'reopen'): _spec('-c --comment', '', GH_REPO, '', 1),
+    ('gh', 'pr', 'merge'): _spec('-t --subject -b --body', '-F --body-file',
+                                 GH_REPO + '-A --author-email --match-head-commit',
+                                 '-s --squash -m --merge -r --rebase --auto --admin -d --delete-branch', 1),
+    ('gh', 'issue', 'create'): _spec('-t --title -b --body', '-F --body-file',
+                                     GH_REPO + '-a --assignee -l --label -m --milestone -p --project -T --template'),
+    ('gh', 'issue', 'comment'): _spec('-b --body', '-F --body-file', GH_REPO,
+                                      '--edit-last --create-if-none', 1),
+    ('gh', 'issue', 'edit'): _spec('-t --title -b --body', '-F --body-file', GH_REPO + PR_EDIT_VALUES,
+                                   '--remove-milestone', 1),
+    ('gh', 'issue', 'close'): _spec('-c --comment', '', GH_REPO + '-r --reason', '', 1),
+    ('gh', 'issue', 'reopen'): _spec('-c --comment', '', GH_REPO, '', 1),
+    # Positionals after the tag are uploaded as assets, so only the tag is allowed
+    ('gh', 'release', 'create'): _spec('-t --title -n --notes', '-F --notes-file',
+                                       GH_REPO + '--target --discussion-category --notes-start-tag',
+                                       '-d --draft -p --prerelease --latest --generate-notes --verify-tag', 1),
+    ('gh', 'release', 'edit'): _spec('-t --title -n --notes', '-F --notes-file',
+                                     GH_REPO + '--tag --target --discussion-category',
+                                     '--draft --prerelease --latest --verify-tag', 1),
+    ('git', 'commit'): _spec('-m --message', '-F --file', '',
+                             '-a --all -q --quiet -s --signoff --amend --no-edit --allow-empty '
+                             '--allow-empty-message --no-verify -n -v --verbose', 0, 'aqsnv'),
+    ('git', 'tag'): _spec('-m --message', '-F --file', '', '-a --annotate -s --sign -f --force', 2, 'asf'),
 }
-GH_FLAGS = {'--body', '-b', '--title', '-t', '--notes', '--subject'}
-GH_STDIN = {'--body-file', '-F', '--notes-file'}
-GIT_SUBCOMMANDS = {'commit', 'tag'}
-GIT_FLAGS = {'-m', '--message'}
-GIT_STDIN = {'-F', '--file'}
 # Any other command could redefine git or gh before the message segment runs
 SEGMENT_COMMANDS = {'git', 'gh', 'cd'}
 
 UNQUOTED = re.compile(r'[A-Za-z0-9_./:=@%+,~-]+')
 HEREDOC = re.compile(r'<<[ \t]*([\'"])(\w+)\1')
 CAT_HEREDOC = re.compile(r'\$\(cat <<[ \t]*([\'"])(\w+)\1\n')
-VARIABLE = re.compile(r'\$[A-Za-z_]\w*|\$\{[^}"`$\\\n]*\}')
+VARIABLE = re.compile(r'\$[A-Za-z_]\w*|\$\{[A-Za-z_]\w*\}')
+# $_ and ${!x} re-expand text from an earlier, masked argument
+REEXPAND = re.compile(r'\$\{?(?:_\b|!)')
 CLOSE_SUBSTITUTION = re.compile(r'\n[ \t]*\)')
 
 
@@ -145,53 +191,77 @@ def _scan(cmd: str) -> Optional[List[Segment]]:
     return segments
 
 
-def _message_spec(words: List[str]):
+def _message_spec(words: List[str]) -> Tuple[Optional[Spec], int]:
     if words[:1] == ['git']:
         k = 3 if words[1:2] == ['-C'] else 1
-        if len(words) > k and words[k] in GIT_SUBCOMMANDS:
-            return GIT_FLAGS, GIT_STDIN, k + 1
-    if words[:1] == ['gh'] and len(words) > 2 and (words[1], words[2]) in GH_SUBCOMMANDS:
-        return GH_FLAGS, GH_STDIN, 3
-    return None
+        if len(words) > k:
+            return SPECS.get(('git', words[k])), k + 1
+    if words[:1] == ['gh'] and len(words) > 2:
+        return SPECS.get(('gh', words[1], words[2])), 3
+    return None, 0
 
 
 def _replacement(kept: List[str]) -> str:
     return '"' + ' '.join(kept) + '"' if kept else "''"
 
 
+def _plain(word: str) -> bool:
+    return UNQUOTED.fullmatch(word) is not None and not word.startswith('-')
+
+
 def _edits(cmd: str, segment: Segment) -> Optional[List[Tuple[int, int, str]]]:
     words = segment.words
-    raw = [cmd[w.start:w.end] for w in words]
-    spec = _message_spec(raw)
-    if not spec:
+    if not words:
         return []
-    flags, stdin_flags, first = spec
+    raw = [cmd[w.start:w.end] for w in words]
+    if raw[0] == 'cd':
+        return []
+    spec, k = _message_spec(raw)
+    if spec is None:
+        return None if segment.heredocs or '-c' in raw else []
     edits = []
     reads_stdin = False
-    k = first
+    positionals = 0
     while k < len(words):
-        name, eq, value = raw[k].partition('=')
-        if raw[k] in flags and k + 1 < len(words):
+        word = raw[k]
+        name, eq, value = word.partition('=')
+        following = raw[k + 1] if k + 1 < len(words) else None
+        cluster = re.fullmatch(rf'-([{spec.short_cluster}]+)(m?)', word) if spec.short_cluster else None
+        if word in spec.message or (cluster and cluster.group(2)):
+            if following is None:
+                return None
             k += 1
             edits.append((words[k].start, words[k].end, _replacement(words[k].kept)))
-        elif eq and name in flags:
+        elif eq and name.startswith('--') and name in spec.message:
             edits.append((words[k].start + len(name) + 1, words[k].end, _replacement(words[k].kept)))
-        elif raw[k] in stdin_flags and raw[k + 1:k + 2] == ['-']:
+        elif word in spec.stdin and following == '-':
             reads_stdin = True
             k += 1
-        elif eq and name in stdin_flags and value == '-':
+        elif eq and name.startswith('--') and name in spec.stdin and value == '-':
             reads_stdin = True
+        elif word in spec.value and following is not None and _plain(following):
+            k += 1
+        elif eq and name.startswith('--') and name in spec.value and UNQUOTED.fullmatch(value):
+            pass
+        elif word in spec.boolean or cluster:
+            pass
+        elif _plain(word) and positionals < spec.positionals:
+            positionals += 1
+        elif _plain(word) and spec is SPECS[('git', 'commit')]:
+            pass
+        else:
+            return None
         k += 1
-    if len(segment.heredocs) > 1:
+    if len(segment.heredocs) > 1 or (segment.heredocs and not reads_stdin):
         return None
-    if segment.heredocs and reads_stdin:
+    if segment.heredocs:
         start, end = segment.heredocs[0]
         edits.append((start, end, ''))
     return edits
 
 
 def mask_data(command: str) -> str:
-    if len(command) > MAX_LENGTH:
+    if len(command) > MAX_LENGTH or REEXPAND.search(command):
         return command
     segments = _scan(command)
     if segments is None:
