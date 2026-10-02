@@ -3,7 +3,12 @@ name: warn-use-edit-tool
 enabled: true
 event: bash
 tool_matcher: Bash|PowerShell
-pattern: (^|\s|&&|\|\||;|\(|`)(sed|awk)\s+([^;&|\n]*\s)?(-[a-zA-Z]*i|--in-place)
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^(?:sed|gsed)(?: (?!\|)\S+)* (?:-[a-zA-Z]*i\S*|--in-place\S*)(?: |$)|^g?awk(?: (?!\|)\S+)* (?:-i inplace|--in-place)(?: |$)|^perl(?: (?!\|)\S+)* -[a-zA-Z]*i\S*(?: |$)'
+    fallback: '(^|\s|&&|\|\||;|\(|`)(sed|awk)\s+([^;&|\n]*\s)?(-[a-zA-Z]*i|--in-place)'
+mask_data: true
 action: warn
 warn_once: true
 ---

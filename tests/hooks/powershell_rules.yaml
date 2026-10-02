@@ -1,0 +1,72 @@
+# PowerShell rules: env drive reads and dumps.
+test_cases:
+  - name: 'block-powershell-secret-vars: blocks Get-Content on Env drive'
+    tool: PowerShell
+    tool_input:
+      command: Get-Content Env:GH_TOKEN
+    expect: block
+  - name: 'block-powershell-secret-vars: blocks Get-Item on Env drive'
+    tool: PowerShell
+    tool_input:
+      command: Get-Item Env:\API_KEY
+    expect: block
+  - name: 'block-powershell-secret-vars: blocks braced env var'
+    tool: PowerShell
+    tool_input:
+      command: Write-Output ${env:API_KEY}
+    expect: block
+  - name: 'block-powershell-secret-vars: blocks GetEnvironmentVariable'
+    tool: PowerShell
+    tool_input:
+      command: '[Environment]::GetEnvironmentVariable("GH_TOKEN")'
+    expect: block
+  - name: 'block-powershell-env-dump: blocks LiteralPath'
+    tool: PowerShell
+    tool_input:
+      command: 'Get-ChildItem -LiteralPath Env:'
+    expect: block
+  - name: 'block-powershell-env-dump: blocks wildcard name'
+    tool: PowerShell
+    tool_input:
+      command: Get-ChildItem Env:GH*
+    expect: block
+  - name: 'block-powershell-env-dump: blocks wildcard around name'
+    tool: PowerShell
+    tool_input:
+      command: gci Env:*TOKEN*
+    expect: block
+  - name: 'block-powershell-env-dump: blocks in parens'
+    tool: PowerShell
+    tool_input:
+      command: (gci env:)
+    expect: block
+  - name: 'block-powershell-secret-vars: allows Path'
+    tool: PowerShell
+    tool_input:
+      command: Write-Output $env:Path
+    expect: allow
+  - name: 'block-powershell-secret-vars: allows longer name'
+    tool: PowerShell
+    tool_input:
+      command: Write-Output $env:API_KEY_ID
+    expect: allow
+  - name: 'block-powershell-env-dump: allows one non-secret var'
+    tool: PowerShell
+    tool_input:
+      command: Get-ChildItem Env:PATH
+    expect: allow
+  - name: 'block-powershell-env-dump: allows other drive'
+    tool: PowerShell
+    tool_input:
+      command: Get-ChildItem C:\
+    expect: allow
+  - name: 'block-powershell-env-dump: blocks -Force before Env drive'
+    tool: PowerShell
+    tool_input:
+      command: 'gci -Force Env:'
+    expect: block
+  - name: 'block-powershell-env-dump: blocks -Path: colon form'
+    tool: PowerShell
+    tool_input:
+      command: 'Get-ChildItem -Path:Env:'
+    expect: block

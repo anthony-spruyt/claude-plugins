@@ -2,7 +2,11 @@
 name: block-echo-subshell-secrets
 enabled: true
 event: bash
-pattern: \b(?:echo|printf)\b(?:(?!\b(?:echo|printf)\b)[^\n])*?\$\((?:env|printenv|set)\b
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^(?:echo|printf) .*?(?<!\\)(?:\\\\)*(?:\$\(|`) *(?:env|printenv|set)\b'
+    fallback: '\b(?:echo|printf)\b(?:(?!\b(?:echo|printf)\b)[^\n])*?\$\((?:env|printenv|set)\b'
 action: block
 mask_data: true
 ---
