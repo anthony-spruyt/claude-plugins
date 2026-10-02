@@ -2130,6 +2130,116 @@ test_cases:
     command: "bash -c 'env'"
     expect: block
 
+  - name: "block-env-dump: blocks env before a comment"
+    tool: Bash
+    command: "env # show"
+    expect: block
+
+  - name: "block-env-dump: blocks env with input redirect"
+    tool: Bash
+    command: "env </dev/null"
+    expect: block
+
+  - name: "block-env-dump: blocks env with fd input redirect"
+    tool: Bash
+    command: "env 0</dev/null"
+    expect: block
+
+  - name: "block-env-dump: blocks env -uHOME"
+    tool: Bash
+    command: "env -uHOME"
+    expect: block
+
+  - name: "block-env-dump: blocks env -0v"
+    tool: Bash
+    command: "env -0v"
+    expect: block
+
+  - name: "block-env-dump: blocks env --unset HOME"
+    tool: Bash
+    command: "env --unset HOME"
+    expect: block
+
+  - name: "block-env-dump: blocks env --default-signal"
+    tool: Bash
+    command: "env --default-signal"
+    expect: block
+
+  - name: "block-env-dump: blocks find -exec env"
+    tool: Bash
+    command: 'find /tmp -maxdepth 0 -exec env \;'
+    expect: block
+
+  - name: "block-set-dump: blocks set before a comment"
+    tool: Bash
+    command: "set # dump"
+    expect: block
+
+  - name: "block-set-dump: blocks set with input redirect"
+    tool: Bash
+    command: "set </dev/null"
+    expect: block
+
+  - name: "block-set-dump: blocks backslash set"
+    tool: Bash
+    command: '\set'
+    expect: block
+
+  - name: "block-export-dump: blocks bare export"
+    tool: Bash
+    command: "export"
+    expect: block
+
+  - name: "block-export-dump: blocks export -n with no names"
+    tool: Bash
+    command: "export -n"
+    expect: block
+
+  - name: "block-export-dump: blocks chained bare export"
+    tool: Bash
+    command: "cd /tmp && export | grep TOKEN"
+    expect: block
+
+  - name: "block-declare-dump: blocks bare declare"
+    tool: Bash
+    command: "declare"
+    expect: block
+
+  - name: "block-declare-dump: blocks declare -x"
+    tool: Bash
+    command: "declare -x"
+    expect: block
+
+  - name: "block-declare-dump: blocks bare typeset"
+    tool: Bash
+    command: "typeset"
+    expect: block
+
+  - name: "block-declare-dump: blocks typeset -x piped"
+    tool: Bash
+    command: "typeset -x | grep KEY"
+    expect: block
+
+  - name: "block-declare-dump: allows declare -f"
+    tool: Bash
+    command: "declare -f"
+    expect: allow
+
+  - name: "block-declare-dump: allows declare -F"
+    tool: Bash
+    command: "declare -F"
+    expect: allow
+
+  - name: "block-export-dump: allows echo export"
+    tool: Bash
+    command: "echo export"
+    expect: allow
+
+  - name: "block-declare-dump: allows git commit about declare"
+    tool: Bash
+    command: "git commit -m 'refactor: declare'"
+    expect: allow
+
   - name: "block-printenv: allows existence check to /dev/null"
     tool: Bash
     command: 'printenv GH_TOKEN >/dev/null && echo "GH_TOKEN present"'

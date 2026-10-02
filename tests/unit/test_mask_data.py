@@ -50,6 +50,11 @@ class TestMasksMessageArguments:
         assert masked.startswith("git add -A && git commit -m ")
         assert masked.endswith(" && git push")
 
+    def test_safe_git_and_gh_segments_around_message(self):
+        cmd = ("git add -A && git commit -m 'set' && git push -u origin feat"
+               " && git status && gh pr view --web")
+        assert "set" not in mask_data(cmd)
+
     def test_cd_before_commit(self):
         assert "set" not in mask_data("cd /repo && git commit -m 'chore: set modes'")
 
@@ -103,6 +108,15 @@ def test_leaves_non_message_text_alone(cmd):
     "gh pr create --unknown-flag -b 'set'",
     "gh pr create -b'set'",
     "git commit --pathspec-from-file -m 'set'",
+    "git commit -m 'set' && git rebase --exec 'git log -1 --format=%s | sh' HEAD~1",
+    "git commit -m 'set' && git config alias.r '!sh' && git r",
+    "git commit -m 'set' && git r",
+    "git commit -m 'set' && gh alias set r --shell 'sh'",
+    "git commit -m 'set' && gh r",
+    "git commit -m 'set' && git push --receive-pack='sh x' .",
+    "git commit -m 'set' && git push --rec='sh x' .",
+    "git commit -m 'set' && git fetch --upload-pack='sh x' .",
+    "git commit -m 'set' && git --exec-path=/tmp push",
 ], ids=["line-continuation", "arithmetic", "comment", "pipe", "redirect", "fd-redirect",
         "backtick", "command-substitution", "nested-substitution", "case-in-substitution",
         "positional-param", "unterminated-quote", "unterminated-heredoc", "here-string",
@@ -110,7 +124,9 @@ def test_leaves_non_message_text_alone(cmd):
         "glued-delimiter-bare", "alias-redefines-git", "eval-redefines-git", "other-command-first",
         "prompt-expansion-of-last-arg", "indirect-last-arg", "parameter-operator",
         "message-flag-as-value", "message-flag-as-value-long", "end-of-options",
-        "release-asset", "unknown-flag", "glued-message-value", "unknown-git-flag"])
+        "release-asset", "unknown-flag", "glued-message-value", "unknown-git-flag",
+        "rebase-exec", "git-config-alias", "git-alias", "gh-alias-set", "gh-alias",
+        "push-receive-pack", "push-abbreviated-option", "fetch-upload-pack", "git-exec-path"])
 def test_gives_up_on_anything_it_cannot_parse(cmd):
     assert mask_data(cmd) == cmd
 

@@ -59,8 +59,8 @@ Include markdown formatting, warnings, and suggestions.
 - quoted `--body`/`--title`/`--notes`/`--subject`/`-m`/`--message` values, including `"$(cat <<'EOF' ... EOF)"`
 - a quoted-delimiter heredoc fed to `--body-file -` or `-F -`
 
-`$VAR` and `${VAR}` in double quotes are kept, because they expand. Every other word in the segment must be a flag or positional the engine knows for that subcommand, and every other segment must start with `git`, `gh` or `cd`. Anything else is matched unmasked: unknown flags, pipes, redirects, `$(...)` other than `cat <<'EOF'`, backticks, unquoted heredocs, `$_` or `${!x}`, and commands over
-20,000 characters. Use it on rules that should not fire on prose in PR, issue and commit text.
+`$VAR` and `${VAR}` in double quotes are kept, because they expand. Every other word in the segment must be a flag or positional the engine knows for that subcommand, and every other segment must be `cd` or a read-only `git`/`gh` command with known flags (`git add`, `git push`, `gh pr view`, ...), so `git rebase --exec`, aliases and `--upload-pack` cannot run the masked text. Anything else is
+matched unmasked: unknown flags, pipes, redirects, `$(...)` other than `cat <<'EOF'`, backticks, unquoted heredocs, `$_` or `${!x}`, and commands over 20,000 characters. Use it on rules that should not fire on prose in PR, issue and commit text.
 
 **tool_matcher** (optional): String. Override which tools a rule matches, instead of using the default tool set for the event type.
 

@@ -93,6 +93,26 @@ SPECS = {
 }
 # Any other command could redefine git or gh before the message segment runs
 SEGMENT_COMMANDS = {'git', 'gh', 'cd'}
+# Other git/gh segments could run masked text (rebase --exec, aliases, --upload-pack), and git
+# accepts abbreviated long options, so their flags are an exact allowlist too
+SAFE_GIT = {sub: frozenset(flags.split()) for sub, flags in {
+    'add': '-A --all -u --update -N --intent-to-add -v --verbose --',
+    'push': '-u --set-upstream -f --force --force-with-lease --force-if-includes --tags '
+            '--follow-tags -q --quiet -v --verbose -d --delete -n --dry-run --no-verify',
+    'status': '-s --short -b --branch -sb --porcelain -uno -unormal -uall',
+    'log': '--oneline -1 -2 -3 -5 -10 -20 -n --stat --graph --decorate --all',
+    'diff': '--stat --cached --staged --name-only --name-status --check',
+    'show': '--stat --name-only --oneline -s --no-patch',
+    'fetch': '--all --prune -p --tags -q --quiet',
+    'pull': '-r --rebase --no-rebase --ff-only -q --quiet',
+    'switch': '-c --create',
+    'checkout': '-b -B',
+    'branch': '--show-current -a --all -v -vv --list',
+    'rev-parse': '--abbrev-ref --show-toplevel --short',
+}.items()}
+SAFE_GH = {('pr', 'view'), ('pr', 'list'), ('pr', 'status'), ('pr', 'checks'), ('pr', 'diff'),
+           ('issue', 'view'), ('issue', 'list'), ('run', 'list'), ('run', 'view'),
+           ('run', 'watch'), ('repo', 'view')}
 
 UNQUOTED = re.compile(r'[A-Za-z0-9_./:=@%+,~-]+')
 HEREDOC = re.compile(r'<<[ \t]*([\'"])(\w+)\1')
@@ -238,6 +258,14 @@ def _message_spec(words: List[str]) -> Tuple[Optional[Spec], int]:
     return None, 0
 
 
+def _safe(raw: List[str]) -> bool:
+    if raw[0] == 'gh':
+        return tuple(raw[1:3]) in SAFE_GH and all(UNQUOTED.fullmatch(w) for w in raw[3:])
+    k = 3 if raw[1:2] == ['-C'] else 1
+    flags = SAFE_GIT.get(raw[k]) if len(raw) > k else None
+    return flags is not None and all(w in flags or _plain(w) for w in raw[k + 1:])
+
+
 def _replacement(kept: List[str]) -> str:
     return '"' + ' '.join(kept) + '"' if kept else "''"
 
@@ -298,7 +326,7 @@ def _edits(cmd: str, segment: Segment) -> Optional[List[Tuple[int, int, str]]]:
         return []
     spec, k = _message_spec(raw)
     if spec is None:
-        return None if segment.heredocs or '-c' in raw else []
+        return [] if not segment.heredocs and _safe(raw) else None
     parsed = _parse(raw, words, spec, k)
     if parsed is None:
         return None
