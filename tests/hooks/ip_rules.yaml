@@ -1,0 +1,62 @@
+# Private IP rules: only commit messages and gh issue/pr text that really run block.
+test_cases:
+  - name: 'block-ip-in-commits: blocks git -C before commit'
+    tool: Bash
+    command: 'git -C repo commit -m "fix: 10.1.2.3"'
+    expect: block
+  - name: 'block-ip-in-commits: blocks git -c before commit'
+    tool: Bash
+    command: 'git -c user.name=x commit -m "fix: 10.1.2.3"'
+    expect: block
+  - name: 'block-ip-in-commits: blocks quote-split git'
+    tool: Bash
+    command: 'g''it'' commit -m ''fix: 10.1.2.3'''
+    expect: block
+  - name: 'block-ip-in-commits: blocks commit inside bash -c'
+    tool: Bash
+    command: 'bash -c ''git commit -m "fix: 10.1.2.3"'''
+    expect: block
+  - name: 'block-ip-in-commits: blocks commit after cd'
+    tool: Bash
+    command: 'cd x && git commit -m "fix: 10.1.2.3"'
+    expect: block
+  - name: 'block-ip-in-commits: blocks CIDR'
+    tool: Bash
+    command: 'git commit -m "chore: pods on 10.244.0.0/16"'
+    expect: block
+  - name: 'block-ip-in-github: blocks gh -R before pr'
+    tool: Bash
+    command: gh -R o/r pr create --title x --body "10.1.2.3"
+    expect: block
+  - name: 'block-ip-in-github: blocks quote-split gh'
+    tool: Bash
+    command: '''gh'' issue comment 1 --body ''10.1.2.3'''
+    expect: block
+  - name: 'block-ip-in-github: blocks pr edit'
+    tool: Bash
+    command: gh pr edit 3 --body "host 192.168.1.10"
+    expect: block
+  - name: 'block-ip-in-commits: allows git log grep'
+    tool: Bash
+    command: git log --grep 10.1.2.3
+    expect: allow
+  - name: 'block-ip-in-commits: allows public IP'
+    tool: Bash
+    command: 'git commit -m "fix: use 8.8.8.8"'
+    expect: allow
+  - name: 'block-ip-in-commits: allows IP in a later command'
+    tool: Bash
+    command: 'git commit -m "fix: x" && ping 10.1.2.3'
+    expect: allow
+  - name: 'block-ip-in-commits: allows longer number'
+    tool: Bash
+    command: 'git commit -m "fix: 110.1.2.3"'
+    expect: allow
+  - name: 'block-ip-in-github: allows gh pr view'
+    tool: Bash
+    command: gh pr view 3
+    expect: allow
+  - name: 'block-ip-in-github: allows IP in a later command'
+    tool: Bash
+    command: gh pr create --title x --body y; ping 10.1.2.3
+    expect: allow

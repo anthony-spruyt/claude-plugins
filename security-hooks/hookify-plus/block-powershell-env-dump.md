@@ -3,7 +3,7 @@ name: block-powershell-env-dump
 enabled: true
 event: bash
 tool_matcher: PowerShell
-pattern: \b(Get-ChildItem|gci|dir|ls|Get-Item|gi)\s+(-Path\s+)?['"]?Env:(\\|/)?\*?['"]?(\s|$|\||;|\))|\[(System\.)?Environment\]::GetEnvironmentVariables\(
+pattern: \b(Get-ChildItem|gci|dir|ls|Get-Item|gi)\s+(-\w+(\s+|:)([^\s-]\S*\s+)?)*['"]?Env:(\\|/)?([^\s'"|;)*]*\*[^\s'"|;)]*)?['"]?(\s|$|\||;|\))|\[(System\.)?Environment\]::GetEnvironmentVariables\(
 action: block
 ---
 

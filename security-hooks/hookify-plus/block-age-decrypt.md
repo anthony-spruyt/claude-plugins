@@ -2,7 +2,11 @@
 name: block-age-decrypt
 enabled: true
 event: bash
-pattern: age\s+(-d|--decrypt)
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^age(?: (?!\|)\S+)* --?(?:d|decrypt)(?:=\S*)?(?: |$)'
+    fallback: 'age\s+(-d|--decrypt)'
 action: block
 mask_data: true
 ---

@@ -45,6 +45,60 @@ hook() {
   assert_success
 }
 
+@test "hookify integration: review regression cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/review_regressions.yaml"
+  assert_success
+}
+
+@test "hookify integration: decrypt rule cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/decrypt_rules.yaml"
+  assert_success
+}
+
+@test "hookify integration: warn rule cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/warn_rules.yaml"
+  assert_success
+}
+
+@test "hookify integration: file rule cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/file_rules.yaml"
+  assert_success
+}
+
+@test "hookify integration: secret file read cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/secret_file_reads.yaml"
+  assert_success
+}
+
+@test "hookify integration: heredoc rule cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/heredoc_rules.yaml"
+  assert_success
+}
+
+@test "hookify integration: echo rule cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/echo_rules.yaml"
+  assert_success
+}
+
+@test "hookify integration: ip rule cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/ip_rules.yaml"
+  assert_success
+}
+
+@test "hookify integration: powershell rule cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/powershell_rules.yaml"
+  assert_success
+}
+
 @test "pretooluse: block rule exits 2 with the rule message" {
   run hook pretooluse.py "sops -d secrets.yaml"
   assert_equal "$status" 2

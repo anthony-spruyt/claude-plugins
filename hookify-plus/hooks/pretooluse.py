@@ -24,6 +24,7 @@ except ImportError as e:
 
 def main():
     """Main entry point for PreToolUse hook."""
+    block_rules = []
     try:
         input_data = json.load(sys.stdin)
 
@@ -60,7 +61,8 @@ def main():
         sys.exit(0)
     except Exception as e:
         print(f"Hookify error: {str(e)}", file=sys.stderr)
-        sys.exit(0)
+        # A crafted input that crashes evaluation must not skip block rules
+        sys.exit(2 if block_rules else 0)
 
 
 if __name__ == '__main__':

@@ -93,3 +93,20 @@ class TestSimplePatternField:
     def test_read_event_pattern_matches_file_path(self):
         rule = Rule.from_dict({"name": "r", "event": "read", "pattern": "id_rsa"}, "")
         assert rule.conditions[0].field == "file_path"
+
+
+class TestFilePathNormalised:
+    @pytest.mark.parametrize("raw, clean", [
+        ("/proc/self/../self/environ", "/proc/self/environ"),
+        ("/proc//self/environ", "/proc/self/environ"),
+        ("/home/u/./.ssh/id_rsa", "/home/u/.ssh/id_rsa"),
+        ("/home/u/.ssh/", "/home/u/.ssh/"),
+        ("a/../.npmrc", ".npmrc"),
+        ("", ""),
+    ])
+    def test_read_paths_are_normalised(self, raw, clean):
+        assert RuleEngine()._extract_field("file_path", "Read", {"file_path": raw}) == clean
+
+    def test_write_paths_are_normalised(self):
+        data = {"file_path": "/x/./y//z"}
+        assert RuleEngine()._extract_field("file_path", "Write", data) == "/x/y/z"

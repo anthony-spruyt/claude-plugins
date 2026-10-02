@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Rule evaluation engine for hookify plugin."""
 
+import posixpath
 import re
 import sys
 from functools import lru_cache
@@ -8,6 +9,8 @@ from typing import List, Dict, Any, Optional
 
 from core.config_loader import Rule, Condition
 from core.masking import mask_data
+from core.opaque import opaque
+from core.shell_parse import _BODIES, parse_commands, render
 
 
 @lru_cache(maxsize=128)
@@ -21,6 +24,31 @@ def compile_regex(pattern: str) -> re.Pattern:
         Compiled regex pattern
     """
     return re.compile(pattern, re.IGNORECASE | re.DOTALL)
+
+
+def normalise(command: str):
+    functions = set()
+    _BODIES.clear()
+    commands = parse_commands(command, functions)
+    if commands is None:
+        return None
+    lines = render(commands)
+    return None if lines is None else (lines, opaque(command, commands, functions))
+
+
+def _clean_path(path: str) -> str:
+    clean = posixpath.normpath(path)
+    return clean + '/' if path.endswith('/') and clean != '/' else clean
+
+
+@lru_cache(maxsize=16)
+def clean_lines(command: str) -> Optional[tuple]:
+    """Cached parse: (clean lines, opaque) or None. Several rules parse the same command."""
+    try:
+        parsed = normalise(command)
+    except Exception:
+        return None
+    return None if parsed is None else (tuple(parsed[0]), parsed[1])
 
 
 class RuleEngine:
@@ -109,7 +137,7 @@ class RuleEngine:
 
         for condition in rule.conditions:
             if not self._check_condition(condition, tool_name, tool_input, input_data,
-                                         mask=rule.mask_data):
+                                         mask=rule.mask_data, strict=rule.action == 'block'):
                 return False
 
         return True
@@ -132,7 +160,7 @@ class RuleEngine:
 
     def _check_condition(self, condition: Condition, tool_name: str,
                         tool_input: Dict[str, Any], input_data: Dict[str, Any] = None,
-                        mask: bool = False) -> bool:
+                        mask: bool = False, strict: bool = True) -> bool:
         """Check if a single condition matches.
 
         Args:
@@ -141,6 +169,7 @@ class RuleEngine:
             tool_input: Tool input dict
             input_data: Full hook input data (for Stop events, etc.)
             mask: Blank non-executing text in the command before matching
+            strict: Also try the fallback when the command runs code the parser can't see
 
         Returns:
             True if condition matches
@@ -148,13 +177,29 @@ class RuleEngine:
         field_value = self._extract_field(condition.field, tool_name, tool_input, input_data)
         if field_value is None:
             return False
+        raw_value = field_value
         if mask and tool_name == 'Bash' and condition.field == 'command':
             field_value = mask_data(field_value)
 
         operator = condition.operator
         pattern = condition.pattern
 
-        if operator == 'regex_match':
+        if operator == 'command_match':
+            if condition.field != 'command':
+                return self._regex_match(pattern, raw_value)
+            if tool_name != 'Bash':
+                return self._regex_match(condition.fallback or pattern, field_value)
+            parsed = clean_lines(raw_value)
+            if parsed is None or (strict and parsed[1] and condition.fallback):
+                if self._regex_match(condition.fallback or pattern, field_value):
+                    return True
+                if parsed is None:
+                    return False
+            lines = parsed[0]
+            if mask:
+                lines = [mask_data(line) for line in lines]
+            return any(self._regex_match(pattern, line) for line in lines)
+        elif operator == 'regex_match':
             return self._regex_match(pattern, field_value)
         elif operator == 'not_regex_match':
             return not self._regex_match(pattern, field_value)
@@ -173,6 +218,13 @@ class RuleEngine:
 
     def _extract_field(self, field: str, tool_name: str,
                       tool_input: Dict[str, Any], input_data: Dict[str, Any] = None) -> Optional[str]:
+        value = self._raw_field(field, tool_name, tool_input, input_data)
+        if field == 'file_path' and value:
+            return _clean_path(value)
+        return value
+
+    def _raw_field(self, field: str, tool_name: str,
+                   tool_input: Dict[str, Any], input_data: Dict[str, Any] = None) -> Optional[str]:
         """Extract field value from tool input or hook input data.
 
         Args:

@@ -122,15 +122,31 @@ You're editing a .env file. Make sure it's in .gitignore!
 
 ### Operators
 
-| Operator          | Description             |
-| ----------------- | ----------------------- |
-| `regex_match`     | Pattern matches (regex) |
-| `not_regex_match` | Pattern does NOT match  |
-| `contains`        | Substring present       |
-| `not_contains`    | Substring NOT present   |
-| `equals`          | Exact match             |
-| `starts_with`     | Prefix match            |
-| `ends_with`       | Suffix match            |
+| Operator          | Description                                                |
+| ----------------- | ---------------------------------------------------------- |
+| `regex_match`     | Pattern matches (regex)                                    |
+| `not_regex_match` | Pattern does NOT match                                     |
+| `contains`        | Substring present                                          |
+| `not_contains`    | Substring NOT present                                      |
+| `equals`          | Exact match                                                |
+| `starts_with`     | Prefix match                                               |
+| `ends_with`       | Suffix match                                               |
+| `command_match`   | Regex matches any command bash would run (`command` field) |
+
+### command_match
+
+`command_match` parses the Bash command and regex-searches each "clean line": one per simple command bash would run, with quotes removed and wrappers (`sudo`, `bash -c`, `eval`, ...) unwrapped, keeping redirects and pipes. `sudo -E e''nv | wc -l` gives `sudo -E env | wc -l`, `env | wc -l` and `wc -l`. If the command can't be parsed, `fallback` (or `pattern` if there is no `fallback`) is matched
+against the raw command instead. That raw command is masked when the rule sets `mask_data: true`.
+
+```yaml
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^(env|printenv)( -\S+)*$'
+    fallback: '<old raw-command regex>'
+```
+
+If evaluating block rules raises an error, the PreToolUse hook blocks the tool call (exit 2) rather than allowing it, so a crafted input can't switch block rules off by crashing the engine.
 
 ### Rate Limiting
 

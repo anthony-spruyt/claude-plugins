@@ -1,0 +1,42 @@
+# File-path rules that had no test coverage.
+test_cases:
+  - name: "block-read-proc-environ: Read self"
+    tool: Read
+    file_path: "/proc/self/environ"
+    expect: block
+  - name: "block-read-proc-environ: Read pid"
+    tool: Read
+    file_path: "/proc/1/environ"
+    expect: block
+  - name: "block-read-proc-environ: Read thread-self"
+    tool: Read
+    file_path: "/proc/thread-self/environ"
+    expect: block
+  - name: "block-read-proc-environ: Read task"
+    tool: Read
+    file_path: "/proc/self/task/42/environ"
+    expect: block
+  - name: "block-read-proc-environ: Grep path"
+    tool: Grep
+    tool_input: {pattern: "TOKEN", path: "/proc/self/environ"}
+    expect: block
+  - name: "block-read-proc-environ: dot segments"
+    tool: Read
+    file_path: "/proc/self/../self/environ"
+    expect: block
+  - name: "block-read-proc-environ: double slash"
+    tool: Read
+    file_path: "/proc//self/environ"
+    expect: block
+  - name: "block-read-proc-environ: allows cpuinfo"
+    tool: Read
+    file_path: "/proc/cpuinfo"
+    expect: allow
+  - name: "block-read-proc-environ: allows self status"
+    tool: Read
+    file_path: "/proc/self/status"
+    expect: allow
+  - name: "block-read-proc-environ: allows a docs file named environ"
+    tool: Read
+    file_path: "/workspaces/app/docs/environ.md"
+    expect: allow

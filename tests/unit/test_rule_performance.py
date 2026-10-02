@@ -12,10 +12,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
 from core.config_loader import load_rule_file
-from core.rule_engine import RuleEngine
+from core.rule_engine import RuleEngine, clean_lines
 
-RULES = [load_rule_file(f) for f in sorted(glob.glob(
-    os.path.join(REPO_ROOT, "security-hooks", "hookify-plus", "*.md")))]
+RULES = [load_rule_file(f) for plugin in ("security-hooks", "best-practices")
+         for f in sorted(glob.glob(os.path.join(REPO_ROOT, plugin, "hookify-plus", "*.md")))]
 
 INPUTS = {
     "many-heredocs-one-line": "cat <<A " * 5000,
@@ -56,12 +56,24 @@ INPUTS = {
     "env-split-string": ("e" + "nv -S '") * 2500,
     "paren-after-keywords": "if(" * 6600,
     "assignment-braces": "X=a{" * 5000,
+    "many-echo-subshells": ("$(echo e" + "nv)") * 1700,
+    "many-eval-echo-subshells": ('eval "$(echo e' + 'nv)"\n') * 1000,
+    "many-and-or-echos": "$(true && echo set || echo x)" * 690,
+    "many-backtick-echos": "echo `echo x` " * 1400,
+    "many-quoted-echos": 'echo "echo x" ' * 1400,
+    "assignment-close-braces": "X=a}" * 5000,
+    "many-function-names": "f " * 10000,
+    "many-git-global-options": "git" + " -a" * 6000 + " x",
+    "many-gh-global-options": "gh" + " -a" * 6000 + " x",
+    "printf-open-brace-dollars": "printf }{${A" * 1600,
+    "echo-in-open-braces": "bash -c echo }Get-ChildItem ${A" * 645,
 }
 
 
 def _fastest(engine, rule, data):
     timings = []
     for _ in range(3):
+        clean_lines.cache_clear()
         start = time.perf_counter()
         engine._rule_matches(rule, data)
         timings.append(time.perf_counter() - start)
