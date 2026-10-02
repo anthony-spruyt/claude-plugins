@@ -176,7 +176,7 @@ STRICT = {
                                'path-property', 'socket-property', 'capsule'),
                     '', 'tPqrGdS', ('user', 'system', 'scope', 'pty', 'pipe', 'quiet',
                                     'remain-after-exit', 'collect', 'wait', 'shell', 'no-block',
-                                    'no-ask-password', 'same-dir', 'send-sighup',
+                                    'no-ask-password', 'same-dir', 'send-sighup',  # ggignore
                                     'expand-environment', 'ignore-failure'), (), set()),
     'catchsegv': ('', (), '', '', (), (), set()),
     'valgrind': ('', (), '', 'qv', ('quiet', 'verbose'), (), set()),

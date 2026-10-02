@@ -623,6 +623,10 @@ ADVERSARIAL = dict(INPUTS, **{
 })
 
 
+# Linear parsing takes ~40ms on 20k chars here and ~75ms on CI; quadratic takes seconds
+BUDGET = 0.2
+
+
 @pytest.mark.parametrize("name", ADVERSARIAL)
 def test_parse_commands_is_fast(name):
     command = ADVERSARIAL[name]
@@ -631,7 +635,7 @@ def test_parse_commands_is_fast(name):
         start = time.perf_counter()
         parse_commands(command)
         timings.append(time.perf_counter() - start)
-    assert min(timings) < 0.05, f"{name} took {min(timings) * 1000:.0f}ms"
+    assert min(timings) < BUDGET, f"{name} took {min(timings) * 1000:.0f}ms"
 
 
 @pytest.mark.parametrize("name", ADVERSARIAL)
@@ -642,7 +646,7 @@ def test_parse_is_fast(name):
         start = time.perf_counter()
         normalise(command)
         timings.append(time.perf_counter() - start)
-    assert min(timings) < 0.05, f"{name} took {min(timings) * 1000:.0f}ms"
+    assert min(timings) < BUDGET, f"{name} took {min(timings) * 1000:.0f}ms"
 
 
 PE = "print" + "e" + "nv"
