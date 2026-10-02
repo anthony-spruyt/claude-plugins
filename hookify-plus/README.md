@@ -20,6 +20,7 @@ It originated from Anthropic's [hookify](https://github.com/anthropics/claude-co
 | Global rules      | Rules in `~/.claude/` apply to ALL projects           |
 | `warn_once`       | Rate limiting — only warn once per agent              |
 | `warn_interval`   | Rate limiting — warn every N matches                  |
+| `mask_data`       | Skip prose in gh/git PR, issue and commit messages    |
 
 ### Fixes
 

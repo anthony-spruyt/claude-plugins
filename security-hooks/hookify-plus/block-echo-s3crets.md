@@ -2,8 +2,9 @@
 name: block-echo-secrets
 enabled: true
 event: bash
-pattern: (echo|printf)\s+.*\$\{?[A-Za-z_]*(_PAT|TOKEN|SECRET|PASSWORD|PASSPHRASE|CREDENTIAL|PRIVATE_KEY|API_KEY|SECRET_KEY|ACCESS_KEY)\b
+pattern: \b(?:echo|printf)\b(?:(?!\b(?:echo|printf)\b)[^\n;&|\'"`$\\]|\\(?!(?:echo|printf)\b)[\s\S]|\'[^\']*\'|"(?:[^"\\$`]|\\[\s\S]|\$(?!\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+))|`[^`]*`)*"|`[^`]*`|\$\((?:(?!\$\()[^()]|\([^()]*\))*\)|(?!\$\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+))\$\{[^}\n$]*\}|\$(?!\(|\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)))*?(?:"(?:[^"\\$`]|\\[\s\S]|\$(?!\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+))|`[^`]*`)*)?\$\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)(?![\'"]?[^\S\n]*\|[^\S\n]*(?:(?:docker|podman|oras|skopeo|helm[^\S\n]+registry|crane[^\S\n]+auth)[^\S\n]+login\b[^\n;&|#`$\'"]*--password-stdin|gh[^\S\n]+auth[^\S\n]+login\b[^\n;&|#`$\'"]*--with-token|gh[^\S\n]+secret[^\S\n]+set\b[^\n;&|#`$\'"]*)[^\S\n]*(?:$|\n|;|&&|\|\|))
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: Echoing sensitive environment variable**

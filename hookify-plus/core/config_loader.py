@@ -46,6 +46,7 @@ class Rule:
     message: str = ""
     warn_once: bool = False
     warn_interval: int = 0  # Warn every N matches (0 = every time)
+    mask_data: bool = False
 
     @classmethod
     def from_dict(cls, frontmatter: Dict[str, Any], message: str) -> 'Rule':
@@ -92,7 +93,8 @@ class Rule:
             tool_matcher=frontmatter.get('tool_matcher'),
             message=message.strip(),
             warn_once=frontmatter.get('warn_once', False),
-            warn_interval=warn_interval
+            warn_interval=warn_interval,
+            mask_data=frontmatter.get('mask_data', False) is True
         )
 
 

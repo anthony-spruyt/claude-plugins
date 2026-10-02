@@ -2,8 +2,9 @@
 name: block-echo-subshell-secrets
 enabled: true
 event: bash
-pattern: (echo|printf)\s+.*\$\((env|printenv|set)\b
+pattern: \b(?:echo|printf)\b(?:(?!\b(?:echo|printf)\b)[^\n])*?\$\((?:env|printenv|set)\b
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: Echo with command substitution that dumps environment**

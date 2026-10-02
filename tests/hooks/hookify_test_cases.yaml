@@ -495,8 +495,13 @@ test_cases:
 
   - name: "warn-shell-wrappers: eval"
     tool: Bash
-    command: "eval 'printenv'"
+    command: "eval 'ls -la'"
     expect: warn
+
+  - name: "block-printenv: blocks eval of quoted printenv"
+    tool: Bash
+    command: "eval 'printenv'"
+    expect: block
 
   - name: "warn-shell-wrappers: chained sh -c"
     tool: Bash
@@ -1828,4 +1833,1235 @@ test_cases:
   - name: "block-shell-read-secret-files: allows .env as a substring"
     tool: Bash
     command: "grep -n 'import.meta.env.MODE' src/main.ts"
+    expect: allow
+
+  # =============================================================================
+  # mask_data: prose in PR/issue/commit text and quoted heredocs is not code
+  # =============================================================================
+  - name: "mask_data: set prose in gh body"
+    tool: Bash
+    command: 'gh issue comment 5 --body "Once the env is set; rerun the job."'
+    expect: allow
+
+  - name: "mask_data: set prose in commit message"
+    tool: Bash
+    command: 'git commit -m "docs: explain set > file is blocked"'
+    expect: allow
+
+  - name: "mask_data: markdown in quoted heredoc PR body"
+    tool: Bash
+    command: |-
+      gh pr create --title "fix: log level" --body-file - <<'EOF'
+      Set `MCP_LOG_LEVEL=warn` on the server (not set by default).
+      Never run `env` or `set` in CI. Put $NPM_TOKEN in repo secrets.
+      EOF
+    expect: allow
+
+  - name: "mask_data: env prose in gh body"
+    tool: Bash
+    command: 'gh pr create --title "docs: priority" --body "prod env > staging env in priority"'
+    expect: allow
+
+  - name: "mask_data: backtick in double-quoted gh body still runs"
+    tool: Bash
+    command: 'gh issue comment 5 --body "Never run `env` in CI"'
+    expect: block
+
+  - name: "mask_data: unquoted heredoc still expands secrets"
+    tool: Bash
+    command: |-
+      gh pr create --title "ci: x" --body-file - <<EOF
+      token is $GITHUB_TOKEN
+      EOF
+    expect: block
+
+  - name: "mask_data: heredoc fed to bash is still code"
+    tool: Bash
+    command: |-
+      bash <<'EOF'
+      set
+      EOF
+    expect: block
+
+  - name: "mask_data: command chained after commit message"
+    tool: Bash
+    command: 'git commit -m "fix: x" && env'
+    expect: block
+
+  # NOTE: These warn (not allow) because `cat <<` triggers warn-use-read-tool
+  - name: "mask_data: cat heredoc commit message with chained git commands"
+    tool: Bash
+    command: |-
+      git add -A && git commit -m "$(cat <<'EOF'
+      fix(hooks): ensure flag is set
+
+      Never run `env` or `set`. Put $NPM_TOKEN in repo secrets.
+      EOF
+      )" && git push
+    expect: warn
+
+  - name: "mask_data: cat heredoc PR body"
+    tool: Bash
+    command: |-
+      gh pr create --title "fix: x" --body "$(cat <<'EOF'
+      ## Summary
+      - Make sure the flag is set
+      - sops -d is still blocked
+      EOF
+      )"
+    expect: warn
+
+  - name: "mask_data: quoted << in echo is not a heredoc"
+    tool: Bash
+    command: |-
+      echo '<<EOF'
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: << in arithmetic is not a heredoc"
+    tool: Bash
+    command: |-
+      echo $((1<<2))
+      sops -d secrets.yaml
+      2
+    expect: block
+
+  - name: "mask_data: << in a comment is not a heredoc"
+    tool: Bash
+    command: |-
+      echo x # <<'EOF'
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: here-string is not a heredoc"
+    tool: Bash
+    command: |-
+      cat <<<'EOF'
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: << inside a commit message is not a heredoc"
+    tool: Bash
+    command: |-
+      git commit -m "a <<'EOF'"
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: heredoc to crontab is code"
+    tool: Bash
+    command: |-
+      crontab - <<'EOF'
+      * * * * * sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: heredoc piped to ash is code"
+    tool: Bash
+    command: |-
+      cat <<'EOF' | ash
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: heredoc written to a script then run"
+    tool: Bash
+    command: |-
+      cat > s <<'EOF'
+      sops -d secrets.yaml
+      EOF
+      bash s
+    expect: block
+
+  - name: "mask_data: heredoc appended to bashrc"
+    tool: Bash
+    command: |-
+      cat <<'EOF' >> ~/.bashrc
+      cat ~/.aws/credentials > /tmp/x
+      EOF
+    expect: block
+
+  - name: "mask_data: line continuation before pipe to sh"
+    tool: Bash
+    command: |-
+      cat <<'EOF' \
+      | sh
+      sops -d secrets.yaml
+      EOF
+    expect: block
+
+  - name: "mask_data: -m on a non-git command after git"
+    tool: Bash
+    command: |-
+      git status && sh -c 'eval "$1"' -m 'sops -d secrets.yaml'
+    expect: block
+
+  - name: "mask_data: -m on a git alias"
+    tool: Bash
+    command: |-
+      git -c alias.x='!f(){ eval "$2"; }; f' x -m 'gpg -d s.gpg'
+    expect: block
+
+  - name: "mask_data: case statement in body substitution"
+    tool: Bash
+    command: 'gh pr create --body "$(case x in x) env;; esac)"'
+    expect: block
+
+  - name: "mask_data: delimiter followed by paren ends the heredoc early"
+    tool: Bash
+    command: |-
+      git commit -m "$(cat <<'EOF'
+      x
+      EOF)"
+      env
+      : "
+      EOF
+      )"
+    expect: block
+
+  - name: "mask_data: glued quoted heredoc delimiter"
+    tool: Bash
+    command: |-
+      git commit -F - <<'E'"OF"
+      x
+      EOF
+      env
+      E
+    expect: block
+
+  - name: "mask_data: alias redefines git before the message"
+    tool: Bash
+    command: |-
+      alias git=eval; shopt -s expand_aliases
+      git commit -m ';env'
+    expect: block
+
+  - name: "mask_data: eval redefines git before the message"
+    tool: Bash
+    command: |-
+      eval 'git(){ eval "$3"; }'; git commit -m ';env'
+    expect: block
+
+  # =============================================================================
+  # Command-position anchoring for env/set/printenv/echo rules
+  # =============================================================================
+  - name: "block-set-dump: allows echo set in existence check"
+    tool: Bash
+    command: '[ -n "$GITHUB_TOKEN" ] && echo set || echo unset'
+    expect: allow
+
+  - name: "block-env-dump: allows venv named env"
+    tool: Bash
+    command: "python3 -m venv env && source env/bin/activate"
+    expect: allow
+
+  - name: "block-env-dump: allows cd into env dir"
+    tool: Bash
+    command: "cd env && ls"
+    expect: allow
+
+  - name: "block-env-dump: blocks /usr/bin/env"
+    tool: Bash
+    command: "/usr/bin/env"
+    expect: block
+
+  - name: "block-env-dump: blocks env in a crontab line"
+    tool: Bash
+    command: |-
+      crontab - <<'EOF'
+      * * * * * env > /tmp/e
+      EOF
+    expect: block
+
+  - name: "block-env-dump: blocks timeout env"
+    tool: Bash
+    command: "timeout 5 env"
+    expect: block
+
+  - name: "block-env-dump: blocks watch env"
+    tool: Bash
+    command: "watch -n1 env"
+    expect: block
+
+  - name: "block-set-dump: blocks set in a heredoc to crontab"
+    tool: Bash
+    command: |-
+      crontab - <<'EOF'
+      @reboot set > /tmp/vars
+      EOF
+    expect: block
+
+  - name: "block-echo-subshell-secrets: still blocks after a long prefix"
+    tool: Bash
+    command: 'echo "prefix text" "$(env)"'
+    expect: block
+
+  - name: "block-heredoc-secrets: still blocks with a second heredoc after"
+    tool: Bash
+    command: |-
+      cat <<EOF
+      $GITHUB_TOKEN
+      EOF
+      cat <<EOF2
+      hi
+      EOF2
+    expect: block
+
+  - name: "block-env-dump: allows grep for a shebang"
+    tool: Bash
+    command: "grep -v '^#!/usr/bin/env' src/main.py"
+    expect: allow
+
+  - name: "block-env-dump: blocks eval env"
+    tool: Bash
+    command: "eval env"
+    expect: block
+
+  - name: "block-env-dump: blocks sudo env"
+    tool: Bash
+    command: "sudo env"
+    expect: block
+
+  - name: "block-env-dump: blocks bash -c env"
+    tool: Bash
+    command: "bash -c 'env'"
+    expect: block
+
+  - name: "block-env-dump: blocks env before a comment"
+    tool: Bash
+    command: "env # show"
+    expect: block
+
+  - name: "block-env-dump: blocks env with input redirect"
+    tool: Bash
+    command: "env </dev/null"
+    expect: block
+
+  - name: "block-env-dump: blocks env with fd input redirect"
+    tool: Bash
+    command: "env 0</dev/null"
+    expect: block
+
+  - name: "block-env-dump: blocks env -uHOME"
+    tool: Bash
+    command: "env -uHOME"
+    expect: block
+
+  - name: "block-env-dump: blocks env -0v"
+    tool: Bash
+    command: "env -0v"
+    expect: block
+
+  - name: "block-env-dump: blocks env --unset HOME"
+    tool: Bash
+    command: "env --unset HOME"
+    expect: block
+
+  - name: "block-env-dump: blocks env --default-signal"
+    tool: Bash
+    command: "env --default-signal"
+    expect: block
+
+  - name: "block-env-dump: blocks find -exec env"
+    tool: Bash
+    command: 'find /tmp -maxdepth 0 -exec env \;'
+    expect: block
+
+  - name: "block-set-dump: blocks set before a comment"
+    tool: Bash
+    command: "set # dump"
+    expect: block
+
+  - name: "block-set-dump: blocks set with input redirect"
+    tool: Bash
+    command: "set </dev/null"
+    expect: block
+
+  - name: "block-set-dump: blocks backslash set"
+    tool: Bash
+    command: '\set'
+    expect: block
+
+  - name: "block-export-dump: blocks bare export"
+    tool: Bash
+    command: "export"
+    expect: block
+
+  - name: "block-export-dump: blocks export -n with no names"
+    tool: Bash
+    command: "export -n"
+    expect: block
+
+  - name: "block-export-dump: blocks chained bare export"
+    tool: Bash
+    command: "cd /tmp && export | grep TOKEN"
+    expect: block
+
+  - name: "block-declare-dump: blocks bare declare"
+    tool: Bash
+    command: "declare"
+    expect: block
+
+  - name: "block-declare-dump: blocks declare -x"
+    tool: Bash
+    command: "declare -x"
+    expect: block
+
+  - name: "block-declare-dump: blocks bare typeset"
+    tool: Bash
+    command: "typeset"
+    expect: block
+
+  - name: "block-declare-dump: blocks typeset -x piped"
+    tool: Bash
+    command: "typeset -x | grep KEY"
+    expect: block
+
+  - name: "block-declare-dump: allows declare -f"
+    tool: Bash
+    command: "declare -f"
+    expect: allow
+
+  - name: "block-declare-dump: allows declare -F"
+    tool: Bash
+    command: "declare -F"
+    expect: allow
+
+  - name: "block-export-dump: allows echo export"
+    tool: Bash
+    command: "echo export"
+    expect: allow
+
+  - name: "block-declare-dump: allows git commit about declare"
+    tool: Bash
+    command: "git commit -m 'refactor: declare'"
+    expect: allow
+
+  - name: "block-declare-dump: blocks declare +x"
+    tool: Bash
+    command: "declare +x"
+    expect: block
+
+  - name: "block-declare-dump: blocks typeset +r"
+    tool: Bash
+    command: "typeset +r"
+    expect: block
+
+  - name: "block-declare-dump: blocks typeset +x -p"
+    tool: Bash
+    command: "typeset +x -p"
+    expect: block
+
+  - name: "block-declare-dump: blocks declare -x +r"
+    tool: Bash
+    command: "declare -x +r"
+    expect: block
+
+  - name: "block-env-dump: blocks env -S with empty string"
+    tool: Bash
+    command: 'env -S""'
+    expect: block
+
+  - name: "block-env-dump: blocks env --split-string="
+    tool: Bash
+    command: "env --split-string="
+    expect: block
+
+  - name: "block-env-dump: blocks quoted assignment"
+    tool: Bash
+    command: 'env "A=1"'
+    expect: block
+
+  - name: "block-env-dump: blocks single-quoted assignment with space value"
+    tool: Bash
+    command: "env 'A=1' B='x y'"
+    expect: block
+
+  - name: "block-export-dump: blocks subshell export"
+    tool: Bash
+    command: "true && (export)"
+    expect: block
+
+  - name: "block-export-dump: blocks echo export piped to a shell"
+    tool: Bash
+    command: "echo export | bash"
+    expect: block
+
+  - name: "block-export-dump: allows grep alternation"
+    tool: Bash
+    command: 'grep -E "(export|import)" src/index.ts'
+    expect: allow
+
+  - name: "block-export-dump: allows rg anchored alternation"
+    tool: Bash
+    command: 'rg "^(export|import) " src'
+    expect: allow
+
+  - name: "block-export-dump: allows sed group"
+    tool: Bash
+    command: "sed -E 's/(export) //' x"
+    expect: allow
+
+  - name: "block-export-dump: allows echo export to a file"
+    tool: Bash
+    command: "echo export > words.txt"
+    expect: allow
+
+  - name: "block-export-dump: allows grep -n for export"
+    tool: Bash
+    command: 'grep -n "export" src/index.ts'
+    expect: allow
+
+  - name: "block-declare-dump: allows rg alternation"
+    tool: Bash
+    command: 'rg "(declare|typeset)" lib/'
+    expect: allow
+
+  - name: "block-declare-dump: allows grep alternation with flag"
+    tool: Bash
+    command: 'grep -rnE "(declare|local) -a" scripts/'
+    expect: allow
+
+  - name: "block-set-dump: allows grep alternation"
+    tool: Bash
+    command: 'grep -E "(set|get)" src/'
+    expect: allow
+
+  - name: "block-set-dump: blocks subshell after if"
+    tool: Bash
+    command: "if(set)then :;fi"
+    expect: block
+
+  - name: "block-set-dump: blocks subshell after while"
+    tool: Bash
+    command: "while(set);do break;done"
+    expect: block
+
+  - name: "block-export-dump: blocks subshell after until"
+    tool: Bash
+    command: "until(export -p);do break;done"
+    expect: block
+
+  - name: "block-declare-dump: blocks subshell after time"
+    tool: Bash
+    command: "time(declare -p)"
+    expect: block
+
+  - name: "block-set-dump: blocks subshell after else"
+    tool: Bash
+    command: "if false;then :;else(set);fi"
+    expect: block
+
+  - name: "block-set-dump: blocks subshell after do"
+    tool: Bash
+    command: "for i in 1;do(set);done"
+    expect: block
+
+  - name: "block-set-dump: blocks assignment with brace in value"
+    tool: Bash
+    command: "X=a{b set"
+    expect: block
+
+  - name: "block-set-dump: blocks assignment with bang in value"
+    tool: Bash
+    command: "X=a!b set"
+    expect: block
+
+  - name: "block-set-dump: blocks assignment then here-string"
+    tool: Bash
+    command: "X=a<<<x set"
+    expect: block
+
+  - name: "block-declare-dump: blocks assignment with brace in value"
+    tool: Bash
+    command: "X=a{b declare -p"
+    expect: block
+
+  - name: "block-set-dump: blocks chained redirects before set"
+    tool: Bash
+    command: "2>&1>/tmp/o!x set"
+    expect: block
+
+  - name: "block-set-dump: blocks variable assignment before set"
+    tool: Bash
+    command: "X=$HOME set"
+    expect: block
+
+  - name: "block-set-dump: blocks redirect to variable before set"
+    tool: Bash
+    command: "2>$LOG set"
+    expect: block
+
+  - name: "block-declare-dump: blocks variable assignment before declare"
+    tool: Bash
+    command: "X=$HOME declare -p"
+    expect: block
+
+  - name: "block-declare-dump: blocks echo piped with |&"
+    tool: Bash
+    command: "echo declare -p |& bash"
+    expect: block
+
+  - name: "block-declare-dump: blocks echo through tee to bash"
+    tool: Bash
+    command: "echo declare -p | tee /tmp/y.sh | bash"
+    expect: block
+
+  - name: "block-export-dump: blocks echo piped to env bash"
+    tool: Bash
+    command: "echo export | env bash"
+    expect: block
+
+  - name: "block-export-dump: blocks echo piped to source"
+    tool: Bash
+    command: "echo export | source /dev/stdin"
+    expect: block
+
+  - name: "block-export-dump: blocks echo with two spaces piped to bash"
+    tool: Bash
+    command: "echo  export | bash"
+    expect: block
+
+  - name: "block-env-dump: blocks env inside env -S"
+    tool: Bash
+    command: 'env -S ''A=1 env'''
+    expect: block
+
+  - name: "block-env-dump: blocks env inside glued env -S"
+    tool: Bash
+    command: 'env -S''A=1 env'''
+    expect: block
+
+  - name: "block-env-dump: blocks env inside --split-string"
+    tool: Bash
+    command: 'env --split-string=''A=1 env'''
+    expect: block
+
+  - name: "block-env-dump: blocks env -0 inside env -S"
+    tool: Bash
+    command: 'env -S ''A=1 env -0'''
+    expect: block
+
+  - name: "block-env-dump: blocks env -S env"
+    tool: Bash
+    command: "env -S env"
+    expect: block
+
+  - name: "block-env-dump: allows env -S with a double-quoted command"
+    tool: Bash
+    command: 'env -S "python3 -u"'
+    expect: allow
+
+  - name: "block-env-dump: allows glued env -S with a command"
+    tool: Bash
+    command: 'env -S''python3 -u'''
+    expect: allow
+
+  - name: "block-env-dump: allows env -S with a command and args"
+    tool: Bash
+    command: 'env -S ''python3 -u'' script.py'
+    expect: allow
+
+  - name: "block-printenv: allows existence check to /dev/null"
+    tool: Bash
+    command: 'printenv GH_TOKEN >/dev/null && echo "GH_TOKEN present"'
+    expect: allow
+
+  - name: "block-echo-secrets: allows :+ presence check"
+    tool: Bash
+    command: 'echo "GH_TOKEN present: ${GH_TOKEN:+yes}"'
+    expect: allow
+
+  - name: "block-echo-secrets: allows pipe to --password-stdin"
+    tool: Bash
+    command: 'echo "$CR_PAT" | docker login ghcr.io -u me --password-stdin'
+    expect: allow
+
+  - name: "block-echo-secrets: allows token in a later command"
+    tool: Bash
+    command: 'echo start && curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com'
+    expect: allow
+
+  - name: "block-echo-secrets: blocks _PASS suffix"
+    tool: Bash
+    command: 'echo "$DB_PASS"'
+    expect: block
+
+  - name: "block-heredoc-secrets: allows token after heredoc ends"
+    tool: Bash
+    command: |-
+      tee /tmp/req.json >/dev/null <<EOF
+      {"a":1}
+      EOF
+      curl -H "Authorization: token $GITHUB_TOKEN" -d @/tmp/req.json https://api.github.com
+    expect: allow
+
+  - name: "block-heredoc-secrets: blocks here-string to tee"
+    tool: Bash
+    command: 'tee /tmp/t <<< "$GITHUB_TOKEN"'
+    expect: block
+
+  # =============================================================================
+  # Round-2 review: leaks the anchored rules missed, masking bypasses
+  # =============================================================================
+    # =============================================================================
+
+  - name: 'round2: leak 1: FOO=1 env'
+    tool: Bash
+    command: FOO=1 env
+    expect: block
+
+  - name: 'round2: leak 2: LC_ALL=C env | sort'
+    tool: Bash
+    command: LC_ALL=C env | sort
+    expect: block
+
+  - name: 'round2: leak 3: ! env'
+    tool: Bash
+    command: '! env'
+    expect: block
+
+  - name: 'round2: leak 4: echo hi; FOO=1 env'
+    tool: Bash
+    command: echo hi; FOO=1 env
+    expect: block
+
+  - name: 'round2: leak 5: (FOO=1 env)'
+    tool: Bash
+    command: (FOO=1 env)
+    expect: block
+
+  - name: 'round2: leak 6: echo "$(FOO=1 env)"'
+    tool: Bash
+    command: echo "$(FOO=1 env)"
+    expect: block
+
+  - name: 'round2: leak 7: time -p env'
+    tool: Bash
+    command: time -p env
+    expect: block
+
+  - name: 'round2: leak 8: nice -5 env'
+    tool: Bash
+    command: nice -5 env
+    expect: block
+
+  - name: 'round2: leak 9: stdbuf -oL env'
+    tool: Bash
+    command: stdbuf -oL env
+    expect: block
+
+  - name: 'round2: leak 10: ionice -c3 env'
+    tool: Bash
+    command: ionice -c3 env
+    expect: block
+
+  - name: 'round2: leak 11: taskset -c 0 env'
+    tool: Bash
+    command: taskset -c 0 env
+    expect: block
+
+  - name: 'round2: leak 12: setsid env'
+    tool: Bash
+    command: setsid env
+    expect: block
+
+  - name: 'round2: leak 13: strace -o /dev/null env'
+    tool: Bash
+    command: strace -o /dev/null env
+    expect: block
+
+  - name: 'round2: leak 14: sudo --preserve-env env'
+    tool: Bash
+    command: sudo --preserve-env env
+    expect: block
+
+  - name: 'round2: leak 15: timeout -s KILL 5 env'
+    tool: Bash
+    command: timeout -s KILL 5 env
+    expect: block
+
+  - name: 'round2: leak 16: unshare env'
+    tool: Bash
+    command: unshare env
+    expect: block
+
+  - name: 'round2: leak 17: command -p env'
+    tool: Bash
+    command: command -p env
+    expect: block
+
+  - name: 'round2: leak 18: exec -a x env'
+    tool: Bash
+    command: exec -a x env
+    expect: block
+
+  - name: 'round2: leak 19: env -C /tmp env'
+    tool: Bash
+    command: env -C /tmp env
+    expect: block
+
+  - name: 'round2: leak 20: env -u X env'
+    tool: Bash
+    command: env -u X env
+    expect: block
+
+  - name: 'round2: leak 21: env A=1 env'
+    tool: Bash
+    command: env A=1 env
+    expect: block
+
+  - name: 'round2: leak 22: /usr/bin/env FOO=1 env'
+    tool: Bash
+    command: /usr/bin/env FOO=1 env
+    expect: block
+
+  - name: 'round2: leak 23: bash -lc env'
+    tool: Bash
+    command: bash -lc env
+    expect: block
+
+  - name: 'round2: leak 24: sh -ec env'
+    tool: Bash
+    command: sh -ec env
+    expect: block
+
+  - name: 'round2: leak 25: echo | xargs -n1 env'
+    tool: Bash
+    command: echo | xargs -n1 env
+    expect: block
+
+  - name: 'round2: leak 26: $(echo env)'
+    tool: Bash
+    command: $(echo env)
+    expect: block
+
+  - name: 'round2: leak 27: `echo env`'
+    tool: Bash
+    command: '`echo env`'
+    expect: block
+
+  - name: 'round2: leak 28: eval "$(echo env)"'
+    tool: Bash
+    command: eval "$(echo env)"
+    expect: block
+
+  - name: 'round2: leak 29: gh pr create --body "$( $(echo env) )"'
+    tool: Bash
+    command: gh pr create --body "$( $(echo env) )"
+    expect: block
+
+  - name: 'round2: leak 30: env -C /tmp'
+    tool: Bash
+    command: env -C /tmp
+    expect: block
+
+  - name: 'round2: leak 31: env A=1'
+    tool: Bash
+    command: env A=1
+    expect: block
+
+  - name: 'round2: leak 32: printenv GH_TOKEN 2>/dev/null'
+    tool: Bash
+    command: printenv GH_TOKEN 2>/dev/null
+    expect: block
+
+  - name: 'round2: leak 33: printenv GH_TOKEN 3>/dev/null'
+    tool: Bash
+    command: printenv GH_TOKEN 3>/dev/null
+    expect: block
+
+  - name: 'round2: leak 34: printenv GH_TOKEN 2>/dev/null | cat'
+    tool: Bash
+    command: printenv GH_TOKEN 2>/dev/null | cat
+    expect: block
+
+  - name: 'round2: leak 35: printenv GH_TOKEN >/dev/stderr 2>/dev/null'
+    tool: Bash
+    command: printenv GH_TOKEN >/dev/stderr 2>/dev/null
+    expect: block
+
+  - name: 'round2: leak 36: printenv GH_TOKEN # >/dev/null'
+    tool: Bash
+    command: 'printenv GH_TOKEN # >/dev/null'
+    expect: block
+
+  - name: 'round2: leak 37: printenv GH_TOKEN ''>/dev/null'''
+    tool: Bash
+    command: printenv GH_TOKEN '>/dev/null'
+    expect: block
+
+  - name: 'round2: leak 38: printenv GH_TOKEN >/dev/null >&2'
+    tool: Bash
+    command: printenv GH_TOKEN >/dev/null >&2
+    expect: block
+
+  - name: 'round2: leak 39: FOO=1 printenv GH_TOKEN'
+    tool: Bash
+    command: FOO=1 printenv GH_TOKEN
+    expect: block
+
+  - name: 'round2: leak 40: GH_TOKEN2=1 printenv GH_TOKEN'
+    tool: Bash
+    command: GH_TOKEN2=1 printenv GH_TOKEN
+    expect: block
+
+  - name: 'round2: leak 41: FOO=1 set | grep GH_TOKEN'
+    tool: Bash
+    command: FOO=1 set | grep GH_TOKEN
+    expect: block
+
+  - name: 'round2: leak 42: $(echo set)'
+    tool: Bash
+    command: $(echo set)
+    expect: block
+
+  - name: 'round2: leak 43: `echo set`'
+    tool: Bash
+    command: '`echo set`'
+    expect: block
+
+  - name: 'round2: leak 44: : && echo set > /tmp/s; bash /tmp/s'
+    tool: Bash
+    command: ': && echo set > /tmp/s; bash /tmp/s'
+    expect: block
+
+  - name: 'round2: leak 45: $(true && echo set || echo x)'
+    tool: Bash
+    command: $(true && echo set || echo x)
+    expect: block
+
+  - name: 'round2: leak 46: time -p set'
+    tool: Bash
+    command: time -p set
+    expect: block
+
+  - name: 'round2: leak 47: watch -n 1 set'
+    tool: Bash
+    command: watch -n 1 set
+    expect: block
+
+  - name: 'round2: leak 48: bash -c set'
+    tool: Bash
+    command: bash -c set
+    expect: block
+
+  - name: 'round2: leak 49: sh -ec set'
+    tool: Bash
+    command: sh -ec set
+    expect: block
+
+  - name: 'round2: leak 50: 2>/dev/null set | grep X'
+    tool: Bash
+    command: 2>/dev/null set | grep X
+    expect: block
+
+  - name: 'round2: leak 51: X="a b" set | grep X'
+    tool: Bash
+    command: X="a b" set | grep X
+    expect: block
+
+  - name: 'round2: leak 52: ! set | head'
+    tool: Bash
+    command: '! set | head'
+    expect: block
+
+  - name: 'round2: leak 53: if set | grep -q X; then :; fi'
+    tool: Bash
+    command: if set | grep -q X; then :; fi
+    expect: block
+
+  - name: 'round2: leak 54: ssh host set'
+    tool: Bash
+    command: ssh host set
+    expect: block
+
+  - name: 'round2: leak 55: parallel ::: set'
+    tool: Bash
+    command: 'parallel ::: set'
+    expect: block
+
+  - name: 'round2: leak 56: eval set'
+    tool: Bash
+    command: eval set
+    expect: block
+
+  - name: 'round2: leak 57: { set; }'
+    tool: Bash
+    command: '{ set; }'
+    expect: block
+
+  - name: 'round2: leak 58: echo "it''s $GITHUB_TOKEN"'
+    tool: Bash
+    command: echo "it's $GITHUB_TOKEN"
+    expect: block
+
+  - name: 'round2: leak 59: echo "a;b" $GITHUB_TOKEN'
+    tool: Bash
+    command: echo "a;b" $GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 60: echo ";" $GITHUB_TOKEN'
+    tool: Bash
+    command: echo ";" $GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 61: echo $(date; true) $GITHUB_TOKEN'
+    tool: Bash
+    command: echo $(date; true) $GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 62: echo `a;b` $GITHUB_TOKEN'
+    tool: Bash
+    command: echo `a;b` $GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 63: echo "${x:-;}" $GITHUB_TOKEN'
+    tool: Bash
+    command: echo "${x:-;}" $GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 64: printf "%s;%s" a "$GITHUB_TOKEN"'
+    tool: Bash
+    command: printf "%s;%s" a "$GITHUB_TOKEN"
+    expect: block
+
+  - name: 'round2: leak 65: echo echoed $GITHUB_TOKEN'
+    tool: Bash
+    command: echo echoed $GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 66: echo xecho $GITHUB_TOKEN'
+    tool: Bash
+    command: echo xecho $GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 67: echo "a'
+    tool: Bash
+    command: 'echo "a
+
+      b" $GITHUB_TOKEN'
+    expect: block
+
+  - name: 'round2: leak 68: echo $GITHUB_TOKEN | tee /dev/stderr | gh secret set X'
+    tool: Bash
+    command: echo $GITHUB_TOKEN | tee /dev/stderr | gh secret set X
+    expect: block
+
+  - name: 'round2: leak 69: echo $GITHUB_TOKEN # | gh secret set x'
+    tool: Bash
+    command: 'echo $GITHUB_TOKEN # | gh secret set x'
+    expect: block
+
+  - name: 'round2: leak 70: echo $GITHUB_TOKEN | tr a b # | docker login --password-stdi'
+    tool: Bash
+    command: 'echo $GITHUB_TOKEN | tr a b # | docker login --password-stdin'
+    expect: block
+
+  - name: 'round2: leak 71: echo $GITHUB_TOKEN | xargs echo --with-token'
+    tool: Bash
+    command: echo $GITHUB_TOKEN | xargs echo --with-token
+    expect: block
+
+  - name: 'round2: leak 72: echo "$GITHUB_TOKEN | docker login --password-stdin"'
+    tool: Bash
+    command: echo "$GITHUB_TOKEN | docker login --password-stdin"
+    expect: block
+
+  - name: 'round2: leak 73: echo echoed $(env)'
+    tool: Bash
+    command: echo echoed $(env)
+    expect: block
+
+  - name: 'round2: leak 74: echo $(cat <<E'
+    tool: Bash
+    command: 'echo $(cat <<E
+
+      x
+
+      E
+
+      ) $GITHUB_TOKEN'
+    expect: block
+
+  - name: 'round2: leak 75: echo ${x:-a;b} $GITHUB_TOKEN'
+    tool: Bash
+    command: echo ${x:-a;b} $GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 76: cat <<A'
+    tool: Bash
+    command: 'cat <<A
+
+      x
+
+      A
+
+      cat <<B
+
+      x
+
+      B
+
+      $GITHUB_TOKEN'
+    expect: block
+
+  - name: 'round2: leak 77: cat <<< "x $GITHUB_TOKEN"'
+    tool: Bash
+    command: cat <<< "x $GITHUB_TOKEN"
+    expect: block
+
+  - name: 'round2: leak 78: cat <<< x$GITHUB_TOKEN'
+    tool: Bash
+    command: cat <<< x$GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 79: cat <<< ''x'' <<< $GITHUB_TOKEN'
+    tool: Bash
+    command: cat <<< 'x' <<< $GITHUB_TOKEN
+    expect: block
+
+  - name: 'round2: leak 80: cat <<< "a'
+    tool: Bash
+    command: 'cat <<< "a
+
+      $GITHUB_TOKEN"'
+    expect: block
+
+  - name: 'round2: leak 81: cat <<EOF'
+    tool: Bash
+    command: 'cat <<EOF
+
+      x << y $GITHUB_TOKEN
+
+      EOF'
+    expect: block
+
+  - name: 'round2: leak 82: cat <<EOF'
+    tool: Bash
+    command: 'cat <<EOF
+
+      x << y
+
+      y
+
+      $GITHUB_TOKEN
+
+      EOF'
+    expect: block
+
+  - name: 'round2: leak 83: cat <<EOF'
+    tool: Bash
+    command: "cat <<EOF\n EOF \n$GITHUB_TOKEN\nEOF"
+    expect: block
+
+  - name: 'round2: leak 84: cat <<EOF'
+    tool: Bash
+    command: 'cat <<EOF
+
+      EOF)
+
+      $GITHUB_TOKEN
+
+      EOF'
+    expect: block
+
+  - name: 'round2: leak 85: cat <<A <<B'
+    tool: Bash
+    command: 'cat <<A <<B
+
+      B
+
+      $GITHUB_TOKEN
+
+      A
+
+      B'
+    expect: block
+
+  - name: 'round2: leak 86: git commit -m ''$(env)''; git commit -m "${_@P}"'
+    tool: Bash
+    command: git commit -m '$(env)'; git commit -m "${_@P}"
+    expect: block
+
+  - name: 'round2: leak 87: git commit -m ''$(env)'' && gh pr create --body "${_@P}"'
+    tool: Bash
+    command: git commit -m '$(env)' && gh pr create --body "${_@P}"
+    expect: block
+
+  - name: 'round2: leak 88: git commit -m ''x[$(env)]''; git commit -m "${!_}"'
+    tool: Bash
+    command: git commit -m 'x[$(env)]'; git commit -m "${!_}"
+    expect: block
+
+  - name: 'round2: leak 89: gh release create v1 --target -b .env'
+    tool: Bash
+    command: gh release create v1 --target -b .env
+    expect: block
+
+  - name: 'round2: leak 90: gh release create v1 -R o/r --discussion-category -t ~/.aws/'
+    tool: Bash
+    command: gh release create v1 -R o/r --discussion-category -t ~/.aws/credentials
+    expect: block
+
+  - name: 'round2: leak 91: gh release create v1 -- -t .env'
+    tool: Bash
+    command: gh release create v1 -- -t .env
+    expect: block
+
+  - name: 'round2: leak 92: gh release create v1 --notes-start-tag -b ~/.aws/credentials'
+    tool: Bash
+    command: gh release create v1 --notes-start-tag -b ~/.aws/credentials
+    expect: block
+
+  - name: 'round2: masked message 1'
+    tool: Bash
+    command: 'git commit -am "chore: set modes"'
+    expect: allow
+
+  - name: 'round2: masked message 2'
+    tool: Bash
+    command: 'gh pr create --base main --head feat --title "fix: set x" --body "env is set" --draft'
+    expect: allow
+
+  - name: 'round2: masked message 3'
+    tool: Bash
+    command: 'gh pr merge 5 --squash --subject "fix: set x" --body "env set"'
+    expect: allow
+
+  - name: 'round2: masked message 4'
+    tool: Bash
+    command: gh issue create --title "set is noisy" --body "env" --label bug --repo o/r
+    expect: allow
+
+  - name: 'round2: masked message 5'
+    tool: Bash
+    command: gh release create v1.2.0 --title "v1.2.0" --notes "env and set fixes" --latest
+    expect: allow
+
+  - name: 'round2: masked message 6'
+    tool: Bash
+    command: git tag -a v1 -m "set things"
+    expect: allow
+
+  - name: 'round2: masked message 7'
+    tool: Bash
+    command: 'cat > /tmp/b.md <<''EOF''
+
+      The value (not set) is fine.
+
+      EOF'
+    expect: warn
+
+  - name: 'round2: masked message 8'
+    tool: Bash
+    command: test -n "$X" && echo X set || echo X NOT set
+    expect: allow
+
+  - name: 'round2: masked message 9'
+    tool: Bash
+    command: grep -iE "error|not set|x" f
     expect: allow
