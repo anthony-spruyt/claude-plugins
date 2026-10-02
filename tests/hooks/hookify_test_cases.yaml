@@ -1310,15 +1310,15 @@ test_cases:
     expect: block
 
   # NOTE: These warn (not allow) because `cat` triggers warn-use-read-tool
-  - name: "block-heredoc-secrets: heredoc without secrets warns (cat rule)"
+  - name: "block-heredoc-secrets: heredoc without secrets is allowed"
     tool: Bash
     command: "cat <<EOF\nHello world\nEOF"
-    expect: warn
+    expect: allow
 
-  - name: "block-heredoc-secrets: heredoc with PATH warns (cat rule, not blocked)"
+  - name: "block-heredoc-secrets: heredoc with PATH is not blocked"
     tool: Bash
     command: "cat <<EOF\nPATH is $PATH\nEOF"
-    expect: warn
+    expect: allow
 
   # =============================================================================
   # Echo Subshell Secrets (block-echo-subshell-secrets)
@@ -1888,7 +1888,6 @@ test_cases:
     command: 'git commit -m "fix: x" && env'
     expect: block
 
-  # NOTE: These warn (not allow) because `cat <<` triggers warn-use-read-tool
   - name: "mask_data: cat heredoc commit message with chained git commands"
     tool: Bash
     command: |-
@@ -1898,7 +1897,7 @@ test_cases:
       Never run `env` or `set`. Put $NPM_TOKEN in repo secrets.
       EOF
       )" && git push
-    expect: warn
+    expect: allow
 
   - name: "mask_data: cat heredoc PR body"
     tool: Bash
@@ -1909,7 +1908,7 @@ test_cases:
       - sops -d is still blocked
       EOF
       )"
-    expect: warn
+    expect: allow
 
   - name: "mask_data: quoted << in echo is not a heredoc"
     tool: Bash
@@ -2170,6 +2169,51 @@ test_cases:
     command: 'find /tmp -maxdepth 0 -exec env \;'
     expect: block
 
+  - name: "block-env-dump: blocks find -execdir path-qualified env"
+    tool: Bash
+    command: "find . -execdir /usr/bin/env -0 ';'"
+    expect: block
+
+  - name: "block-printenv: blocks find -ok printenv"
+    tool: Bash
+    command: "find . -ok printenv \\;"
+    expect: block
+
+  - name: "block-env-dump: blocks find -okdir env"
+    tool: Bash
+    command: "find . -okdir env ';'"
+    expect: block
+
+  - name: "block-env-dump: allows find -exec grep for env"
+    tool: Bash
+    command: "find . -exec grep -l env {} +"
+    expect: allow
+
+  - name: "block-printenv: blocks path-qualified printenv"
+    tool: Bash
+    command: "/usr/bin/printenv"
+    expect: block
+
+  - name: "block-env-grep: blocks path-qualified env piped to grep"
+    tool: Bash
+    command: "/bin/env | grep KEY"
+    expect: block
+
+  - name: "block-env-dump: blocks path-qualified env"
+    tool: Bash
+    command: "/usr/bin/env"
+    expect: block
+
+  - name: "block-printenv: blocks sudo path-qualified printenv"
+    tool: Bash
+    command: "sudo /usr/bin/printenv"
+    expect: block
+
+  - name: "block-env-dump: allows path-qualified env running a script"
+    tool: Bash
+    command: "/usr/bin/env python3 script.py"
+    expect: allow
+
   - name: "block-set-dump: blocks set before a comment"
     tool: Bash
     command: "set # dump"
@@ -2425,6 +2469,116 @@ test_cases:
     command: "echo  export | bash"
     expect: block
 
+  - name: "block-set-dump: blocks backslash-split set"
+    tool: Bash
+    command: 's\et'
+    expect: block
+
+  - name: "block-set-dump: blocks double-quoted set"
+    tool: Bash
+    command: '"set"'
+    expect: block
+
+  - name: "block-declare-dump: blocks quoted declare -p"
+    tool: Bash
+    command: "'declare' -p"
+    expect: block
+
+  - name: "block-export-dump: blocks empty-quote-split export -p"
+    tool: Bash
+    command: "ex''port -p"
+    expect: block
+
+  - name: "block-declare-dump: blocks empty-quote-split typeset"
+    tool: Bash
+    command: "typ''eset"
+    expect: block
+
+  - name: "block-set-dump: blocks sudo bash -c set"
+    tool: Bash
+    command: "sudo bash -c 'set'"
+    expect: block
+
+  - name: "block-declare-dump: blocks declare -p in command substitution"
+    tool: Bash
+    command: "echo $(declare -p)"
+    expect: block
+
+  - name: "block-export-dump: blocks eval export"
+    tool: Bash
+    command: "eval export"
+    expect: block
+
+  - name: "block-export-dump: blocks printf export piped to bash"
+    tool: Bash
+    command: "printf 'export\\n' | bash"
+    expect: block
+
+  - name: "block-declare-dump: blocks echo declare -p piped to ssh"
+    tool: Bash
+    command: "echo declare -p | ssh host"
+    expect: block
+
+  - name: "block-set-dump: blocks echo set written to a file"
+    tool: Bash
+    command: "echo set > /tmp/s"
+    expect: block
+
+  - name: "block-export-dump: blocks parallel ::: export -p"
+    tool: Bash
+    command: "parallel ::: export -p"
+    expect: block
+
+  - name: "block-export-dump: allows grep for export|import"
+    tool: Bash
+    command: 'grep -E "(export|import)" src'
+    expect: allow
+
+  - name: "block-export-dump: allows echo export to notes"
+    tool: Bash
+    command: "echo export > notes.txt"
+    expect: allow
+
+  - name: "block-export-dump: allows echo export piped to grep"
+    tool: Bash
+    command: "echo export | grep x"
+    expect: allow
+
+  - name: "block-export-dump: allows export FOO=1"
+    tool: Bash
+    command: "export FOO=1"
+    expect: allow
+
+  - name: "block-export-dump: allows export -f fn"
+    tool: Bash
+    command: "export -f myfn"
+    expect: allow
+
+  - name: "block-export-dump: allows export -F"
+    tool: Bash
+    command: "export -F"
+    expect: allow
+
+  - name: "block-declare-dump: allows declare -A map"
+    tool: Bash
+    command: "declare -A map"
+    expect: allow
+
+  - name: "block-declare-dump: allows declare -fp"
+    tool: Bash
+    command: "declare -fp"
+    expect: allow
+
+  - name: "block-set-dump: allows set and export -p in PR body"
+    tool: Bash
+    command: 'gh pr create --body "set and export -p dump vars"'
+    expect: allow
+
+  - name: "block-declare-dump: allows declare -p in commit message"
+    tool: Bash
+    command: 'git commit -m "fix: declare -p is blocked"'
+    expect: allow
+
   - name: "block-env-dump: blocks env inside env -S"
     tool: Bash
     command: 'env -S ''A=1 env'''
@@ -2468,6 +2622,101 @@ test_cases:
   - name: "block-printenv: allows existence check to /dev/null"
     tool: Bash
     command: 'printenv GH_TOKEN >/dev/null && echo "GH_TOKEN present"'
+    expect: allow
+
+  - name: "block-env-dump: blocks env split by empty quotes"
+    tool: Bash
+    command: "e''nv"
+    expect: block
+
+  - name: "block-env-dump: blocks double-quoted env"
+    tool: Bash
+    command: '"env"'
+    expect: block
+
+  - name: "block-env-dump: blocks backslash-escaped env"
+    tool: Bash
+    command: '\env'
+    expect: block
+
+  - name: "block-env-dump: blocks sudo with split env"
+    tool: Bash
+    command: "sudo e''nv"
+    expect: block
+
+  - name: "block-env-dump: blocks bash -c with split env"
+    tool: Bash
+    command: 'bash -c ''e""nv'''
+    expect: block
+
+  - name: "block-env-dump: blocks split env redirected to a file"
+    tool: Bash
+    command: "e''nv > /tmp/e"
+    expect: block
+
+  - name: "block-env-dump: allows split env piped to wc"
+    tool: Bash
+    command: "e''nv | wc -l"
+    expect: allow
+
+  - name: "block-env-dump: allows split env with a command"
+    tool: Bash
+    command: "e''nv FOO=1 python3 app.py"
+    expect: allow
+
+  - name: "block-printenv: blocks single-quoted printenv"
+    tool: Bash
+    command: "'printenv'"
+    expect: block
+
+  - name: "block-printenv: blocks printenv in command substitution"
+    tool: Bash
+    command: 'echo $(printenv)'
+    expect: block
+
+  - name: "block-printenv: blocks split printenv with a name"
+    tool: Bash
+    command: "print''env HOME"
+    expect: block
+
+  - name: "block-printenv: allows split printenv name check to /dev/null"
+    tool: Bash
+    command: "print''env HOME >/dev/null"
+    expect: allow
+
+  - name: "block-env-grep: blocks split env piped to grep"
+    tool: Bash
+    command: "e''nv | grep TOKEN"
+    expect: block
+
+  - name: "block-env-grep: blocks sudo printenv piped to grep"
+    tool: Bash
+    command: "sudo 'printenv' | grep -i key"
+    expect: block
+
+  - name: "block-env-dump: allows env dir with a comment mentioning venv"
+    tool: Bash
+    command: "mkdir -p env # venv"
+    expect: allow
+
+  - name: "block-env-dump: allows creating a venv named env"
+    tool: Bash
+    command: "python3 -m venv env"
+    expect: allow
+
+  - name: "block-env-dump: allows grep for the word env"
+    tool: Bash
+    command: 'grep -rn "env" .'
+    expect: allow
+
+  - name: "block-printenv: allows env and printenv in PR body prose"
+    tool: Bash
+    command: 'gh pr create --body "never run env or printenv"'
+    expect: allow
+
+  - name: "block-env-grep: allows env | grep in commit message"
+    tool: Bash
+    command: 'git commit -m "fix: block env | grep"'
     expect: allow
 
   - name: "block-echo-secrets: allows :+ presence check"
@@ -3054,7 +3303,7 @@ test_cases:
       The value (not set) is fine.
 
       EOF'
-    expect: warn
+    expect: allow
 
   - name: 'round2: masked message 8'
     tool: Bash
@@ -3065,3 +3314,361 @@ test_cases:
     tool: Bash
     command: grep -iE "error|not set|x" f
     expect: allow
+
+  # =============================================================================
+  # command_match review fixes (#101)
+  # =============================================================================
+  - name: "block-env-dump: blocks env --ignore-signal"
+    tool: Bash
+    command: "env --ignore-signal"
+    expect: block
+
+  - name: "block-env-dump: blocks env --ignore-signal=INT"
+    tool: Bash
+    command: "env --ignore-signal=INT"
+    expect: block
+
+  - name: "block-env-dump: blocks env --block-signal=PIPE"
+    tool: Bash
+    command: "env --block-signal=PIPE"
+    expect: block
+
+  - name: "block-env-dump: blocks env --list-signal-handling"
+    tool: Bash
+    command: "env --list-signal-handling"
+    expect: block
+
+  - name: "block-env-dump: blocks env --debug"
+    tool: Bash
+    command: "env --debug"
+    expect: block
+
+  - name: "block-env-dump: blocks env --nul"
+    tool: Bash
+    command: "env --nul"
+    expect: block
+
+  - name: "block-env-dump: blocks env --ze"
+    tool: Bash
+    command: "env --ze"
+    expect: block
+
+  - name: "block-env-dump: blocks env --un=HOME"
+    tool: Bash
+    command: "env --un=HOME"
+    expect: block
+
+  - name: "block-env-dump: blocks env --ch=/"
+    tool: Bash
+    command: "env --ch=/"
+    expect: block
+
+  - name: "block-env-dump: blocks env --deb"
+    tool: Bash
+    command: "env --deb"
+    expect: block
+
+  - name: "block-env-dump: blocks env --def"
+    tool: Bash
+    command: "env --def"
+    expect: block
+
+  - name: "block-env-dump: blocks env -S\"-0\""
+    tool: Bash
+    command: "env -S\"-0\""
+    expect: block
+
+  - name: "block-env-dump: blocks env -S'-u X'"
+    tool: Bash
+    command: "env -S'-u X'"
+    expect: block
+
+  - name: "block-env-dump: blocks env -S '-u X -0'"
+    tool: Bash
+    command: "env -S '-u X -0'"
+    expect: block
+
+  - name: "block-env-dump: blocks env -C /tmp -S A=1"
+    tool: Bash
+    command: "env -C /tmp -S A=1"
+    expect: block
+
+  - name: "block-env-dump: blocks env | wc --files0-from=-"
+    tool: Bash
+    command: "env | wc --files0-from=-"
+    expect: block
+
+  - name: "block-env-dump: blocks env | wc -l --files0-from=-"
+    tool: Bash
+    command: "env | wc -l --files0-from=-"
+    expect: block
+
+  - name: "block-env-dump: allows env | wc -c"
+    tool: Bash
+    command: "env | wc -c"
+    expect: allow
+
+  - name: "block-env-dump: allows env | wc -w"
+    tool: Bash
+    command: "env | wc -w"
+    expect: allow
+
+  - name: "block-env-dump: allows env --ignore-environment"
+    tool: Bash
+    command: "env --ignore-environment"
+    expect: allow
+
+  - name: "block-env-dump: allows env --ignore-env | sort"
+    tool: Bash
+    command: "env --ignore-env | sort"
+    expect: allow
+
+  - name: "block-env-dump: allows env --help"
+    tool: Bash
+    command: "env --help"
+    expect: allow
+
+  - name: "block-env-dump: allows env --version"
+    tool: Bash
+    command: "env --version"
+    expect: allow
+
+  - name: "block-env-dump: allows env -i"
+    tool: Bash
+    command: "env -i"
+    expect: allow
+
+  - name: "block-env-dump: allows env --ignore-signal=INT python3 app.py"
+    tool: Bash
+    command: "env --ignore-signal=INT python3 app.py"
+    expect: allow
+
+  - name: "block-env-dump: allows env -S\"python3 -u\" x.py"
+    tool: Bash
+    command: "env -S\"python3 -u\" x.py"
+    expect: allow
+
+  - name: "block-env-grep: allows env python3 x.py | grep foo"
+    tool: Bash
+    command: "env python3 x.py | grep foo"
+    expect: allow
+
+  - name: "block-env-grep: allows env FOO=1 make | grep error"
+    tool: Bash
+    command: "env FOO=1 make | grep error"
+    expect: allow
+
+  - name: "block-env-grep: allows /usr/bin/env bash s.sh | grep ok"
+    tool: Bash
+    command: "/usr/bin/env bash s.sh | grep ok"
+    expect: allow
+
+  - name: "block-env-grep: only warns (shell wrapper) on env -i bash -c x | grep y"
+    tool: Bash
+    command: "env -i bash -c x | grep y"
+    expect: warn
+
+  - name: "block-env-grep: allows env -i | grep x"
+    tool: Bash
+    command: "env -i | grep x"
+    expect: allow
+
+  - name: "block-env-grep: blocks env -0 | grep TOKEN"
+    tool: Bash
+    command: "env -0 | grep TOKEN"
+    expect: block
+
+  - name: "block-env-grep: blocks env -u HOME | grep TOKEN"
+    tool: Bash
+    command: "env -u HOME | grep TOKEN"
+    expect: block
+
+  - name: "block-env-grep: blocks env A=1 | grep TOKEN"
+    tool: Bash
+    command: "env A=1 | grep TOKEN"
+    expect: block
+
+  - name: "block-env-grep: blocks env 2>/dev/null | grep TOKEN"
+    tool: Bash
+    command: "env 2>/dev/null | grep TOKEN"
+    expect: block
+
+  - name: "block-env-grep: blocks printenv HOME | grep x"
+    tool: Bash
+    command: "printenv HOME | grep x"
+    expect: block
+
+  - name: "block-printenv: allows printenv GH_TOKEN &> /dev/null"
+    tool: Bash
+    command: "printenv GH_TOKEN &> /dev/null"
+    expect: allow
+
+  - name: "block-printenv: blocks printenv GH_TOKEN 2> /dev/null (stdout still prints)"
+    tool: Bash
+    command: "printenv GH_TOKEN 2> /dev/null"
+    expect: block
+
+  - name: "block-printenv: allows printenv GH_TOKEN >/dev/null 2>&1"
+    tool: Bash
+    command: "printenv GH_TOKEN >/dev/null 2>&1"
+    expect: allow
+
+  - name: "block-printenv: allows printenv | wc -c"
+    tool: Bash
+    command: "printenv | wc -c"
+    expect: allow
+
+  - name: "block-printenv: allows printenv | wc -w"
+    tool: Bash
+    command: "printenv | wc -w"
+    expect: allow
+
+  - name: "block-printenv: blocks printenv | wc --files0-from=-"
+    tool: Bash
+    command: "printenv | wc --files0-from=-"
+    expect: block
+
+  - name: "block-printenv: blocks printenv GH_TOKEN 2> /tmp/x"
+    tool: Bash
+    command: "printenv GH_TOKEN 2> /tmp/x"
+    expect: block
+
+  - name: "block-export-dump: blocks echo export >> ~/.bashrc"
+    tool: Bash
+    command: "echo export >> ~/.bashrc"
+    expect: block
+
+  - name: "block-declare-dump: blocks echo declare > f.sh"
+    tool: Bash
+    command: "echo declare > f.sh"
+    expect: block
+
+  - name: "block-declare-dump: blocks echo typeset > f.sh"
+    tool: Bash
+    command: "echo typeset > f.sh"
+    expect: block
+
+  - name: "block-export-dump: allows echo export | grep x"
+    tool: Bash
+    command: "echo export | grep x"
+    expect: allow
+
+  - name: "block-declare-dump: blocks declare -p $(compgen -v)"
+    tool: Bash
+    command: "declare -p $(compgen -v)"
+    expect: block
+
+  - name: "block-declare-dump: blocks typeset -p $(compgen -v)"
+    tool: Bash
+    command: "typeset -p $(compgen -v)"
+    expect: block
+
+  - name: "block-declare-dump: blocks declare -p \"$(compgen -v)\""
+    tool: Bash
+    command: "declare -p \"$(compgen -v)\""
+    expect: block
+
+  - name: "block-declare-dump: blocks declare -p `compgen -v`"
+    tool: Bash
+    command: "declare -p `compgen -v`"
+    expect: block
+
+  - name: "block-declare-dump: allows declare -p HOME"
+    tool: Bash
+    command: "declare -p HOME"
+    expect: allow
+
+  - name: "block-declare-dump: blocks readonly"
+    tool: Bash
+    command: "readonly"
+    expect: block
+
+  - name: "block-declare-dump: blocks readonly -p"
+    tool: Bash
+    command: "readonly -p"
+    expect: block
+
+  - name: "block-declare-dump: blocks readonly | grep TOKEN"
+    tool: Bash
+    command: "readonly | grep TOKEN"
+    expect: block
+
+  - name: "block-declare-dump: blocks readonly -p > /tmp/r"
+    tool: Bash
+    command: "readonly -p > /tmp/r"
+    expect: block
+
+  - name: "block-declare-dump: allows readonly A=1"
+    tool: Bash
+    command: "readonly A=1"
+    expect: allow
+
+  - name: "block-declare-dump: allows readonly -f myfunc"
+    tool: Bash
+    command: "readonly -f myfunc"
+    expect: allow
+
+  - name: "block-declare-dump: allows readonly -f"
+    tool: Bash
+    command: "readonly -f"
+    expect: allow
+
+  - name: "block-declare-dump: allows readonly -p HOME"
+    tool: Bash
+    command: "readonly -p HOME"
+    expect: allow
+
+  - name: "block-set-dump: blocks parallel -j2 echo ::: 'set'"
+    tool: Bash
+    command: "parallel -j2 echo ::: 'set'"
+    expect: block
+
+  - name: "block-export-dump: blocks parallel echo x ::: a ::: export"
+    tool: Bash
+    command: "parallel echo x ::: a ::: export"
+    expect: block
+
+  - name: "block-declare-dump: blocks parallel ::: declare -p"
+    tool: Bash
+    command: "parallel ::: declare -p"
+    expect: block
+
+  - name: "block-set-dump: allows parallel echo ::: a b c"
+    tool: Bash
+    command: "parallel echo ::: a b c"
+    expect: allow
+
+  - name: "block-env-dump: blocks env -a x"
+    tool: Bash
+    command: "env -a x"
+    expect: block
+
+  - name: "block-env-dump: blocks env --argv0=x"
+    tool: Bash
+    command: "env --argv0=x"
+    expect: block
+
+  - name: "block-env-dump: blocks env -f vars.txt"
+    tool: Bash
+    command: "env -f vars.txt"
+    expect: block
+
+  - name: "block-env-dump: allows env -a x python3 app.py"
+    tool: Bash
+    command: "env -a x python3 app.py"
+    expect: allow
+
+  - name: "block-env-dump: allows env -"
+    tool: Bash
+    command: "env -"
+    expect: allow
+
+  - name: "block-export-dump: allows echo export > notes.txt"
+    tool: Bash
+    command: "echo export > notes.txt"
+    expect: allow
+
+  - name: "block-declare-dump: blocks echo declare > ~/.profile"
+    tool: Bash
+    command: "echo declare > ~/.profile"
+    expect: block

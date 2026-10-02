@@ -2,7 +2,11 @@
 name: block-env-grep
 enabled: true
 event: bash
-pattern: (?:^|(?<=[\n;&(){}`!])|(?<=(?<![\w\\])\|)|(?<=(?<![^\s;&|(`\'"])/bin/)|(?<=(?<![^\s;&|(`\'"])/usr/bin/)|(?<=\s\\)|(?<=^\\))(?-i:env|printenv)[^\S\n]*\|[^\S\n]*grep|(?<=[^\S\n])(?<!\bcd )(?<!\bls )(?<!venv )(?<!pushd )(?<!mkdir )(?<!rmdir )(?-i:env|printenv)[^\S\n]*\|[^\S\n]*grep|(?:(?<=\s-c [\'"])|(?<=-[a-z]c [\'"])|(?<=\seval [\'"])|(?<=\sexec [\'"])|(?<=^eval [\'"]))(?-i:env|printenv)[^\S\n]*\|[^\S\n]*grep
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^(?:env|printenv(?: [^|]*)?)(?: (?:\d*|&)[<>]\S* \S+)* \| grep(?: |$)'
+    fallback: (?:^|(?<=[\n;&(){}`!])|(?<=(?<![\w\\])\|)|(?<=(?<![^\s;&|(`\'"])/bin/)|(?<=(?<![^\s;&|(`\'"])/usr/bin/)|(?<=\s\\)|(?<=^\\))(?-i:env|printenv)[^\S\n]*\|[^\S\n]*grep|(?<=[^\S\n])(?<!\bcd )(?<!\bls )(?<!venv )(?<!pushd )(?<!mkdir )(?<!rmdir )(?-i:env|printenv)[^\S\n]*\|[^\S\n]*grep|(?:(?<=\s-c [\'"])|(?<=-[a-z]c [\'"])|(?<=\seval [\'"])|(?<=\sexec [\'"])|(?<=^eval [\'"]))(?-i:env|printenv)[^\S\n]*\|[^\S\n]*grep
 action: block
 mask_data: true
 ---
