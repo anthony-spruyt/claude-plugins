@@ -7,7 +7,7 @@ event: bash
 conditions:
   - field: command
     operator: regex_match
-    pattern: '\$\{!(?![A-Za-z_]\w*(?:\[[@*]\]|[@*])\})|\$\{[^}\s]*@P\}|(?<![\w-])(?:declare|typeset|local)(?:\s+[-+][A-Za-z]+)*\s+-[A-Za-z]*n[A-Za-z]*(?!(?:\s+[-+][A-Za-z]+)*(?:\s+[A-Za-z_]\w*=(?![A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*(?![A-Za-z0-9_]))[A-Za-z_]\w*)+[^\S\n]*(?:[;&|)\n]|$))'
+    pattern: '\$\{!(?![A-Za-z_]\w*(?:\[[@*]\]|[@*])\})|\$\{@?[^}\s$@]*@P\}|(?<![\w-])(?:declare|typeset|local)(?:\s+[-+][A-Za-z]+)*\s+-[A-Za-z]*n[A-Za-z]*(?!(?:\s+[-+][A-Za-z]+)*(?:\s+[A-Za-z_]\w*=(?![A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*(?![A-Za-z0-9_]))[A-Za-z_]\w*)+[^\S\n]*(?:[;&|)\n]|$))'
 action: block
 mask_data: true
 ---
