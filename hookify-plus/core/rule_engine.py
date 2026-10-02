@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Rule evaluation engine for hookify plugin."""
 
+import os
 import posixpath
 import re
 import sys
@@ -26,13 +27,13 @@ def compile_regex(pattern: str) -> re.Pattern:
     return re.compile(pattern, re.IGNORECASE | re.DOTALL)
 
 
-def normalise(command: str):
+def normalise(command: str, cwd: str = ''):
     functions = set()
     _BODIES.clear()
     commands = parse_commands(command, functions)
     if commands is None:
         return None
-    lines = render(commands)
+    lines = render(commands, cwd)
     return None if lines is None else (lines, opaque(command, commands, functions))
 
 
@@ -42,10 +43,10 @@ def _clean_path(path: str) -> str:
 
 
 @lru_cache(maxsize=16)
-def clean_lines(command: str) -> Optional[tuple]:
+def clean_lines(command: str, cwd: str = '') -> Optional[tuple]:
     """Cached parse: (clean lines, opaque) or None. Several rules parse the same command."""
     try:
-        parsed = normalise(command)
+        parsed = normalise(command, cwd)
     except Exception:
         return None
     return None if parsed is None else (tuple(parsed[0]), parsed[1])
@@ -191,7 +192,8 @@ class RuleEngine:
             field_value = mask_data(field_value)
 
         if condition.operator == 'command_match':
-            return self._command_match(condition, tool_name, raw_value, field_value, mask, strict)
+            cwd = (input_data or {}).get('cwd') or os.getcwd()
+            return self._command_match(condition, tool_name, raw_value, field_value, mask, strict, cwd)
         if condition.operator == 'regex_match':
             return self._regex_match(condition.pattern, field_value)
         if condition.operator == 'not_regex_match':
@@ -200,13 +202,13 @@ class RuleEngine:
         return test is not None and test(field_value, condition.pattern)
 
     def _command_match(self, condition: Condition, tool_name: str, raw_value: str,
-                       field_value: str, mask: bool, strict: bool) -> bool:
+                       field_value: str, mask: bool, strict: bool, cwd: str = '') -> bool:
         pattern = condition.pattern
         if condition.field != 'command':
             return self._regex_match(pattern, raw_value)
         if tool_name != 'Bash':
             return self._regex_match(condition.fallback or pattern, field_value)
-        parsed = clean_lines(raw_value)
+        parsed = clean_lines(raw_value, cwd)
         if parsed is None or (strict and parsed[1] and condition.fallback):
             if self._regex_match(condition.fallback or pattern, field_value):
                 return True

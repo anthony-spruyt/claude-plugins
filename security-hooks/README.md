@@ -6,7 +6,7 @@ Blocking rules for Claude Code that prevent accidental secret exposure.
 
 Requires the **hookify-plus** plugin to be installed from this same marketplace. Without the engine, these rule files are inert markdown with no effect.
 
-## Rules (27)
+## Rules (29)
 
 | Rule                          | Blocks                                                  |
 | ----------------------------- | ------------------------------------------------------- |
@@ -19,8 +19,10 @@ Requires the **hookify-plus** plugin to be installed from this same marketplace.
 | block-export-dump             | `export -p`                                             |
 | block-gpg-decrypt             | `gpg --decrypt` / `gpg -d`                              |
 | block-heredoc-s3crets         | heredocs containing secret variables                    |
+| block-indirect-s3crets        | `${!x}`, `${x@P}` and namerefs to secret variables      |
 | block-ip-in-commits           | Private IPs in git commit messages                      |
 | block-ip-in-github            | Private IPs in gh issue/pr commands                     |
+| block-message-s3crets         | Secret variables in commit, issue and PR messages       |
 | block-openssl-decrypt         | `openssl enc -d` / `openssl smime -decrypt`             |
 | block-powershell-env-dump     | `Get-ChildItem Env:` / `GetEnvironmentVariables()`      |
 | block-powershell-secret-vars  | `$env:` reads of secret-looking names                   |

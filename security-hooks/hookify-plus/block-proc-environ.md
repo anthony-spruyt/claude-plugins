@@ -5,7 +5,7 @@ event: bash
 conditions:
   - field: command
     operator: command_match
-    pattern: '^(?!(?:git|gh|echo|printf) ).*(?:^| |=)''?/+proc/+(?:[^\s''/]*/+){1,6}environ''?(?= |$)'
+    pattern: '^(?!(?:echo|printf|git (?:grep|log)|gh search) ).*(?:^| |=|@)''?/+proc/+(?:[^\s''/]*/+){1,6}environ''?(?= |$)'
     fallback: 'cat\s+/proc/(self|\$\$|[0-9]+)/environ'
 action: block
 mask_data: true

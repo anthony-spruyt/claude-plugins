@@ -67,6 +67,21 @@ INPUTS = {
     "many-gh-global-options": "gh" + " -a" * 6000 + " x",
     "printf-open-brace-dollars": "printf }{${A" * 1600,
     "echo-in-open-braces": "bash -c echo }Get-ChildItem ${A" * 645,
+    "commit-many-substitutions": 'git commit -m "' + "$(a)" * 4900,
+    "commit-open-substitutions": 'git commit -m "' + "$((" * 6600,
+    "gh-body-many-dollars": "gh pr create --body " + "$ " * 9900,
+    "gh-global-options-body": "gh" + " -a" * 6000 + " pr create --body $A_TOKEN",
+    "declare-n-many-names": "declare -n" + " a=b" * 4900,
+    "declare-many-flags-n": "declare" + " -a" * 6000 + " -n",
+    "indirect-bang-braces": "${!" * 6600,
+    "prompt-expansion-braces": "${a" * 6600 + "@P}",
+    "gpg-many-options": "gpg" + " --batch" * 2400 + " x",
+    "gpg-many-short-flags": "gpg" + " -q" * 6000,
+    "many-globs": "cat " + "*/ " * 6600,
+    "many-brace-commas": "cat {" + "a," * 9900 + "}",
+    "nested-brace-groups": "cat " + "{a,b}" * 3900,
+    "brace-sequences": "cat " + "{1..9}" * 3300,
+    "upload-many-ats": "curl -d " + "@" * 19000,
 }
 
 
