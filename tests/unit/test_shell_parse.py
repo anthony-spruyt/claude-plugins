@@ -555,6 +555,23 @@ class TestLiteralDollar:
         assert "echo '$X'" in normalise("bash -c 'echo $X'")
 
 
+
+class TestAsciiNames:
+    """Bash names and fd numbers are ASCII; Unicode letters and digits are literal text."""
+
+    def test_unicode_letter_is_not_a_variable(self):
+        assert normalise("echo $\u00e9") == ["echo '\\$\u00e9'"]
+
+    def test_unicode_letter_is_not_an_assignment(self):
+        assert normalise("\u00e9=1 ls") == ["\u00e9=1 ls"]
+
+    def test_unicode_digit_is_not_an_fd(self):
+        assert normalise("cat \u0663<f") == ["cat \u0663 < f"]
+
+    def test_underscore_then_unicode_is_last_argument(self):
+        assert normalise("echo $_\u00e9") is None
+
+
 class TestNormalise:
     def test_none_when_unparsable(self):
         assert normalise("$X") is None

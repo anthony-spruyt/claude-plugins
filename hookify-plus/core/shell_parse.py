@@ -21,8 +21,8 @@ PLAIN = re.compile(r'[^ \t\n;&|()<>\'"\\$`*?\[{}]+')
 BLANK = re.compile(r'(?:[ \t]+|\\\n)+')
 DQ_PLAIN = re.compile(r'[^"\\$`]+')
 PARAM_PLAIN = re.compile(r'[^}\'"\\$`]+')
-VARIABLE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-]')
-UNDERSCORE = re.compile(r'_(?![A-Za-z0-9_])')
+VARIABLE = re.compile(r'[A-Za-z_]\w*|[\d@*#?$!-]', re.ASCII)
+UNDERSCORE = re.compile(r'_(?!\w)', re.ASCII)
 BACKTICK = re.compile(r'`((?:[^`\\]|\\.)*)`', re.S)
 BACKTICK_ESCAPE = re.compile(r'\\([\\`$])')
 BACKTICK_DQ_ESCAPE = re.compile(r'\\([\\`$"])')
@@ -30,7 +30,7 @@ ANSI_C = re.compile(r"\$'((?:[^'\\]|\\.)*)'", re.S)
 ANSI_ESCAPE = re.compile(r'\\(x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|[0-7]{1,3}|.)', re.S)
 ANSI_SIMPLE = {'a': '\a', 'b': '\b', 'e': '\x1b', 'E': '\x1b', 'f': '\f', 'n': '\n', 'r': '\r',
                't': '\t', 'v': '\v', '\\': '\\', "'": "'", '"': '"', '?': '?'}
-REDIRECT = re.compile(r'([0-9]*)(<<<|<<-|<<|<>|<&|>&|>>|>\||<|>)|&>>|&>')
+REDIRECT = re.compile(r'(\d*)(<<<|<<-|<<|<>|<&|>&|>>|>\||<|>)|&>>|&>', re.ASCII)
 PROC_SUB = re.compile(r'[<>]\(')
 DELIM = re.compile(r'(?=[ \t\n;&|()<>]|$)')
 RESERVED = re.compile(r'(?:[a-z]+|[{}!]|\[\[)(?=[ \t\n;&|()<>]|$)')
@@ -38,10 +38,10 @@ TERMINATORS = frozenset(['then', 'elif', 'else', 'fi', 'do', 'done', 'esac', '}'
 UNSUPPORTED = frozenset(['case', 'select', 'coproc'])
 KEYWORDS = TERMINATORS | UNSUPPORTED | frozenset(['!', '{', '[[', 'if', 'while', 'until', 'for',
                                                   'function', 'time'])
-NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+NAME = re.compile(r'[A-Za-z_]\w*', re.ASCII)
 FUNCNAME = re.compile(r'[^ \t\n;&|()<>\'"\\$`]+(?:[ \t]*\([ \t]*\))?')
 FUNCDEF = re.compile(r'[^ \t\n;&|()<>\'"\\$`]+[ \t]*\([ \t]*\)')
-ASSIGN = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]$`\s;&|()<>]*\])?\+?=')
+ASSIGN = re.compile(r'[A-Za-z_]\w*(?:\[[^\]$`\s;&|()<>]*\])?\+?=', re.ASCII)
 
 
 @dataclass
@@ -127,7 +127,7 @@ WRAPPERS = {
 }
 # Like WRAPPERS plus (flag-only short, flag-only long, operand patterns, options that mean no
 # command runs); any option not listed might take a value, so it fails closed.
-NUM = re.compile(r'[0-9]+$')
+NUM = re.compile(r'\d+$', re.ASCII)
 CPUS = re.compile(r'[0-9a-fA-Fx,:-]+$')
 ANY = re.compile(r'')
 STRICT = {
