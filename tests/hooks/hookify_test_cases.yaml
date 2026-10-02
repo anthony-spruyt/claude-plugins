@@ -2240,6 +2240,101 @@ test_cases:
     command: "git commit -m 'refactor: declare'"
     expect: allow
 
+  - name: "block-declare-dump: blocks declare +x"
+    tool: Bash
+    command: "declare +x"
+    expect: block
+
+  - name: "block-declare-dump: blocks typeset +r"
+    tool: Bash
+    command: "typeset +r"
+    expect: block
+
+  - name: "block-declare-dump: blocks typeset +x -p"
+    tool: Bash
+    command: "typeset +x -p"
+    expect: block
+
+  - name: "block-declare-dump: blocks declare -x +r"
+    tool: Bash
+    command: "declare -x +r"
+    expect: block
+
+  - name: "block-env-dump: blocks env -S with empty string"
+    tool: Bash
+    command: 'env -S""'
+    expect: block
+
+  - name: "block-env-dump: blocks env --split-string="
+    tool: Bash
+    command: "env --split-string="
+    expect: block
+
+  - name: "block-env-dump: blocks quoted assignment"
+    tool: Bash
+    command: 'env "A=1"'
+    expect: block
+
+  - name: "block-env-dump: blocks single-quoted assignment with space value"
+    tool: Bash
+    command: "env 'A=1' B='x y'"
+    expect: block
+
+  - name: "block-export-dump: blocks subshell export"
+    tool: Bash
+    command: "true && (export)"
+    expect: block
+
+  - name: "block-export-dump: blocks echo export piped to a shell"
+    tool: Bash
+    command: "echo export | bash"
+    expect: block
+
+  - name: "block-export-dump: allows grep alternation"
+    tool: Bash
+    command: 'grep -E "(export|import)" src/index.ts'
+    expect: allow
+
+  - name: "block-export-dump: allows rg anchored alternation"
+    tool: Bash
+    command: 'rg "^(export|import) " src'
+    expect: allow
+
+  - name: "block-export-dump: allows sed group"
+    tool: Bash
+    command: "sed -E 's/(export) //' x"
+    expect: allow
+
+  - name: "block-export-dump: allows echo export to a file"
+    tool: Bash
+    command: "echo export > words.txt"
+    expect: allow
+
+  - name: "block-export-dump: allows grep -n for export"
+    tool: Bash
+    command: 'grep -n "export" src/index.ts'
+    expect: allow
+
+  - name: "block-declare-dump: allows rg alternation"
+    tool: Bash
+    command: 'rg "(declare|typeset)" lib/'
+    expect: allow
+
+  - name: "block-declare-dump: allows grep alternation with flag"
+    tool: Bash
+    command: 'grep -rnE "(declare|local) -a" scripts/'
+    expect: allow
+
+  - name: "block-declare-dump: allows echo declare to wc"
+    tool: Bash
+    command: "echo declare | wc -l"
+    expect: allow
+
+  - name: "block-set-dump: allows grep alternation"
+    tool: Bash
+    command: 'grep -E "(set|get)" src/'
+    expect: allow
+
   - name: "block-printenv: allows existence check to /dev/null"
     tool: Bash
     command: 'printenv GH_TOKEN >/dev/null && echo "GH_TOKEN present"'

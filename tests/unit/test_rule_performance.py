@@ -45,6 +45,13 @@ INPUTS = {
     "echo-dollar-braces": ("echo ${" * 3000)[:20000],
     "assignment-substitutions": "a=$(" * 5000,
     "assignment-quotes": 'a="' * 6600,
+    "process-substitutions": ("<(" * 10000)[:19990],
+    "bang-redirects": "!>" * 9990,
+    "watch-flags": "watch -." * 2490,
+    "watch-subshells": "watch -(" * 2490,
+    "bang-assignments": "!a=" * 6600,
+    "brace-assignments": "{a=" * 6600,
+    "env-unset-flags": "e" + "nv" + " -u A=1" * 2800 + " x",
 }
 
 
