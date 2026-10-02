@@ -98,7 +98,8 @@ class TestRedirects:
 
     def test_operators_anywhere(self):
         cmd = parse_commands("2>&1 env >>log <in a &>all b >|x 3<>y 4>&- c")[0]
-        assert cmd.name == "env" and cmd.args == ["a", "b", "c"]
+        assert cmd.name == "env"
+        assert cmd.args == ["a", "b", "c"]
         assert cmd.redirects == [("2>&", "1"), (">>", "log"), ("<", "in"), ("&>", "all"),
                                  (">|", "x"), ("3<>", "y"), ("4>&", "-")]
 
@@ -520,7 +521,8 @@ class TestHeredocBodies:
 
     def test_second_heredoc(self):
         line = normalise("cat <<'A' <<B\nx $X\nA\ny $Y\nB")[0]
-        assert "$Y" in line and "$X" not in line
+        assert "$Y" in line
+        assert "$X" not in line
 
 
 

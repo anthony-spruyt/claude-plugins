@@ -229,7 +229,7 @@ def _options(words, i, short, long, attached='', permute=False, stop=frozenset()
     opts = {}
     known_short = None if flags is None else short + attached + flags[0]
     while i < len(words):
-        w = _plain(words[i]) if words[i][0][:1] == '-' else words[i][0]
+        w = _plain(words[i]) if words[i][0].startswith('-') else words[i][0]
         if w == '--':
             return i + 1, opts
         if len(w) < 2 or w[0] != '-':
@@ -973,9 +973,8 @@ class _Parser:
         s = self.s
         while True:
             self.blank(newlines=True)
-            if self.i >= len(s) or s[self.i] in ';|':
-                if not self.at('||'):
-                    raise _Unsure
+            if (self.i >= len(s) or s[self.i] in ';|') and not self.at('||'):
+                raise _Unsure
             if self.at(']]') and DELIM.match(s, self.i + 2):
                 self.i += 2
                 return

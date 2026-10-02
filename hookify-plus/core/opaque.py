@@ -24,7 +24,7 @@ CODE_VAR = re.compile(r'(?:^|[\s;&|(){}\'"])(?:PS[0-4]|PROMPT_COMMAND|BASH_ENV|E
 STDIN_PATH = re.compile(r'/dev/(?:stdin|fd/\d+)$|/proc/[^/]+/fd/\d+$|[<>]\(')
 EVAL_EXPANSION = re.compile(r'@[PE]\}|\[\$\(|\[`')
 STDIN_OPS = ('<', '<<', '<<-', '<<<', '<&', '<>')
-SHELL_ALIAS = re.compile(r'alias\.[^=\s]*(?:=| )?!|^!')
+SHELL_ALIAS = re.compile(r'alias\.[^=\s]*[= ]?!|^!')
 
 
 def _name(cmd: SimpleCommand) -> str:
