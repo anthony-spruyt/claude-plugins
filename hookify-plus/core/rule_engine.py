@@ -51,6 +51,15 @@ def clean_lines(command: str) -> Optional[tuple]:
     return None if parsed is None else (tuple(parsed[0]), parsed[1])
 
 
+STRING_OPERATORS = {
+    'contains': lambda value, pattern: pattern in value,
+    'not_contains': lambda value, pattern: pattern not in value,
+    'equals': lambda value, pattern: value == pattern,
+    'starts_with': lambda value, pattern: value.startswith(pattern),
+    'ends_with': lambda value, pattern: value.endswith(pattern),
+}
+
+
 class RuleEngine:
     """Evaluates rules against hook input data."""
 
@@ -181,40 +190,32 @@ class RuleEngine:
         if mask and tool_name == 'Bash' and condition.field == 'command':
             field_value = mask_data(field_value)
 
-        operator = condition.operator
-        pattern = condition.pattern
+        if condition.operator == 'command_match':
+            return self._command_match(condition, tool_name, raw_value, field_value, mask, strict)
+        if condition.operator == 'regex_match':
+            return self._regex_match(condition.pattern, field_value)
+        if condition.operator == 'not_regex_match':
+            return not self._regex_match(condition.pattern, field_value)
+        test = STRING_OPERATORS.get(condition.operator)
+        return test is not None and test(field_value, condition.pattern)
 
-        if operator == 'command_match':
-            if condition.field != 'command':
-                return self._regex_match(pattern, raw_value)
-            if tool_name != 'Bash':
-                return self._regex_match(condition.fallback or pattern, field_value)
-            parsed = clean_lines(raw_value)
-            if parsed is None or (strict and parsed[1] and condition.fallback):
-                if self._regex_match(condition.fallback or pattern, field_value):
-                    return True
-                if parsed is None:
-                    return False
-            lines = parsed[0]
-            if mask:
-                lines = [mask_data(line) for line in lines]
-            return any(self._regex_match(pattern, line) for line in lines)
-        elif operator == 'regex_match':
-            return self._regex_match(pattern, field_value)
-        elif operator == 'not_regex_match':
-            return not self._regex_match(pattern, field_value)
-        elif operator == 'contains':
-            return pattern in field_value
-        elif operator == 'equals':
-            return pattern == field_value
-        elif operator == 'not_contains':
-            return pattern not in field_value
-        elif operator == 'starts_with':
-            return field_value.startswith(pattern)
-        elif operator == 'ends_with':
-            return field_value.endswith(pattern)
-        else:
-            return False
+    def _command_match(self, condition: Condition, tool_name: str, raw_value: str,
+                       field_value: str, mask: bool, strict: bool) -> bool:
+        pattern = condition.pattern
+        if condition.field != 'command':
+            return self._regex_match(pattern, raw_value)
+        if tool_name != 'Bash':
+            return self._regex_match(condition.fallback or pattern, field_value)
+        parsed = clean_lines(raw_value)
+        if parsed is None or (strict and parsed[1] and condition.fallback):
+            if self._regex_match(condition.fallback or pattern, field_value):
+                return True
+            if parsed is None:
+                return False
+        lines = parsed[0]
+        if mask:
+            lines = [mask_data(line) for line in lines]
+        return any(self._regex_match(pattern, line) for line in lines)
 
     def _extract_field(self, field: str, tool_name: str,
                       tool_input: Dict[str, Any], input_data: Dict[str, Any] = None) -> Optional[str]:

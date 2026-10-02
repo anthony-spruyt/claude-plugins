@@ -68,6 +68,10 @@ class _Unsure(Exception):
     pass
 
 
+# What _inner found: ('stdin', None) reads code from stdin, ('code', text) runs text, ('words', words) wraps a command
+STDIN = ('stdin', None)
+
+
 class _Expansion(str):
     """Word piece bash expands, as opposed to literal text."""
 
@@ -292,7 +296,7 @@ def _shell(words):
             i += w.count('o') + w.count('O')
     if code:
         return ('code', _plain(words[i])) if i < len(words) else None
-    return ('stdin',) if stdin or i >= len(words) else None
+    return STDIN if stdin or i >= len(words) else None
 
 
 def _produced(words) -> Optional[str]:
@@ -418,7 +422,7 @@ def _runuser(words):
     i, opts = _options(words, 1, short, long, permute=True,
                        flags=('lmpP', ('login', 'preserve-environment', 'pty')))
     code = opts.get('c', opts.get('command', opts.get('session-command')))
-    return ('stdin',) if code is None else ('code', code)
+    return STDIN if code is None else ('code', code)
 
 
 def _sg(words):
@@ -426,38 +430,39 @@ def _sg(words):
     if i < len(words) and words[i][0] == '-':
         i += 1
     if i >= len(words):
-        return ('stdin',)
+        return STDIN
     _plain(words[i])
     i += 1
     if i < len(words) and words[i][0] == '-c':
         i += 1
-    return _code(words, i) if i < len(words) else ('stdin',)
+    return _code(words, i) if i < len(words) else STDIN
+
+
+def _eval(words):
+    return _code(words, 2 if words[1:2] and words[1][0] == '--' else 1)
 
 
 def _inner(words):
     name = _base(words[0][0])
-    if name in SHELLS:
-        return _shell(words)
-    if name == 'eval':
-        return _code(words, 2 if words[1:2] and words[1][0] == '--' else 1)
-    if name == 'env':
-        return _env(words)
+    handler = HANDLERS.get(name)
+    if handler is not None:
+        return handler(words)
     if name in SCHEDULERS:
-        return ('stdin',)
+        return STDIN
     if name in STRICT:
         return _strict(words, STRICT[name])
-    if name == 'runuser':
-        return _runuser(words)
-    if name == 'sg':
-        return _sg(words)
-    if name not in WRAPPERS:
-        return None
+    if name in WRAPPERS:
+        return _wrapper(name, words)
+    return None
+
+
+def _wrapper(name, words):
     short, long, attached, operands = WRAPPERS[name]
     i, opts = _options(words, 1, short, long, attached, name in PERMUTE)
     if name in PERMUTE:
         code = opts.get('c', opts.get('command', opts.get('session-command')))
         if code is None:
-            return ('stdin',) if name == 'su' else None
+            return STDIN if name == 'su' else None
         return 'code', code
     if name == 'command' and ('v' in opts or 'V' in opts):
         return None
@@ -479,8 +484,11 @@ def _inner(words):
     if name == 'flock' and i + 1 < len(words) and words[i][0] in ('-c', '--command'):
         return 'code', _plain(words[i + 1])
     if i >= len(words) and (name == 'chroot' or SHELL_OPTS & opts.keys() and name in ('sudo', 'doas')):
-        return ('stdin',)
+        return STDIN
     return _wrapped(words, i)
+
+
+HANDLERS = dict({shell: _shell for shell in SHELLS}, eval=_eval, env=_env, runuser=_runuser, sg=_sg)
 
 
 def _ansi_escape(m) -> str:

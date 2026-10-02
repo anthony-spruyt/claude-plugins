@@ -10,7 +10,7 @@ import pytest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
-from core.shell_parse import MAX_LENGTH, normalise, parse_commands
+from core.shell_parse import MAX_LENGTH, _inner, normalise, parse_commands
 from tests.unit.test_rule_performance import INPUTS
 
 
@@ -570,6 +570,21 @@ class TestAsciiNames:
 
     def test_underscore_then_unicode_is_last_argument(self):
         assert normalise("echo $_\u00e9") is None
+
+
+
+class TestInnerShape:
+    """_inner returns None or a (kind, value) pair, so callers can always unpack it."""
+
+    @pytest.mark.parametrize("cmd", ["bash", "bash -c ls", "sudo ls", "sudo", "su", "su -c ls", "at now",
+                                     "eval ls", "env ls", "timeout 5 ls", "chroot /x", "ssh h ls",
+                                     "watch ls", "flock f -c ls", "runuser -u x ls", "sg g ls"])
+    def test_pair(self, cmd):
+        result = _inner([(w, 0) for w in cmd.split()])
+        assert result is None or len(result) == 2
+
+    def test_unknown_name_is_none(self):
+        assert _inner([("ls", 0)]) is None
 
 
 class TestNormalise:
