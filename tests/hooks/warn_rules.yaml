@@ -1,0 +1,146 @@
+# Warning rules after the command_match conversion: real reads/edits warn, look-alikes stay quiet.
+test_cases:
+  - name: "warn-use-read-tool: cat a file"
+    tool: Bash
+    command: "cat README.md"
+    expect: warn
+  - name: "warn-use-read-tool: head after cd"
+    tool: Bash
+    command: "cd src && head -n 20 main.py"
+    expect: warn
+  - name: "warn-use-read-tool: quoted cat"
+    tool: Bash
+    command: "'cat' README.md"
+    expect: warn
+  - name: "warn-use-read-tool: tail via path"
+    tool: Bash
+    command: "/usr/bin/tail -f log.txt"
+    expect: warn
+  - name: "warn-use-read-tool: quiet for heredoc writes"
+    tool: Bash
+    command: "cat > out.txt <<'EOF'\nhello\nEOF"
+    expect: allow
+  - name: "warn-use-read-tool: quiet for cat in a pipe from stdin"
+    tool: Bash
+    command: "echo hi | cat"
+    expect: allow
+  - name: "warn-use-read-tool: quiet for words in a message"
+    tool: Bash
+    command: 'git commit -m "fix: cat output and tail logs"'
+    expect: allow
+  - name: "warn-use-read-tool: quiet for grep pattern"
+    tool: Bash
+    command: 'grep -rn "head -n" docs'
+    expect: allow
+  - name: "warn-use-read-tool: quiet for git log head"
+    tool: Bash
+    command: "git log --oneline | head -5"
+    expect: allow
+  - name: "warn-use-edit-tool: sed -i"
+    tool: Bash
+    command: "sed -i 's/a/b/' f.txt"
+    expect: warn
+  - name: "warn-use-edit-tool: sed with -e before -i"
+    tool: Bash
+    command: "sed -e 's/a/b/' -i f.txt"
+    expect: warn
+  - name: "warn-use-edit-tool: gawk in-place"
+    tool: Bash
+    command: "gawk -i inplace '{print}' f.txt"
+    expect: warn
+  - name: "warn-use-edit-tool: perl -pi"
+    tool: Bash
+    command: "perl -pi -e 's/a/b/' f.txt"
+    expect: warn
+  - name: "warn-use-edit-tool: sudo sed -i"
+    tool: Bash
+    command: "sudo sed -i.bak 's/a/b/' /etc/hosts"
+    expect: warn
+  - name: "warn-use-edit-tool: quiet for sed to stdout"
+    tool: Bash
+    command: "sed -n '1,5p' f.txt"
+    expect: allow
+  - name: "warn-use-edit-tool: quiet for -i in a sed script"
+    tool: Bash
+    command: "sed 's/-i/x/' f.txt"
+    expect: allow
+  - name: "warn-use-edit-tool: quiet for message text"
+    tool: Bash
+    command: 'git commit -m "docs: avoid sed -i"'
+    expect: allow
+  - name: "warn-use-edit-tool: quiet for -i in a later pipe stage"
+    tool: Bash
+    command: "sed 's/a/b/' f.txt | grep -i x"
+    expect: allow
+  - name: "warn-use-edit-tool: perl -i after a pipe is still caught"
+    tool: Bash
+    command: "ls | perl -pi -e 's/a/b/' f.txt"
+    expect: warn
+  - name: "warn-use-read-tool: quiet for cat heredoc in a PR body"
+    tool: Bash
+    command: "gh pr create --title \"fix: x\" --body \"$(cat <<'EOF'\nSummary\nEOF\n)\""
+    expect: allow
+  - name: "warn-use-read-tool: quiet for cat heredoc to stdout"
+    tool: Bash
+    command: "cat <<EOF\nhello\nEOF"
+    expect: allow
+  - name: "warn-use-read-tool: cat with a file and a heredoc still warns"
+    tool: Bash
+    command: "cat notes.txt - <<EOF\nextra\nEOF"
+    expect: warn
+  - name: "warn-use-read-tool: cat with a redirected file"
+    tool: Bash
+    command: "cat < notes.txt"
+    expect: warn
+  - name: "warn-use-read-tool: quiet for cat here-string"
+    tool: Bash
+    command: "cat <<< hello"
+    expect: allow
+  - name: "warn-conventional-commits: plain message"
+    tool: Bash
+    command: 'git commit -m "update stuff"'
+    expect: warn
+  - name: "warn-conventional-commits: message after -a"
+    tool: Bash
+    command: 'git commit -a -m "update stuff"'
+    expect: warn
+  - name: "warn-conventional-commits: combined -am"
+    tool: Bash
+    command: 'git commit -am "update stuff"'
+    expect: warn
+  - name: "warn-conventional-commits: --message="
+    tool: Bash
+    command: 'git commit --message="update stuff"'
+    expect: warn
+  - name: "warn-conventional-commits: unquoted single word"
+    tool: Bash
+    command: "git commit -m wip"
+    expect: warn
+  - name: "warn-conventional-commits: after cd"
+    tool: Bash
+    command: 'cd repo && git commit -m "update stuff"'
+    expect: warn
+  - name: "warn-conventional-commits: quiet for feat"
+    tool: Bash
+    command: 'git commit -m "feat: add x"'
+    expect: allow
+  - name: "warn-conventional-commits: quiet for scoped fix"
+    tool: Bash
+    command: 'git commit -m "fix(parser): handle y"'
+    expect: allow
+  - name: "warn-conventional-commits: quiet for breaking change"
+    tool: Bash
+    command: 'git commit -m "feat!: drop z"'
+    expect: allow
+  - name: "warn-conventional-commits: quiet for heredoc message"
+    tool: Bash
+    command: "git commit -m \"$(cat <<'EOF'\nfix: x\n\nbody\nEOF\n)\""
+    expect: allow
+  - name: "warn-conventional-commits: quiet for amend without message"
+    tool: Bash
+    command: "git commit --amend --no-edit"
+    expect: allow
+  - name: "warn-conventional-commits: quiet for log grep"
+    tool: Bash
+    command: 'git log --grep "update stuff"'
+    expect: allow

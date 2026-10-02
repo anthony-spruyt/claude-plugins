@@ -21,6 +21,7 @@ class Condition:
     field: str  # "command", "new_text", "old_text", "file_path", etc.
     operator: str  # "regex_match", "contains", "equals", etc.
     pattern: str
+    fallback: Optional[str] = None  # command_match: regex for commands the shell parser can't read
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Condition':
@@ -29,7 +30,8 @@ class Condition:
         return cls(
             field=data.get('field', ''),
             operator=data.get('operator', 'regex_match'),
-            pattern=pattern
+            pattern=pattern,
+            fallback=data.get('fallback') or None
         )
 
 
@@ -98,6 +100,18 @@ class Rule:
         )
 
 
+_QUOTED = re.compile(r"""'(?:[^']|'')*'|"(?:[^"\\]|\\.)*\"""", re.S)
+
+
+def _unquote(value: str) -> str:
+    """Remove one pair of YAML quotes; '' inside single quotes is a literal '."""
+    value = value.strip()
+    if _QUOTED.fullmatch(value):
+        inner = value[1:-1]
+        return inner.replace("''", "'") if value[0] == "'" else inner
+    return value.strip('"').strip("'")
+
+
 def extract_frontmatter(content: str) -> tuple[Dict[str, Any], str]:
     """Extract YAML frontmatter and message body from markdown.
 
@@ -108,12 +122,13 @@ def extract_frontmatter(content: str) -> tuple[Dict[str, Any], str]:
     if not content.startswith('---'):
         return {}, content
 
-    parts = content.split('---', 2)
-    if len(parts) < 3:
+    # Close only on a line starting with ---, so patterns may contain ---.
+    end = content.find('\n---', 3)
+    if end < 0:
         return {}, content
 
-    frontmatter_text = parts[1]
-    message = parts[2].strip()
+    frontmatter_text = content[3:end]
+    message = content[end + 4:].strip()
 
     frontmatter = {}
     lines = frontmatter_text.split('\n')
@@ -150,7 +165,7 @@ def extract_frontmatter(content: str) -> tuple[Dict[str, Any], str]:
                 in_list = True
                 current_list = []
             else:
-                value = value.strip('"').strip("'")
+                value = _unquote(value)
                 if value.lower() == 'true':
                     value = True
                 elif value.lower() == 'false':
@@ -164,25 +179,25 @@ def extract_frontmatter(content: str) -> tuple[Dict[str, Any], str]:
 
             item_text = stripped[1:].strip()
 
-            if ':' in item_text and ',' in item_text:
+            if ':' in item_text and ',' in item_text and not _QUOTED.fullmatch(item_text.split(':', 1)[1].strip()):
                 item_dict = {}
                 for part in item_text.split(','):
                     if ':' in part:
                         k, v = part.split(':', 1)
-                        item_dict[k.strip()] = v.strip().strip('"').strip("'")
+                        item_dict[k.strip()] = _unquote(v)
                 current_list.append(item_dict)
                 in_dict_item = False
             elif ':' in item_text:
                 in_dict_item = True
                 k, v = item_text.split(':', 1)
-                current_dict = {k.strip(): v.strip().strip('"').strip("'")}
+                current_dict = {k.strip(): _unquote(v)}
             else:
-                current_list.append(item_text.strip('"').strip("'"))
+                current_list.append(_unquote(item_text))
                 in_dict_item = False
 
         elif indent > 2 and in_dict_item and ':' in line:
             k, v = stripped.split(':', 1)
-            current_dict[k.strip()] = v.strip().strip('"').strip("'")
+            current_dict[k.strip()] = _unquote(v)
 
     if in_list and current_key:
         if in_dict_item and current_dict:

@@ -1,0 +1,154 @@
+# Decrypt and /proc environ rules after the command_match conversion: hidden forms block, look-alikes stay allowed.
+test_cases:
+  - name: "block-gpg-decrypt: options before -d"
+    tool: Bash
+    command: "gpg --batch --yes -d secret.gpg"
+    expect: block
+  - name: "block-gpg-decrypt: quoted command name"
+    tool: Bash
+    command: "g''pg --decrypt secret.gpg"
+    expect: block
+  - name: "block-gpg-decrypt: sudo and path"
+    tool: Bash
+    command: "sudo /usr/bin/gpg -d secret.gpg"
+    expect: block
+  - name: "block-gpg-decrypt: inside bash -c"
+    tool: Bash
+    command: "bash -c 'gpg -d secret.gpg'"
+    expect: block
+  - name: "block-gpg-decrypt: combined short flags"
+    tool: Bash
+    command: "gpg -qd secret.gpg"
+    expect: block
+  - name: "block-gpg-decrypt: output option then decrypt"
+    tool: Bash
+    command: "gpg -o out.txt --decrypt secret.gpg"
+    expect: block
+  - name: "block-gpg-decrypt: gpg2"
+    tool: Bash
+    command: "gpg2 -d secret.gpg"
+    expect: block
+  - name: "block-gpg-decrypt: allows listing keys"
+    tool: Bash
+    command: "gpg --list-keys"
+    expect: allow
+  - name: "block-gpg-decrypt: allows encrypting"
+    tool: Bash
+    command: "gpg -e -r me@example.com notes.txt"
+    expect: allow
+  - name: "block-gpg-decrypt: allows commit message"
+    tool: Bash
+    command: 'git commit -m "docs: never run gpg -d on secrets"'
+    expect: allow
+  - name: "block-age-decrypt: identity option first"
+    tool: Bash
+    command: "age -i key.txt -d secret.age"
+    expect: block
+  - name: "block-age-decrypt: quoted name"
+    tool: Bash
+    command: "'age' --decrypt -i key.txt secret.age"
+    expect: block
+  - name: "block-age-decrypt: allows encrypting"
+    tool: Bash
+    command: "age -r age1xyz -o out.age notes.txt"
+    expect: allow
+  - name: "block-age-decrypt: allows age in prose"
+    tool: Bash
+    command: 'gh pr create --body "age -d is blocked"'
+    expect: allow
+  - name: "block-openssl-decrypt: cipher before -d"
+    tool: Bash
+    command: "openssl enc -aes-256-cbc -d -in s.enc -out s.txt"
+    expect: block
+  - name: "block-openssl-decrypt: cipher as subcommand"
+    tool: Bash
+    command: "openssl aes-256-cbc -d -in s.enc"
+    expect: block
+  - name: "block-openssl-decrypt: pkcs12 via sudo"
+    tool: Bash
+    command: "sudo openssl pkcs12 -in cert.p12 -nodes"
+    expect: block
+  - name: "block-openssl-decrypt: smime decrypt"
+    tool: Bash
+    command: "openssl smime -decrypt -in m.p7m -inkey k.pem"
+    expect: block
+  - name: "block-openssl-decrypt: pkeyutl decrypt"
+    tool: Bash
+    command: "openssl pkeyutl -decrypt -inkey k.pem -in s.bin"
+    expect: block
+  - name: "block-openssl-decrypt: allows s_client"
+    tool: Bash
+    command: "openssl s_client -connect example.com:443"
+    expect: allow
+  - name: "block-openssl-decrypt: allows base64 decode"
+    tool: Bash
+    command: "openssl enc -base64 -d -in blob.b64"
+    expect: allow
+  - name: "block-openssl-decrypt: allows x509 text"
+    tool: Bash
+    command: "openssl x509 -in cert.pem -noout -text"
+    expect: allow
+  - name: "block-sops-decrypt: options before -d"
+    tool: Bash
+    command: "sops --input-type yaml -d secrets.yaml"
+    expect: block
+  - name: "block-sops-decrypt: decrypt subcommand"
+    tool: Bash
+    command: "sops decrypt secrets.yaml"
+    expect: block
+  - name: "block-sops-decrypt: quoted name"
+    tool: Bash
+    command: "s''ops -d secrets.yaml"
+    expect: block
+  - name: "block-sops-decrypt: exec-file"
+    tool: Bash
+    command: "sops exec-file secrets.yaml 'cat {}'"
+    expect: block
+  - name: "block-sops-decrypt: allows encrypt"
+    tool: Bash
+    command: "sops -e -i secrets.yaml"
+    expect: allow
+  - name: "block-sops-decrypt: allows sops in prose"
+    tool: Bash
+    command: 'git commit -m "fix: block sops -d"'
+    expect: allow
+  - name: "block-proc-environ: other readers"
+    tool: Bash
+    command: "strings /proc/self/environ"
+    expect: block
+  - name: "block-proc-environ: tr to split"
+    tool: Bash
+    command: "tr '\\0' '\\n' < /proc/1/environ"
+    expect: block
+  - name: "block-proc-environ: quoted path"
+    tool: Bash
+    command: "cat '/proc/self/environ'"
+    expect: block
+  - name: "block-proc-environ: xxd"
+    tool: Bash
+    command: "xxd /proc/$$/environ"
+    expect: block
+  - name: "block-proc-environ: thread-self and pid names"
+    tool: Bash
+    command: "cat /proc/thread-self/environ"
+    expect: block
+  - name: "block-proc-environ: allows other proc files"
+    tool: Bash
+    command: "grep MHz /proc/cpuinfo"
+    expect: allow
+  - name: "block-proc-environ: allows echo of the path"
+    tool: Bash
+    command: "echo /proc/self/environ"
+    expect: allow
+  - name: "block-proc-environ: allows prose"
+    tool: Bash
+    command: 'git commit -m "fix: block reads of /proc/self/environ"'
+    expect: allow
+  - name: "block-gpg-decrypt: allows -d in a later pipe stage"
+    tool: Bash
+    command: "gpg --list-keys | cut -d: -f1"
+    expect: allow
+  - name: "block-age-decrypt: allows -d in a later pipe stage"
+    tool: Bash
+    command: "age --version | cut -d. -f1"
+    expect: allow

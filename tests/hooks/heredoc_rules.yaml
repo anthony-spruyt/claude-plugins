@@ -1,0 +1,120 @@
+# Heredoc secrets rule: only bodies whose variables really expand block.
+test_cases:
+  - name: 'block-heredoc-secrets: blocks unquoted delimiter'
+    tool: Bash
+    command: 'cat <<EOF
+
+      $GITHUB_TOKEN
+
+      EOF'
+    expect: block
+  - name: 'block-heredoc-secrets: blocks braced variable'
+    tool: Bash
+    command: 'cat <<EOF
+
+      ${GITHUB_TOKEN}
+
+      EOF'
+    expect: block
+  - name: 'block-heredoc-secrets: blocks dash heredoc'
+    tool: Bash
+    command: "cat <<-EOF\n\t$GITHUB_TOKEN\n\tEOF"
+    expect: block
+  - name: 'block-heredoc-secrets: blocks second heredoc unquoted'
+    tool: Bash
+    command: 'cat <<''A'' <<B
+
+      x
+
+      A
+
+      $GITHUB_TOKEN
+
+      B'
+    expect: block
+  - name: 'block-heredoc-secrets: blocks inside command substitution'
+    tool: Bash
+    command: 'x=$(cat <<EOF
+
+      $GITHUB_TOKEN
+
+      EOF
+
+      )'
+    expect: block
+  - name: 'block-heredoc-secrets: blocks default expansion'
+    tool: Bash
+    command: 'cat <<EOF
+
+      ${GITHUB_TOKEN:-x}
+
+      EOF'
+    expect: block
+  - name: 'block-heredoc-secrets: blocks fed to a wrapper'
+    tool: Bash
+    command: 'sudo tee /tmp/x <<EOF
+
+      $GITHUB_TOKEN
+
+      EOF'
+    expect: block
+  - name: 'block-heredoc-secrets: allows single-quoted delimiter'
+    tool: Bash
+    command: 'cat <<''EOF''
+
+      $GITHUB_TOKEN
+
+      EOF'
+    expect: allow
+  - name: 'block-heredoc-secrets: allows double-quoted delimiter'
+    tool: Bash
+    command: 'cat <<"EOF"
+
+      $GITHUB_TOKEN
+
+      EOF'
+    expect: allow
+  - name: 'block-heredoc-secrets: allows backslash delimiter'
+    tool: Bash
+    command: 'cat <<\EOF
+
+      $GITHUB_TOKEN
+
+      EOF'
+    expect: allow
+  - name: 'block-heredoc-secrets: allows part-quoted delimiter'
+    tool: Bash
+    command: 'cat <<E"O"F
+
+      $GITHUB_TOKEN
+
+      EOF'
+    expect: allow
+  - name: 'block-heredoc-secrets: allows second heredoc quoted'
+    tool: Bash
+    command: 'cat <<A <<''B''
+
+      x
+
+      A
+
+      $GITHUB_TOKEN
+
+      B'
+    expect: allow
+  - name: 'block-heredoc-secrets: allows set check form'
+    tool: Bash
+    command: 'cat <<EOF
+
+      ${GITHUB_TOKEN:+set}
+
+      EOF'
+    expect: allow
+  - name: 'block-heredoc-secrets: allows token name in prose'
+    tool: Bash
+    command: 'cat <<EOF
+
+      set GITHUB_TOKEN in CI
+
+      EOF'
+    expect: allow

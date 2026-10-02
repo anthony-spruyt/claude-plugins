@@ -2,7 +2,11 @@
 name: block-sops-decrypt
 enabled: true
 event: bash
-pattern: sops\s+(-d|--decrypt|exec-env|exec-file)
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^sops(?: (?!\|)\S+)* (?:--?d(?:ecrypt)?(?:=\S*)?|decrypt|exec-env|exec-file)(?: |$)'
+    fallback: 'sops\s+(-d|--decrypt|exec-env|exec-file)'
 action: block
 mask_data: true
 ---

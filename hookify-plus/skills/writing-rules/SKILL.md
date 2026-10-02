@@ -178,7 +178,17 @@ Warning message here
 | `prompt` | `user_prompt`                                  |
 | `stop`   | `reason`, `transcript`                         |
 
-**Operators:** `regex_match`, `not_regex_match`, `contains`, `equals`, `not_contains`, `starts_with`, `ends_with`
+**Operators:** `regex_match`, `not_regex_match`, `contains`, `equals`, `not_contains`, `starts_with`, `ends_with`, `command_match`
+
+`command_match` (field `command` only) regex-searches each "clean line": one per simple command bash would run, quotes removed, wrappers like `sudo`/`bash -c`/`eval` unwrapped, pipes and redirects kept. If the command can't be parsed, the optional `fallback` regex (or `pattern` if there is no `fallback`) is matched against the raw command instead, masked if `mask_data: true`:
+
+```yaml
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^(env|printenv)( -\S+)*$'
+    fallback: '<old raw-command regex>'
+```
 
 `value` is accepted as an alias for `pattern` in conditions.
 
