@@ -7,6 +7,7 @@ see every byte of it.
 """
 
 import re
+import sys
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -22,6 +23,18 @@ class Spec:
     positionals: int = 0
     short_cluster: str = ''
 
+    def option(self, word: str) -> Tuple[Optional[str], int]:
+        name, eq, _ = word.partition('=')
+        if eq and name.startswith('--'):
+            kinds = ('message', 'stdin', 'value')
+            return next((k for k in kinds if name in getattr(self, k)), None), len(name) + 1
+        kinds = ('message', 'stdin', 'value', 'boolean')
+        kind = next((k for k in kinds if word in getattr(self, k)), None)
+        cluster = self.short_cluster and re.fullmatch(rf'-([{self.short_cluster}]+)(m?)', word)
+        if kind is None and cluster:
+            kind = 'message' if cluster.group(2) else 'boolean'
+        return kind, 0
+
 
 def _spec(message, stdin, value='', boolean='', positionals=0, short_cluster=''):
     return Spec(frozenset(message.split()), frozenset(stdin.split()), frozenset(value.split()),
@@ -29,44 +42,54 @@ def _spec(message, stdin, value='', boolean='', positionals=0, short_cluster='')
 
 
 GH_REPO = '-R --repo '
+TITLE_BODY = '-t --title -b --body'
+BODY = '-b --body'
+BODY_FILE = '-F --body-file'
+COMMENT = '-c --comment'
 PR_EDIT_VALUES = ('--add-label --remove-label --add-assignee --remove-assignee --add-reviewer '
                   '--remove-reviewer --add-project --remove-project -m --milestone ')
 # Every word of a masked segment must be listed here, so the scanner parses it as gh/git would
 SPECS = {
-    ('gh', 'pr', 'create'): _spec('-t --title -b --body', '-F --body-file',
-                                  GH_REPO + '-B --base -H --head -l --label -a --assignee -r --reviewer '
-                                  '-m --milestone -p --project -T --template',
-                                  '-d --draft -f --fill --fill-first --fill-verbose --no-maintainer-edit --dry-run'),
-    ('gh', 'pr', 'comment'): _spec('-b --body', '-F --body-file', GH_REPO,
+    ('gh', 'pr', 'create'): _spec(TITLE_BODY, BODY_FILE,
+                                  GH_REPO + '-B --base -H --head -l --label -a --assignee '
+                                  '-r --reviewer -m --milestone -p --project -T --template',
+                                  '-d --draft -f --fill --fill-first --fill-verbose '
+                                  '--no-maintainer-edit --dry-run'),
+    ('gh', 'pr', 'comment'): _spec(BODY, BODY_FILE, GH_REPO,
                                    '--edit-last --create-if-none', 1),
-    ('gh', 'pr', 'edit'): _spec('-t --title -b --body', '-F --body-file', GH_REPO + '-B --base ' + PR_EDIT_VALUES,
+    ('gh', 'pr', 'edit'): _spec(TITLE_BODY, BODY_FILE, GH_REPO + '-B --base ' + PR_EDIT_VALUES,
                                 '--remove-milestone', 1),
-    ('gh', 'pr', 'review'): _spec('-b --body', '-F --body-file', GH_REPO,
-                                  '-a --approve -c --comment -r --request-changes', 1),
-    ('gh', 'pr', 'close'): _spec('-c --comment', '', GH_REPO, '-d --delete-branch', 1),
-    ('gh', 'pr', 'reopen'): _spec('-c --comment', '', GH_REPO, '', 1),
-    ('gh', 'pr', 'merge'): _spec('-t --subject -b --body', '-F --body-file',
+    ('gh', 'pr', 'review'): _spec(BODY, BODY_FILE, GH_REPO,
+                                  '-a --approve ' + COMMENT + ' -r --request-changes', 1),
+    ('gh', 'pr', 'close'): _spec(COMMENT, '', GH_REPO, '-d --delete-branch', 1),
+    ('gh', 'pr', 'reopen'): _spec(COMMENT, '', GH_REPO, '', 1),
+    ('gh', 'pr', 'merge'): _spec('-t --subject -b --body', BODY_FILE,
                                  GH_REPO + '-A --author-email --match-head-commit',
-                                 '-s --squash -m --merge -r --rebase --auto --admin -d --delete-branch', 1),
-    ('gh', 'issue', 'create'): _spec('-t --title -b --body', '-F --body-file',
-                                     GH_REPO + '-a --assignee -l --label -m --milestone -p --project -T --template'),
-    ('gh', 'issue', 'comment'): _spec('-b --body', '-F --body-file', GH_REPO,
+                                 '-s --squash -m --merge -r --rebase --auto --admin '
+                                 '-d --delete-branch', 1),
+    ('gh', 'issue', 'create'): _spec(TITLE_BODY, BODY_FILE,
+                                     GH_REPO + '-a --assignee -l --label -m --milestone '
+                                     '-p --project -T --template'),
+    ('gh', 'issue', 'comment'): _spec(BODY, BODY_FILE, GH_REPO,
                                       '--edit-last --create-if-none', 1),
-    ('gh', 'issue', 'edit'): _spec('-t --title -b --body', '-F --body-file', GH_REPO + PR_EDIT_VALUES,
+    ('gh', 'issue', 'edit'): _spec(TITLE_BODY, BODY_FILE, GH_REPO + PR_EDIT_VALUES,
                                    '--remove-milestone', 1),
-    ('gh', 'issue', 'close'): _spec('-c --comment', '', GH_REPO + '-r --reason', '', 1),
-    ('gh', 'issue', 'reopen'): _spec('-c --comment', '', GH_REPO, '', 1),
+    ('gh', 'issue', 'close'): _spec(COMMENT, '', GH_REPO + '-r --reason', '', 1),
+    ('gh', 'issue', 'reopen'): _spec(COMMENT, '', GH_REPO, '', 1),
     # Positionals after the tag are uploaded as assets, so only the tag is allowed
     ('gh', 'release', 'create'): _spec('-t --title -n --notes', '-F --notes-file',
                                        GH_REPO + '--target --discussion-category --notes-start-tag',
-                                       '-d --draft -p --prerelease --latest --generate-notes --verify-tag', 1),
+                                       '-d --draft -p --prerelease --latest --generate-notes '
+                                       '--verify-tag', 1),
     ('gh', 'release', 'edit'): _spec('-t --title -n --notes', '-F --notes-file',
                                      GH_REPO + '--tag --target --discussion-category',
                                      '--draft --prerelease --latest --verify-tag', 1),
     ('git', 'commit'): _spec('-m --message', '-F --file', '',
                              '-a --all -q --quiet -s --signoff --amend --no-edit --allow-empty '
-                             '--allow-empty-message --no-verify -n -v --verbose', 0, 'aqsnv'),
-    ('git', 'tag'): _spec('-m --message', '-F --file', '', '-a --annotate -s --sign -f --force', 2, 'asf'),
+                             '--allow-empty-message --no-verify -n -v --verbose',
+                             sys.maxsize, 'aqsnv'),
+    ('git', 'tag'): _spec('-m --message', '-F --file', '', '-a --annotate -s --sign -f --force',
+                          2, 'asf'),
 }
 # Any other command could redefine git or gh before the message segment runs
 SEGMENT_COMMANDS = {'git', 'gh', 'cd'}
@@ -98,95 +121,109 @@ def _terminator(cmd: str, delim: str, pos: int) -> Optional[re.Match]:
     return re.compile(rf'^{re.escape(delim)}$', re.M).search(cmd, pos)
 
 
+def _substitution_end(cmd: str, j: int) -> Optional[int]:
+    m = CAT_HEREDOC.match(cmd, j)
+    end = _terminator(cmd, m.group(2), m.end())
+    close = end and CLOSE_SUBSTITUTION.match(cmd, end.end())
+    if not close:
+        return None
+    # Inside $( bash also ends the heredoc at a line like `EOF)`
+    if re.search(rf'^{re.escape(m.group(2))}', cmd[m.end():end.start()], re.M):
+        return None
+    return close.end()
+
+
+def _dollar(cmd: str, j: int, word: Word) -> Optional[int]:
+    if CAT_HEREDOC.match(cmd, j):
+        return _substitution_end(cmd, j)
+    m = VARIABLE.match(cmd, j)
+    if not m:
+        return None
+    word.kept.append(m.group())
+    return m.end()
+
+
 def _double_quoted(cmd: str, i: int, word: Word) -> Optional[int]:
     j = i + 1
-    while j < len(cmd):
+    while j is not None and j < len(cmd):
         c = cmd[j]
         if c == '"':
             return j + 1
-        if c == '\\':
-            if j + 1 >= len(cmd):
-                return None
-            j += 2
-        elif c == '`':
+        if c == '`' or (c == '\\' and j + 1 >= len(cmd)):
             return None
+        if c == '\\':
+            j += 2
         elif c == '$':
-            m = CAT_HEREDOC.match(cmd, j)
-            if m:
-                end = _terminator(cmd, m.group(2), m.end())
-                close = end and CLOSE_SUBSTITUTION.match(cmd, end.end())
-                if not close:
-                    return None
-                # Inside $( bash also ends the heredoc at a line like `EOF)`
-                if re.search(rf'^{re.escape(m.group(2))}', cmd[m.end():end.start()], re.M):
-                    return None
-                j = close.end()
-                continue
-            m = VARIABLE.match(cmd, j)
-            if not m:
-                return None
-            word.kept.append(m.group())
-            j = m.end()
+            j = _dollar(cmd, j, word)
         else:
             j += 1
     return None
 
 
+def _part_end(cmd: str, i: int, word: Word) -> Optional[int]:
+    if cmd[i] == "'":
+        end = cmd.find("'", i + 1)
+        return end + 1 if end >= 0 else None
+    if cmd[i] == '"':
+        return _double_quoted(cmd, i, word)
+    m = UNQUOTED.match(cmd, i)
+    return m.end() if m else None
+
+
+def _word_end(cmd: str, i: int, word: Word) -> Optional[int]:
+    while i is not None and i < len(cmd) and cmd[i] not in ' \t\n;&|<':
+        i = _part_end(cmd, i, word)
+    if i is None or cmd.startswith(('&&', '||'), i):
+        return i
+    return None if i < len(cmd) and cmd[i] in '&|<' else i
+
+
+def _heredoc_bodies(cmd: str, i: int, pending: List[Tuple[Segment, str]]) -> Optional[int]:
+    for segment, delim in pending:
+        end = _terminator(cmd, delim, i)
+        if not end:
+            return None
+        segment.heredocs.append((i, end.start()))
+        i = end.end()
+    return i
+
+
+def _heredoc_start(cmd: str, i: int, segment: Segment,
+                   pending: List[Tuple[Segment, str]]) -> Optional[int]:
+    m = HEREDOC.match(cmd, i)
+    # Bash joins glued quoting into one delimiter: <<'E'"OF" ends at EOF
+    if not m or (m.end() < len(cmd) and cmd[m.end()] not in ' \t\n;&|'):
+        return None
+    pending.append((segment, m.group(2)))
+    return m.end()
+
+
+def _separator_end(cmd: str, i: int, pending: List[Tuple[Segment, str]]) -> Optional[int]:
+    if cmd[i] != '\n':
+        return i + (1 if cmd[i] == ';' else 2)
+    i = _heredoc_bodies(cmd, i + 1, pending)
+    pending.clear()
+    return i
+
+
 def _scan(cmd: str) -> Optional[List[Segment]]:
     segments = [Segment()]
     pending: List[Tuple[Segment, str]] = []
-    i, n = 0, len(cmd)
-    while i < n:
-        c = cmd[i]
-        if c in ' \t':
+    i = 0
+    while i is not None and i < len(cmd):
+        if cmd[i] in ' \t':
             i += 1
-        elif c == '\n':
+        elif cmd[i] == '<':
+            i = _heredoc_start(cmd, i, segments[-1], pending)
+        elif cmd.startswith(('\n', '&&', '||', ';'), i):
             segments.append(Segment())
-            i += 1
-            for segment, delim in pending:
-                end = _terminator(cmd, delim, i)
-                if not end:
-                    return None
-                segment.heredocs.append((i, end.start()))
-                i = end.end()
-            pending = []
-        elif cmd.startswith(('&&', '||'), i):
-            segments.append(Segment())
-            i += 2
-        elif c == ';':
-            segments.append(Segment())
-            i += 1
-        elif c == '<':
-            m = HEREDOC.match(cmd, i)
-            # Bash joins glued quoting into one delimiter: <<'E'"OF" ends at EOF
-            if not m or (m.end() < n and cmd[m.end()] not in ' \t\n;&|'):
-                return None
-            pending.append((segments[-1], m.group(2)))
-            i = m.end()
+            i = _separator_end(cmd, i, pending)
         else:
             word = Word(start=i)
-            while i < n and cmd[i] not in ' \t\n;&|<':
-                if cmd[i] == "'":
-                    end = cmd.find("'", i + 1)
-                    if end < 0:
-                        return None
-                    i = end + 1
-                elif cmd[i] == '"':
-                    i = _double_quoted(cmd, i, word)
-                    if i is None:
-                        return None
-                else:
-                    m = UNQUOTED.match(cmd, i)
-                    if not m:
-                        return None
-                    i = m.end()
-            if i < n and cmd[i] in '&|' and not cmd.startswith(('&&', '||'), i):
-                return None
-            if i < n and cmd[i] == '<':
-                return None
+            i = _word_end(cmd, i, word)
             word.end = i
             segments[-1].words.append(word)
-    if pending:
+    if i is None or pending:
         return None
     return segments
 
@@ -209,49 +246,63 @@ def _plain(word: str) -> bool:
     return UNQUOTED.fullmatch(word) is not None and not word.startswith('-')
 
 
-def _edits(cmd: str, segment: Segment) -> Optional[List[Tuple[int, int, str]]]:
-    words = segment.words
-    if not words:
-        return []
-    raw = [cmd[w.start:w.end] for w in words]
-    if raw[0] == 'cd':
-        return []
-    spec, k = _message_spec(raw)
-    if spec is None:
-        return None if segment.heredocs or '-c' in raw else []
+def _inline_step(word: Word, value: str, kind: Optional[str], inline: int, k: int):
+    if kind == 'message':
+        return k + 1, (word.start + inline, word.end, _replacement(word.kept)), False
+    if kind == 'stdin' and value == '-':
+        return k + 1, None, True
+    if kind == 'value' and UNQUOTED.fullmatch(value):
+        return k + 1, None, False
+    return None
+
+
+def _step(raw: List[str], words: List[Word], spec: Spec, k: int):
+    kind, inline = spec.option(raw[k])
+    if inline:
+        return _inline_step(words[k], raw[k][inline:], kind, inline, k)
+    following = raw[k + 1] if k + 1 < len(raw) else None
+    if kind == 'message' and following is not None:
+        value = words[k + 1]
+        return k + 2, (value.start, value.end, _replacement(value.kept)), False
+    if kind == 'stdin' and following == '-':
+        return k + 2, None, True
+    if kind == 'value' and following is not None and _plain(following):
+        return k + 2, None, False
+    if kind == 'boolean':
+        return k + 1, None, False
+    return None
+
+
+def _parse(raw: List[str], words: List[Word], spec: Spec, k: int) -> Optional[Tuple[list, bool]]:
     edits = []
     reads_stdin = False
     positionals = 0
     while k < len(words):
-        word = raw[k]
-        name, eq, value = word.partition('=')
-        following = raw[k + 1] if k + 1 < len(words) else None
-        cluster = re.fullmatch(rf'-([{spec.short_cluster}]+)(m?)', word) if spec.short_cluster else None
-        if word in spec.message or (cluster and cluster.group(2)):
-            if following is None:
-                return None
-            k += 1
-            edits.append((words[k].start, words[k].end, _replacement(words[k].kept)))
-        elif eq and name.startswith('--') and name in spec.message:
-            edits.append((words[k].start + len(name) + 1, words[k].end, _replacement(words[k].kept)))
-        elif word in spec.stdin and following == '-':
-            reads_stdin = True
-            k += 1
-        elif eq and name.startswith('--') and name in spec.stdin and value == '-':
-            reads_stdin = True
-        elif word in spec.value and following is not None and _plain(following):
-            k += 1
-        elif eq and name.startswith('--') and name in spec.value and UNQUOTED.fullmatch(value):
-            pass
-        elif word in spec.boolean or cluster:
-            pass
-        elif _plain(word) and positionals < spec.positionals:
+        if _plain(raw[k]) and positionals < spec.positionals:
             positionals += 1
-        elif _plain(word) and spec is SPECS[('git', 'commit')]:
-            pass
-        else:
+            k += 1
+            continue
+        step = _step(raw, words, spec, k)
+        if step is None:
             return None
-        k += 1
+        k, edit, stdin = step
+        edits += [edit] if edit else []
+        reads_stdin = reads_stdin or stdin
+    return edits, reads_stdin
+
+
+def _edits(cmd: str, segment: Segment) -> Optional[List[Tuple[int, int, str]]]:
+    words = segment.words
+    raw = [cmd[w.start:w.end] for w in words]
+    if raw[:1] in ([], ['cd']):
+        return []
+    spec, k = _message_spec(raw)
+    if spec is None:
+        return None if segment.heredocs or '-c' in raw else []
+    parsed = _parse(raw, words, spec, k)
+    if parsed is None:
+        return None
+    edits, reads_stdin = parsed
     if len(segment.heredocs) > 1 or (segment.heredocs and not reads_stdin):
         return None
     if segment.heredocs:
