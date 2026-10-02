@@ -52,6 +52,10 @@ INPUTS = {
     "bang-assignments": "!a=" * 6600,
     "brace-assignments": "{a=" * 6600,
     "env-unset-flags": "e" + "nv" + " -u A=1" * 2800 + " x",
+    "env-unset-env": ("e" + "nv -u ") * 2850,
+    "env-split-string": ("e" + "nv -S '") * 2500,
+    "paren-after-keywords": "if(" * 6600,
+    "assignment-braces": "X=a{" * 5000,
 }
 
 

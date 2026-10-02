@@ -2325,14 +2325,144 @@ test_cases:
     command: 'grep -rnE "(declare|local) -a" scripts/'
     expect: allow
 
-  - name: "block-declare-dump: allows echo declare to wc"
-    tool: Bash
-    command: "echo declare | wc -l"
-    expect: allow
-
   - name: "block-set-dump: allows grep alternation"
     tool: Bash
     command: 'grep -E "(set|get)" src/'
+    expect: allow
+
+  - name: "block-set-dump: blocks subshell after if"
+    tool: Bash
+    command: "if(set)then :;fi"
+    expect: block
+
+  - name: "block-set-dump: blocks subshell after while"
+    tool: Bash
+    command: "while(set);do break;done"
+    expect: block
+
+  - name: "block-export-dump: blocks subshell after until"
+    tool: Bash
+    command: "until(export -p);do break;done"
+    expect: block
+
+  - name: "block-declare-dump: blocks subshell after time"
+    tool: Bash
+    command: "time(declare -p)"
+    expect: block
+
+  - name: "block-set-dump: blocks subshell after else"
+    tool: Bash
+    command: "if false;then :;else(set);fi"
+    expect: block
+
+  - name: "block-set-dump: blocks subshell after do"
+    tool: Bash
+    command: "for i in 1;do(set);done"
+    expect: block
+
+  - name: "block-set-dump: blocks assignment with brace in value"
+    tool: Bash
+    command: "X=a{b set"
+    expect: block
+
+  - name: "block-set-dump: blocks assignment with bang in value"
+    tool: Bash
+    command: "X=a!b set"
+    expect: block
+
+  - name: "block-set-dump: blocks assignment then here-string"
+    tool: Bash
+    command: "X=a<<<x set"
+    expect: block
+
+  - name: "block-declare-dump: blocks assignment with brace in value"
+    tool: Bash
+    command: "X=a{b declare -p"
+    expect: block
+
+  - name: "block-set-dump: blocks chained redirects before set"
+    tool: Bash
+    command: "2>&1>/tmp/o!x set"
+    expect: block
+
+  - name: "block-set-dump: blocks variable assignment before set"
+    tool: Bash
+    command: "X=$HOME set"
+    expect: block
+
+  - name: "block-set-dump: blocks redirect to variable before set"
+    tool: Bash
+    command: "2>$LOG set"
+    expect: block
+
+  - name: "block-declare-dump: blocks variable assignment before declare"
+    tool: Bash
+    command: "X=$HOME declare -p"
+    expect: block
+
+  - name: "block-declare-dump: blocks echo piped with |&"
+    tool: Bash
+    command: "echo declare -p |& bash"
+    expect: block
+
+  - name: "block-declare-dump: blocks echo through tee to bash"
+    tool: Bash
+    command: "echo declare -p | tee /tmp/y.sh | bash"
+    expect: block
+
+  - name: "block-export-dump: blocks echo piped to env bash"
+    tool: Bash
+    command: "echo export | env bash"
+    expect: block
+
+  - name: "block-export-dump: blocks echo piped to source"
+    tool: Bash
+    command: "echo export | source /dev/stdin"
+    expect: block
+
+  - name: "block-export-dump: blocks echo with two spaces piped to bash"
+    tool: Bash
+    command: "echo  export | bash"
+    expect: block
+
+  - name: "block-env-dump: blocks env inside env -S"
+    tool: Bash
+    command: 'env -S ''A=1 env'''
+    expect: block
+
+  - name: "block-env-dump: blocks env inside glued env -S"
+    tool: Bash
+    command: 'env -S''A=1 env'''
+    expect: block
+
+  - name: "block-env-dump: blocks env inside --split-string"
+    tool: Bash
+    command: 'env --split-string=''A=1 env'''
+    expect: block
+
+  - name: "block-env-dump: blocks env -0 inside env -S"
+    tool: Bash
+    command: 'env -S ''A=1 env -0'''
+    expect: block
+
+  - name: "block-env-dump: blocks env -S env"
+    tool: Bash
+    command: "env -S env"
+    expect: block
+
+  - name: "block-env-dump: allows env -S with a double-quoted command"
+    tool: Bash
+    command: 'env -S "python3 -u"'
+    expect: allow
+
+  - name: "block-env-dump: allows glued env -S with a command"
+    tool: Bash
+    command: 'env -S''python3 -u'''
+    expect: allow
+
+  - name: "block-env-dump: allows env -S with a command and args"
+    tool: Bash
+    command: 'env -S ''python3 -u'' script.py'
     expect: allow
 
   - name: "block-printenv: allows existence check to /dev/null"
