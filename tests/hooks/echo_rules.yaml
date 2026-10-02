@@ -1,0 +1,126 @@
+# Echo secrets rule: only variables bash really expands into echo/printf output block.
+test_cases:
+  - name: 'block-echo-secrets: blocks quote-split name'
+    tool: Bash
+    command: '''echo'' $GH_TOKEN'
+    expect: block
+  - name: 'block-echo-secrets: blocks backslash-split name'
+    tool: Bash
+    command: e\cho $GH_TOKEN
+    expect: block
+  - name: 'block-echo-secrets: blocks eval escaped dollar'
+    tool: Bash
+    command: eval "echo \$GH_TOKEN"
+    expect: block
+  - name: 'block-echo-secrets: blocks bash -c'
+    tool: Bash
+    command: bash -c 'echo $GH_TOKEN'
+    expect: block
+  - name: 'block-echo-secrets: blocks escaped backslash then expansion'
+    tool: Bash
+    command: echo \\$GH_TOKEN
+    expect: block
+  - name: 'block-echo-secrets: blocks mixed quotes'
+    tool: Bash
+    command: echo 'x'"$API_KEY"
+    expect: block
+  - name: 'block-echo-secrets: blocks printf -v'
+    tool: Bash
+    command: printf -v x %s "$GH_TOKEN"
+    expect: block
+  - name: 'block-echo-secrets: blocks substring expansion'
+    tool: Bash
+    command: echo "${GH_TOKEN:0:4}"
+    expect: block
+  - name: 'block-echo-secrets: blocks login pipe followed by another stage'
+    tool: Bash
+    command: echo $GH_TOKEN | gh auth login --with-token | cat
+    expect: block
+  - name: 'block-echo-secrets: blocks non-login pipe'
+    tool: Bash
+    command: echo $GH_TOKEN | tee /tmp/x
+    expect: block
+  - name: 'block-echo-secrets: blocks second echo after login pipe'
+    tool: Bash
+    command: echo $GH_TOKEN | gh auth login --with-token; echo $GH_TOKEN
+    expect: block
+  - name: 'block-echo-secrets: blocks one secret among two'
+    tool: Bash
+    command: echo '$X' $GH_TOKEN
+    expect: block
+  - name: 'block-echo-secrets: allows single-quoted literal'
+    tool: Bash
+    command: echo '$GH_TOKEN'
+    expect: allow
+  - name: 'block-echo-secrets: allows escaped dollar'
+    tool: Bash
+    command: echo \$GH_TOKEN
+    expect: allow
+  - name: 'block-echo-secrets: allows comment'
+    tool: Bash
+    command: 'echo ok # $GH_TOKEN'
+    expect: allow
+  - name: 'block-echo-secrets: allows set check'
+    tool: Bash
+    command: echo "${GH_TOKEN:+set}"
+    expect: allow
+  - name: 'block-echo-secrets: allows gh login stdin'
+    tool: Bash
+    command: echo $GH_TOKEN | gh auth login --with-token
+    expect: allow
+  - name: 'block-echo-secrets: allows docker login stdin'
+    tool: Bash
+    command: printf %s "$REG_PASSWORD" | docker login -u me --password-stdin ghcr.io
+    expect: allow
+  - name: 'block-echo-secrets: allows gh secret set'
+    tool: Bash
+    command: printf %s "$API_KEY" | gh secret set API_KEY
+    expect: allow
+  - name: 'block-echo-secrets: allows non-secret var'
+    tool: Bash
+    command: echo $HOME
+    expect: allow
+  - name: 'block-echo-secrets: allows quoted prose'
+    tool: Bash
+    command: echo 'use $GH_TOKEN here'
+    expect: allow
+  - name: 'block-echo-subshell-secrets: blocks spaced substitution'
+    tool: Bash
+    command: echo "$( env )"
+    expect: block
+  - name: 'block-echo-subshell-secrets: blocks backticks'
+    tool: Bash
+    command: echo `env`
+    expect: block
+  - name: 'block-echo-subshell-secrets: blocks quote-split echo'
+    tool: Bash
+    command: '''echo'' "$(env)"'
+    expect: block
+  - name: 'block-echo-subshell-secrets: blocks pipe inside substitution'
+    tool: Bash
+    command: echo "$(printenv | base64)"
+    expect: block
+  - name: 'block-echo-subshell-secrets: blocks escaped backslash then substitution'
+    tool: Bash
+    command: echo \\$(set)
+    expect: block
+  - name: 'block-echo-subshell-secrets: blocks bash -c'
+    tool: Bash
+    command: bash -c 'echo $(env)'
+    expect: block
+  - name: 'block-echo-subshell-secrets: allows single-quoted literal'
+    tool: Bash
+    command: echo '$(env)'
+    expect: allow
+  - name: 'block-echo-subshell-secrets: allows escaped dollar'
+    tool: Bash
+    command: echo "\$(env)"
+    expect: allow
+  - name: 'block-echo-subshell-secrets: allows longer word'
+    tool: Bash
+    command: echo "$(environment)"
+    expect: allow
+  - name: 'block-echo-subshell-secrets: allows set inside a word'
+    tool: Bash
+    command: echo "$(settings)"
+    expect: allow

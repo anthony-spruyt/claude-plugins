@@ -2,7 +2,11 @@
 name: block-proc-environ
 enabled: true
 event: bash
-pattern: cat\s+/proc/(self|\$\$|[0-9]+)/environ
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^(?!(?:git|gh|echo|printf) ).*(?:^| )''?/proc/[^/\s'']+/(?:task/[^/\s'']+/)?environ''?(?= |$)'
+    fallback: 'cat\s+/proc/(self|\$\$|[0-9]+)/environ'
 action: block
 mask_data: true
 ---

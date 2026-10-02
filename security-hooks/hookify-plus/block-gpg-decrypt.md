@@ -2,7 +2,11 @@
 name: block-gpg-decrypt
 enabled: true
 event: bash
-pattern: gpg\s+(-d|--decrypt)
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^gpg2?(?: (?!\|)\S+)* (?:-[a-zA-Z]*d[a-zA-Z]*|--decrypt(?:-files)?)(?: |$)'
+    fallback: 'gpg\s+(-d|--decrypt)'
 action: block
 mask_data: true
 ---

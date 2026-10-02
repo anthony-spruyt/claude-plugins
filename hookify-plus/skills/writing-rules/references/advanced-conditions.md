@@ -41,21 +41,37 @@ Specifies which input field to check.
 
 Specifies how to match.
 
-| Operator          | Description                                    |
-| ----------------- | ---------------------------------------------- |
-| `regex_match`     | Python regex pattern matching                  |
-| `not_regex_match` | Pattern must NOT match (regex) -- hookify-plus |
-| `contains`        | Substring check                                |
-| `equals`          | Exact string match                             |
-| `not_contains`    | Substring must NOT be present                  |
-| `starts_with`     | Prefix check                                   |
-| `ends_with`       | Suffix check                                   |
+| Operator          | Description                                                    |
+| ----------------- | -------------------------------------------------------------- |
+| `regex_match`     | Python regex pattern matching                                  |
+| `not_regex_match` | Pattern must NOT match (regex) -- hookify-plus                 |
+| `contains`        | Substring check                                                |
+| `equals`          | Exact string match                                             |
+| `not_contains`    | Substring must NOT be present                                  |
+| `starts_with`     | Prefix check                                                   |
+| `ends_with`       | Suffix check                                                   |
+| `command_match`   | Regex matches any clean line of a Bash command -- hookify-plus |
+
+### command_match / fallback
+
+For `field: command`, the engine parses the command into "clean lines": one per simple command bash would run, quotes removed, wrappers (`sudo`, `bash -c`, `eval`, ...) unwrapped, redirects and pipes kept. `sudo -E e''nv | wc -l` gives `sudo -E env | wc -l`, `env | wc -l` and `wc -l`. The condition matches if `pattern` regex-searches any clean line. If the command can't be parsed, `fallback` (or
+`pattern` if there is no `fallback`) is matched against the raw command instead. That raw command is masked when the rule sets `mask_data: true`. On other fields, `command_match` behaves like `regex_match`.
+
+```yaml
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^(env|printenv)( -\S+)*$'
+    fallback: '<old raw-command regex>'
+```
+
+Quote regexes in single quotes; write a literal `'` as `''`.
 
 ### pattern / value
 
 Provide the match target.
 
-- Use `pattern` for regex-based operators (`regex_match`, `not_regex_match`).
+- Use `pattern` for regex-based operators (`regex_match`, `not_regex_match`, `command_match`).
 - Use `value` for string-based operators (`contains`, `equals`, `not_contains`, `starts_with`, `ends_with`). The `pattern` key also works here, but `value` is more explicit. -- hookify-plus
 
 ## Examples

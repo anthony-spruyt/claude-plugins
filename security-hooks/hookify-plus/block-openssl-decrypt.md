@@ -2,7 +2,11 @@
 name: block-openssl-decrypt
 enabled: true
 event: bash
-pattern: openssl\s+(enc\s+-d|pkcs12)
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^openssl (?:enc(?!(?:(?: (?:-d|-a|-A|-base64|-in \S+|-out \S+))+(?: (?:\d*|&)[<>].*| \|.*)?$))|(?:aes|aria|bf|camellia|cast|chacha20|des|idea|rc[245]|seed|sm4)\S*)(?: (?!\|)\S+)* -d(?: |$)|^openssl pkcs12\b|^openssl (?:smime|cms|pkeyutl|rsautl)(?: (?!\|)\S+)* -decrypt(?: |$)'
+    fallback: 'openssl\s+(enc\s+-d|pkcs12)'
 action: block
 mask_data: true
 ---

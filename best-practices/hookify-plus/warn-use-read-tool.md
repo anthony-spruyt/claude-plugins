@@ -3,7 +3,12 @@ name: warn-use-read-tool
 enabled: true
 event: bash
 tool_matcher: Bash|PowerShell
-pattern: (^|\s|&&|\|\||;|\(|`)(cat|head|tail|less|more)\s+[^|]
+conditions:
+  - field: command
+    operator: command_match
+    pattern: '^(?:cat|head|tail|less|more)(?!.* (?:\d*|&)?>)(?: -\S+)*(?: \d+)? [^-|<>\s]|^(?:cat|head|tail|less|more)(?: -\S+)* < [^-\s]'
+    fallback: '(^|\s|&&|\|\||;|\(|`)(cat|head|tail|less|more)\s+[^|]'
+mask_data: true
 action: warn
 warn_once: true
 ---

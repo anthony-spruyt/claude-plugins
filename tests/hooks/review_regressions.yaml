@@ -1,0 +1,212 @@
+# Bypasses and false positives found in the #101 review. Each must keep its result.
+test_cases:
+  - name: 'review: blocks find -exec crash prefix'
+    tool: Bash
+    command: find . -exec \; ; env
+    expect: block
+  - name: 'review: blocks find -ok crash prefix'
+    tool: Bash
+    command: find . -ok \; ; env
+    expect: block
+  - name: 'review: blocks time -- hides the command'
+    tool: Bash
+    command: time -- printenv
+    expect: block
+  - name: 'review: blocks time -p -- hides the command'
+    tool: Bash
+    command: time -p -- printenv
+    expect: block
+  - name: 'review: blocks eval -- hides the command'
+    tool: Bash
+    command: eval -- printenv
+    expect: block
+  - name: 'review: blocks env -a sets argv0'
+    tool: Bash
+    command: env -a x printenv
+    expect: block
+  - name: 'review: blocks sudo -R chroots'
+    tool: Bash
+    command: sudo -R / printenv
+    expect: block
+  - name: 'review: blocks process substitution inside [[ ]]'
+    tool: Bash
+    command: '[[ -n <(printenv >&2) ]]'
+    expect: block
+  - name: 'review: blocks backslash-newline joins heredoc delimiter'
+    tool: Bash
+    command: 'cat <<EOF
+
+      hi
+
+      EO\
+
+      F
+
+      printenv
+
+      EOF'
+    expect: block
+  - name: 'review: blocks pass-through stage into sh'
+    tool: Bash
+    command: echo printenv | cat | sh
+    expect: block
+  - name: 'review: blocks tee stage into sh'
+    tool: Bash
+    command: echo printenv | tee /dev/null | sh
+    expect: block
+  - name: 'review: blocks cat - heredoc into sh'
+    tool: Bash
+    command: 'cat - <<''EOF'' | sh
+
+      printenv
+
+      EOF'
+    expect: block
+  - name: 'review: blocks duplicated stdin into sh'
+    tool: Bash
+    command: sh 3<<< printenv 0<&3
+    expect: block
+  - name: 'review: blocks here-string into a group'
+    tool: Bash
+    command: '{ sh; } <<< printenv'
+    expect: block
+  - name: 'review: blocks here-string into a function'
+    tool: Bash
+    command: f(){ sh; }; f <<< printenv
+    expect: block
+  - name: 'review: blocks pipe into a function'
+    tool: Bash
+    command: f() { sh; }; echo printenv | f
+    expect: block
+  - name: 'review: blocks exec redirects stdin then sh'
+    tool: Bash
+    command: exec <<< printenv; sh
+    expect: block
+  - name: 'review: blocks sh reads /dev/stdin'
+    tool: Bash
+    command: echo printenv | sh /dev/stdin
+    expect: block
+  - name: 'review: blocks bash runs process substitution'
+    tool: Bash
+    command: bash <(echo printenv)
+    expect: block
+  - name: 'review: blocks bash reads process substitution'
+    tool: Bash
+    command: bash < <(echo printenv)
+    expect: block
+  - name: 'review: blocks xargs runs piped words'
+    tool: Bash
+    command: echo printenv | xargs nice
+    expect: block
+  - name: 'review: blocks xargs -I into sh -c'
+    tool: Bash
+    command: echo printenv | xargs -I% sh -c %
+    expect: block
+  - name: 'review: blocks find -exec found file'
+    tool: Bash
+    command: find /usr/bin -name printenv -exec {} \;
+    expect: block
+  - name: 'review: blocks trap runs on exit'
+    tool: Bash
+    command: trap printenv EXIT
+    expect: block
+  - name: 'review: blocks PS4 runs under xtrace'
+    tool: Bash
+    command: 'PS4=''$(printenv)''; set -x; :'
+    expect: block
+  - name: 'review: blocks BASH_ENV runs at startup'
+    tool: Bash
+    command: 'BASH_ENV=<(echo printenv) bash -c :'
+    expect: block
+  - name: 'review: blocks busybox applet'
+    tool: Bash
+    command: busybox env
+    expect: block
+  - name: 'review: blocks tmux new'
+    tool: Bash
+    command: tmux new env
+    expect: block
+  - name: 'review: blocks screen'
+    tool: Bash
+    command: screen env
+    expect: block
+  - name: 'review: blocks docker exec'
+    tool: Bash
+    command: docker exec c env
+    expect: block
+  - name: 'review: blocks kubectl exec'
+    tool: Bash
+    command: kubectl exec p -- env
+    expect: block
+  - name: 'review: blocks parallel runs args'
+    tool: Bash
+    command: 'parallel ::: env'
+    expect: block
+  - name: 'review: allows echo mentions the name'
+    tool: Bash
+    command: echo printenv
+    expect: allow
+  - name: 'review: allows plain find'
+    tool: Bash
+    command: find . -name '*.py'
+    expect: allow
+  - name: 'review: allows xargs on files'
+    tool: Bash
+    command: ls | xargs wc -l
+    expect: allow
+  - name: 'review: allows source a venv'
+    tool: Bash
+    command: 'mkdir -p env # venv'
+    expect: allow
+  - name: 'block-echo-secrets: blocks stderr redirect before gh pipe'
+    tool: Bash
+    command: echo $GH_TOKEN >&2 | gh secret set FOO
+    expect: block
+  - name: 'block-echo-secrets: blocks printf stderr before gh login'
+    tool: Bash
+    command: printf "%s\n" "$GH_TOKEN" >&2 | gh auth login --with-token
+    expect: block
+  - name: 'block-echo-secrets: blocks file redirect before gh pipe'
+    tool: Bash
+    command: echo $GH_TOKEN > /tmp/leak.txt | gh secret set FOO
+    expect: block
+  - name: 'block-echo-secrets: blocks tty redirect before gh login'
+    tool: Bash
+    command: echo $GH_TOKEN >/dev/tty | gh auth login --with-token
+    expect: block
+  - name: 'block-ip-in-commits: blocks git -C path with space'
+    tool: Bash
+    command: 'git -C ''/tmp/a b'' commit -m "fix: 10.0.0.5"'
+    expect: block
+  - name: 'block-ip-in-commits: blocks git -c value with space'
+    tool: Bash
+    command: 'git -c ''user.name=A B'' commit -m "fix: 10.0.0.5"'
+    expect: block
+  - name: 'block-ip-in-github: blocks gh -R value then pr'
+    tool: Bash
+    command: gh -R 'o/r' pr create --title x --body "10.0.0.5"
+    expect: block
+  - name: 'block-echo-secrets: allows here-string with literal backslash'
+    tool: Bash
+    command: echo x <<< 'a\$GH_TOKEN'
+    expect: allow
+  - name: 'block-echo-subshell-secrets: allows literal backticks in single quotes'
+    tool: Bash
+    command: echo 'Add `set -e` to the script'
+    expect: allow
+  - name: 'block-echo-subshell-secrets: allows literal backticks in prose'
+    tool: Bash
+    command: echo 'run `env` to list'
+    expect: allow
+  - name: 'block-echo-subshell-secrets: allows escaped backticks in double quotes'
+    tool: Bash
+    command: echo "run \`env\` to list"
+    expect: allow
+  - name: 'warn-conventional-commits: allows -m inside message'
+    tool: Bash
+    command: 'git commit -m ''fix: support -m flag'''
+    expect: allow
+  - name: 'warn-conventional-commits: allows --message inside message'
+    tool: Bash
+    command: 'git commit -m ''feat: x --message y'''
+    expect: allow

@@ -3,7 +3,7 @@ name: block-powershell-secret-vars
 enabled: true
 event: bash
 tool_matcher: PowerShell
-pattern: (\$env:|\$\{env:|GetEnvironmentVariable\(\s*['"])[A-Za-z_]*(_PAT|TOKEN|SECRET|PASSWORD|PASSPHRASE|CREDENTIAL|PRIVATE_KEY|API_KEY|SECRET_KEY|ACCESS_KEY)\b
+pattern: (\$env:|\$\{env:|\bEnv:[\\/]?|GetEnvironmentVariable\(\s*['"])[A-Za-z_]*(_PAT|TOKEN|SECRET|PASSWORD|PASSPHRASE|CREDENTIAL|PRIVATE_KEY|API_KEY|SECRET_KEY|ACCESS_KEY)\b
 action: block
 ---
 
