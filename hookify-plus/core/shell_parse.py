@@ -719,7 +719,11 @@ class _Parser:
         if not words:
             if not (assigned or redirects):
                 raise _Unsure
-            return None
+            # bash runs `$(< file)` as `cat file`
+            if self.subst and not assigned and any(r[0] in ('<', '0<') for r in redirects):
+                words = [('cat', 0)]
+            else:
+                return None
         name, flags = words[0]
         if flags & EXPANDED or (flags & GLOB and name != '['):
             raise _Unsure

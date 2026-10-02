@@ -210,3 +210,59 @@ test_cases:
     tool: Bash
     command: 'git commit -m ''feat: x --message y'''
     expect: allow
+  - name: 'block-shell-read-secret-files: blocks redirect-only substitution'
+    tool: Bash
+    command: echo "$(< .env)"
+    expect: block
+  - name: 'block-shell-read-secret-files: blocks printf redirect-only substitution'
+    tool: Bash
+    command: printf "%s" "$(<.env)"
+    expect: block
+  - name: 'block-proc-environ: blocks redirect-only substitution'
+    tool: Bash
+    command: echo "$(< /proc/self/environ)"
+    expect: block
+  - name: 'block-sops-decrypt: blocks single-dash long flag'
+    tool: Bash
+    command: sops -decrypt x.enc.yaml
+    expect: block
+  - name: 'block-sops-decrypt: blocks --decrypt=true'
+    tool: Bash
+    command: sops --decrypt=true x.enc.yaml
+    expect: block
+  - name: 'block-sops-decrypt: blocks -d=true'
+    tool: Bash
+    command: sops -d=true x.enc.yaml
+    expect: block
+  - name: 'block-gpg-decrypt: blocks abbreviated --decrypt'
+    tool: Bash
+    command: gpg --decr secret.gpg
+    expect: block
+  - name: 'block-openssl-decrypt: blocks double-dash -d'
+    tool: Bash
+    command: openssl enc --d -aes-256-cbc -in x.enc -k p
+    expect: block
+  - name: 'block-openssl-decrypt: blocks cipher command double-dash -d'
+    tool: Bash
+    command: openssl aes-256-cbc --d -in x.enc -k p
+    expect: block
+  - name: 'block-proc-environ: blocks dd if='
+    tool: Bash
+    command: dd if=/proc/self/environ
+    expect: block
+  - name: 'block-proc-environ: blocks doubled slash'
+    tool: Bash
+    command: cat /proc/self//environ
+    expect: block
+  - name: 'block-proc-environ: blocks dot segment'
+    tool: Bash
+    command: cat /proc/./self/environ
+    expect: block
+  - name: 'block-shell-read-secret-files: only warns on redirect-only substitution of other file'
+    tool: Bash
+    command: echo "$(< README.md)"
+    expect: warn
+  - name: 'block-sops-decrypt: allows encrypt'
+    tool: Bash
+    command: sops -e x.yaml
+    expect: allow

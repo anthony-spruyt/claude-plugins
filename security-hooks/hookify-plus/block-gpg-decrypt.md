@@ -5,7 +5,7 @@ event: bash
 conditions:
   - field: command
     operator: command_match
-    pattern: '^gpg2?(?: (?!\|)\S+)* (?:-[a-zA-Z]*d[a-zA-Z]*|--decrypt(?:-files)?)(?: |$)'
+    pattern: '^gpg2?(?: (?!\|)\S+)* (?:-[a-zA-Z]*d[a-zA-Z]*|--decr[a-z-]*)(?: |$)'
     fallback: 'gpg\s+(-d|--decrypt)'
 action: block
 mask_data: true

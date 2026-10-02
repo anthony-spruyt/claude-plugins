@@ -65,6 +65,7 @@ INPUTS = {
     "many-function-names": "f " * 10000,
     "many-git-global-options": "git" + " -a" * 6000 + " x",
     "many-gh-global-options": "gh" + " -a" * 6000 + " x",
+    "printf-open-brace-dollars": "printf }{${A" * 1600,
     "echo-in-open-braces": "bash -c echo }Get-ChildItem ${A" * 645,
 }
 

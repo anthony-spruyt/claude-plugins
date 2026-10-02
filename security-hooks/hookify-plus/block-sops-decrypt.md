@@ -5,7 +5,7 @@ event: bash
 conditions:
   - field: command
     operator: command_match
-    pattern: '^sops(?: (?!\|)\S+)* (?:-d|--decrypt|decrypt|exec-env|exec-file)(?: |$)'
+    pattern: '^sops(?: (?!\|)\S+)* (?:--?d(?:ecrypt)?(?:=\S*)?|decrypt|exec-env|exec-file)(?: |$)'
     fallback: 'sops\s+(-d|--decrypt|exec-env|exec-file)'
 action: block
 mask_data: true

@@ -546,6 +546,9 @@ class TestLiteralDollar:
     def test_here_string_escapes_its_backslash(self):
         assert normalise("cat <<< 'a\\$X'") == ["cat <<< 'a\\\\\\$X'"]
 
+    def test_redirect_only_substitution_reads_like_cat(self):
+        assert "cat < f" in normalise('echo "$(< f)"')
+
     def test_shell_c_code_still_expands(self):
         assert "echo '$X'" in normalise("bash -c 'echo $X'")
 
