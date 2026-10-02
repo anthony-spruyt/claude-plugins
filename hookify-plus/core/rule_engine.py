@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import List, Dict, Any, Optional
 
 from core.config_loader import Rule, Condition
+from core.masking import mask_data
 
 
 @lru_cache(maxsize=128)
@@ -107,7 +108,8 @@ class RuleEngine:
             return False
 
         for condition in rule.conditions:
-            if not self._check_condition(condition, tool_name, tool_input, input_data):
+            if not self._check_condition(condition, tool_name, tool_input, input_data,
+                                         mask=rule.mask_data):
                 return False
 
         return True
@@ -129,7 +131,8 @@ class RuleEngine:
         return tool_name in patterns
 
     def _check_condition(self, condition: Condition, tool_name: str,
-                        tool_input: Dict[str, Any], input_data: Dict[str, Any] = None) -> bool:
+                        tool_input: Dict[str, Any], input_data: Dict[str, Any] = None,
+                        mask: bool = False) -> bool:
         """Check if a single condition matches.
 
         Args:
@@ -137,6 +140,7 @@ class RuleEngine:
             tool_name: Tool being used
             tool_input: Tool input dict
             input_data: Full hook input data (for Stop events, etc.)
+            mask: Blank non-executing text in the command before matching
 
         Returns:
             True if condition matches
@@ -144,6 +148,8 @@ class RuleEngine:
         field_value = self._extract_field(condition.field, tool_name, tool_input, input_data)
         if field_value is None:
             return False
+        if mask and tool_name == 'Bash' and condition.field == 'command':
+            field_value = mask_data(field_value)
 
         operator = condition.operator
         pattern = condition.pattern

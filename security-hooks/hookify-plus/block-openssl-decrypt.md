@@ -4,6 +4,7 @@ enabled: true
 event: bash
 pattern: openssl\s+(enc\s+-d|pkcs12)
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: OpenSSL decryption/extraction**

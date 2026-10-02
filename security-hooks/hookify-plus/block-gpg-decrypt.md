@@ -4,6 +4,7 @@ enabled: true
 event: bash
 pattern: gpg\s+(-d|--decrypt)
 action: block
+mask_data: true
 ---
 
 🚫 **Blocked: GPG decryption**

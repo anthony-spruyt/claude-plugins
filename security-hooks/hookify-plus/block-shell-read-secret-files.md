@@ -3,10 +3,11 @@ name: block-shell-read-secret-files
 enabled: true
 event: bash
 action: block
+mask_data: true
 conditions:
   - field: command
     operator: regex_match
-    pattern: (?<!>)(?<!>\s)(?:^|(?<=[\s'"=<(:]))(?:[^\s'"`;|&<>()]*/)?(?:[\w.-]*secrets?\.(?:ya?ml|json|txt)|[\w.-]*tokens?\.(?:json|txt)|[\w.-]*credentials\.json|[\w.-]*\.credentials|\.htpasswd|\.vault-token|\.env(?:\.[\w.-]+)?|\.(?:npmrc|pypirc|netrc)|id_(?:rsa|ed25519|ecdsa|dsa)|\.aws/credentials|\.kube/config|\.docker/config\.json|\.config/gh/hosts\.yml|\.(?:gnupg|password-store)/[^\s'"`;|&<>()]*|[\w.-]*\.sops\.(?:ya?ml|json))(?=$|[\s'"`;|&)>,])
+    pattern: (?<!>)(?<!>\s)(?:^|(?<=[\s'"=<(:]))(?:[^\s'"`;|&<>()=:]*/)?(?:[\w.-]*secrets?\.(?:ya?ml|json|txt)|[\w.-]*tokens?\.(?:json|txt)|[\w.-]*credentials\.json|[\w.-]*\.credentials|\.htpasswd|\.vault-token|\.env(?:\.[\w.-]+)?|\.(?:npmrc|pypirc|netrc)|id_(?:rsa|ed25519|ecdsa|dsa)|\.aws/credentials|\.kube/config|\.docker/config\.json|\.config/gh/hosts\.yml|\.(?:gnupg|password-store)/[^\s'"`;|&<>()]*|[\w.-]*\.sops\.(?:ya?ml|json))(?=$|[\s'"`;|&)>,])
   - field: command
     operator: not_regex_match
     pattern: ^\s*sops\s+(-e|--encrypt)\b
