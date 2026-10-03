@@ -178,9 +178,10 @@ Warning message here
 | `prompt` | `user_prompt`                                  |
 | `stop`   | `reason`, `transcript`                         |
 
-**Operators:** `regex_match`, `not_regex_match`, `contains`, `equals`, `not_contains`, `starts_with`, `ends_with`, `command_match`
+**Operators:** `regex_match`, `not_regex_match`, `contains`, `equals`, `not_contains`, `starts_with`, `ends_with`, `command_match`, `glob_overflow`
 
-`command_match` (field `command` only) regex-searches each "clean line": one per simple command bash would run, quotes removed, wrappers like `sudo`/`bash -c`/`eval` unwrapped, pipes and redirects kept. If the command can't be parsed, the optional `fallback` regex (or `pattern` if there is no `fallback`) is matched against the raw command instead, masked if `mask_data: true`:
+`command_match` (field `command` only) regex-searches each "clean line": one per simple command bash would run, quotes removed, wrappers like `sudo`/`bash -c`/`eval` unwrapped, pipes and redirects kept. If the command can't be parsed, the optional `fallback` regex (or `pattern` if there is no `fallback`) is matched against the raw command instead, masked if `mask_data: true`. Block rules also
+match `pattern` on each piece of it that parses. `glob_overflow` (no `pattern`) matches a command with a glob or brace past 256 words or 20,000 directory entries:
 
 ```yaml
 conditions:

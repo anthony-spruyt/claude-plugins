@@ -502,3 +502,187 @@ test_cases:
     tool: Bash
     command: 'git commit -m "fix: close gaps"'
     expect: allow
+  - name: 'security review: blocks proc environ with too many brace words'
+    tool: Bash
+    command: 'cat /proc/{1..300}/environ'
+    expect: block
+  - name: 'security review: blocks proc environ padded by a huge brace word'
+    tool: Bash
+    command: 'strings /proc/self/environ; echo {1..300}'
+    expect: block
+  - name: 'security review: blocks gpg padded by a huge brace word'
+    tool: Bash
+    command: 'gpg --batch -d s.gpg; echo {1..300}'
+    expect: block
+  - name: 'security review: blocks a huge brace word on its own'
+    tool: Bash
+    command: 'touch f{1..300}'
+    expect: block
+  - name: 'security review: allows a small brace word'
+    tool: Bash
+    command: 'echo {1..3}'
+    expect: allow
+  - name: 'security review: blocks proc environ after arithmetic'
+    tool: Bash
+    command: 'n=$((1)); tr "\0" "\n" < /proc/self/environ'
+    expect: block
+  - name: 'security review: blocks gpg after arithmetic'
+    tool: Bash
+    command: 'n=$((1)); gpg --batch -d s.gpg'
+    expect: block
+  - name: 'security review: blocks openssl cipher decrypt after arithmetic'
+    tool: Bash
+    command: 'n=$((1)); openssl aes-256-cbc -d -in x.enc'
+    expect: block
+  - name: 'security review: blocks sops decrypt after arithmetic'
+    tool: Bash
+    command: 'n=$((1)); sops decrypt s.yaml'
+    expect: block
+  - name: 'security review: blocks proc environ inside case'
+    tool: Bash
+    command: 'case x in x) strings /proc/self/environ;; esac'
+    expect: block
+  - name: 'security review: allows plain echo after arithmetic'
+    tool: Bash
+    command: 'n=$((1)); echo done'
+    expect: allow
+  - name: 'security review: blocks env file under a scoped package folder'
+    tool: Bash
+    command: 'cat packages/@scope/app/.env'
+    expect: block
+  - name: 'security review: blocks secrets file under a scoped package folder'
+    tool: Bash
+    command: 'cat apps/@org/web/secrets.json'
+    expect: block
+  - name: 'security review: blocks a .key file'
+    tool: Bash
+    command: 'cat server.key'
+    expect: block
+  - name: 'security review: blocks a private-key .pem file'
+    tool: Bash
+    command: 'cat certs/private.pem'
+    expect: block
+  - name: 'security review: blocks a privkey .pem file'
+    tool: Bash
+    command: 'cat /etc/letsencrypt/live/x/privkey.pem'
+    expect: block
+  - name: 'security review: certificate .pem only gets the read-tool warning'
+    tool: Bash
+    command: 'cat certs/fullchain.pem'
+    expect: warn
+  - name: 'security review: allows openssl writing a new key'
+    tool: Bash
+    command: 'openssl genrsa -out server.key 2048'
+    expect: allow
+  - name: 'security review: blocks a custom-named ssh key'
+    tool: Bash
+    command: 'cat ~/.ssh/github_deploy'
+    expect: block
+  - name: 'security review: blocks a suffixed ssh key'
+    tool: Bash
+    command: 'cat ~/.ssh/id_rsa_work'
+    expect: block
+  - name: 'security review: suffixed public ssh key only gets the read-tool warning'
+    tool: Bash
+    command: 'cat ~/.ssh/id_rsa_work.pub'
+    expect: warn
+  - name: 'security review: ssh known_hosts only gets the read-tool warning'
+    tool: Bash
+    command: 'cat ~/.ssh/known_hosts'
+    expect: warn
+  - name: 'security review: ssh config only gets the read-tool warning'
+    tool: Bash
+    command: 'cat ~/.ssh/config'
+    expect: warn
+  - name: 'security review: blocks git-credentials in shell'
+    tool: Bash
+    command: 'cat ~/.git-credentials'
+    expect: block
+  - name: 'security review: blocks git-credentials with a file tool'
+    tool: Read
+    file_path: '/home/me/.git-credentials'
+    expect: block
+  - name: 'security review: blocks gh auth token'
+    tool: Bash
+    command: 'gh auth token'
+    expect: block
+  - name: 'security review: blocks gh auth status --show-token'
+    tool: Bash
+    command: 'gh auth status --show-token'
+    expect: block
+  - name: 'security review: blocks gh auth status -t'
+    tool: Bash
+    command: 'gh auth status -t'
+    expect: block
+  - name: 'security review: allows gh auth status'
+    tool: Bash
+    command: 'gh auth status'
+    expect: allow
+  - name: 'security review: blocks ps with the BSD e flag'
+    tool: Bash
+    command: 'ps eww'
+    expect: block
+  - name: 'security review: blocks ps auxe'
+    tool: Bash
+    command: 'ps auxe'
+    expect: block
+  - name: 'security review: allows ps aux'
+    tool: Bash
+    command: 'ps aux'
+    expect: allow
+  - name: 'security review: allows ps -ef'
+    tool: Bash
+    command: 'ps -ef'
+    expect: allow
+  - name: 'security review: allows ps -C with a name holding e'
+    tool: Bash
+    command: 'ps -C sleep'
+    expect: allow
+  - name: 'security review: blocks gpg decrypt next to arithmetic in one command'
+    tool: Bash
+    command: 'gpg --batch -d s.gpg $((1))'
+    expect: block
+  - name: 'security review: blocks openssl cipher decrypt next to arithmetic in one command'
+    tool: Bash
+    command: 'openssl aes-256-cbc -d -in x.enc $((1))'
+    expect: block
+  - name: 'security review: blocks sops decrypt next to arithmetic in one command'
+    tool: Bash
+    command: 'sops decrypt s.yaml $((1))'
+    expect: block
+  - name: 'security review: blocks age decrypt next to arithmetic in one command'
+    tool: Bash
+    command: 'age --identity k.txt --decrypt x.age $((1))'
+    expect: block
+  - name: 'security review: blocks proc environ next to arithmetic in one command'
+    tool: Bash
+    command: 'strings /proc/self/environ $((1))'
+    expect: block
+  - name: 'security review: blocks ps e next to arithmetic in one command'
+    tool: Bash
+    command: 'ps eww $((1))'
+    expect: block
+  - name: 'security review: allows ps piped into grep'
+    tool: Bash
+    command: 'ps aux | grep sleep'
+    expect: allow
+  - name: 'security review: allows ps sorted by elapsed time'
+    tool: Bash
+    command: 'ps --sort etime -o pid,etime'
+    expect: allow
+  - name: 'security review: allows BSD ps output format'
+    tool: Bash
+    command: 'ps o etime p 1'
+    expect: allow
+  - name: 'security review: blocks BSD ps e after other flags'
+    tool: Bash
+    command: 'ps ax e'
+    expect: block
+  - name: 'security review: allows ps -C with a name made of flag letters'
+    tool: Bash
+    command: 'ps -C less'
+    expect: allow
+  - name: 'security review: allows ps -e (all processes, not environment)'
+    tool: Bash
+    command: 'ps -e'
+    expect: allow

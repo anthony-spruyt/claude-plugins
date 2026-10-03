@@ -6,7 +6,7 @@ Blocking rules for Claude Code that prevent accidental secret exposure.
 
 Requires the **hookify-plus** plugin to be installed from this same marketplace. Without the engine, these rule files are inert markdown with no effect.
 
-## Rules (29)
+## Rules (31)
 
 | Rule                          | Blocks                                                  |
 | ----------------------------- | ------------------------------------------------------- |
@@ -17,7 +17,9 @@ Requires the **hookify-plus** plugin to be installed from this same marketplace.
 | block-env-dump                | `env` / `printenv` bare commands                        |
 | block-env-grep                | `env \| grep` / `printenv \| grep`                      |
 | block-export-dump             | `export -p`                                             |
+| block-gh-auth-token           | `gh auth token` / `gh auth status --show-token`         |
 | block-gpg-decrypt             | `gpg --decrypt` / `gpg -d`                              |
+| block-huge-glob               | Globs and braces past 256 words or 20k entries          |
 | block-heredoc-s3crets         | heredocs containing secret variables                    |
 | block-indirect-s3crets        | `${!x}`, `${x@P}` and namerefs to secret variables      |
 | block-ip-in-commits           | Private IPs in git commit messages                      |
@@ -27,11 +29,11 @@ Requires the **hookify-plus** plugin to be installed from this same marketplace.
 | block-powershell-env-dump     | `Get-ChildItem Env:` / `GetEnvironmentVariables()`      |
 | block-powershell-secret-vars  | `$env:` reads of secret-looking names                   |
 | block-printenv                | `printenv VAR`                                          |
-| block-proc-environ            | `cat /proc/*/environ`                                   |
+| block-proc-environ            | `cat /proc/*/environ` / `ps e`                          |
 | block-read-cloud-creds        | AWS/GCP/Azure credential files                          |
 | block-read-encrypted-stores   | SOPS/Vault/GPG stores                                   |
 | block-read-env-files          | `.env` / `.env.*` files                                 |
-| block-read-package-creds      | `.npmrc` / `.pypirc` / `.netrc`                         |
+| block-read-package-creds      | `.npmrc` / `.pypirc` / `.netrc` / `.git-credentials`    |
 | block-read-proc-environ       | Opening `/proc/*/environ` with a file tool              |
 | block-read-secrets-generic    | Generic secret/token/key files                          |
 | block-read-ssh-keys           | SSH private keys                                        |

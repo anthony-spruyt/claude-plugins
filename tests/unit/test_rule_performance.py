@@ -82,6 +82,11 @@ INPUTS = {
     "nested-brace-groups": "cat " + "{a,b}" * 3900,
     "brace-sequences": "cat " + "{1..9}" * 3300,
     "upload-many-ats": "curl -d " + "@" * 19000,
+    "arithmetic-segments": "$((1));" * 2800,
+    "arithmetic-then-words": "$((1)); " + "a " * 9900,
+    "arithmetic-unclosed-quote": "$((1)); '" + ";" * 19900,
+    "arithmetic-brace-words": "$((1)); " + "echo {1..300};" * 1300,
+    "ps-many-flags": "ps" + " a" * 9990 + " x",
 }
 
 

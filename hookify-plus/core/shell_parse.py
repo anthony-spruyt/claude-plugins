@@ -1145,12 +1145,8 @@ def _quoted(arg: str) -> str:
 
 def _word(arg: str, glob=None) -> str:
     pattern = getattr(arg, 'pattern', '')
-    if not pattern or glob is None:
-        return _quoted(arg)
-    words = glob(pattern)
-    if words is None:
-        raise _Unsure
-    return ' '.join(_quoted(w) for w in words)
+    words = glob(pattern) if pattern and glob is not None else None
+    return _quoted(arg) if words is None else ' '.join(_quoted(w) for w in words)
 
 
 # Expanding heredoc bodies by redirect id, filled while parsing and read while rendering
@@ -1168,13 +1164,18 @@ def normalise(command: str, cwd: str = '') -> Optional[List[str]]:
     return None if commands is None else render(commands, cwd)
 
 
-def render(commands: List[SimpleCommand], cwd: str = '') -> Optional[List[str]]:
+def render(commands: List[SimpleCommand], cwd: str = '', overflow: Optional[list] = None,
+           entries: Optional[List[int]] = None) -> Optional[List[str]]:
+    """Clean lines. A word that expands past the globbing limits stays as written and lands in `overflow`."""
     rendered, inherited, budget = {}, {}, [OUTPUT_LIMIT]
-    entries, globbed = [MAX_ENTRIES], {}
+    entries, globbed = [MAX_ENTRIES] if entries is None else entries, {}
+    overflow = [] if overflow is None else overflow
 
     def glob(pattern):
         if pattern not in globbed:
             globbed[pattern] = expand(pattern, entries, cwd)
+            if globbed[pattern] is None:
+                overflow.append(pattern)
         return globbed[pattern]
 
     def spend(text):

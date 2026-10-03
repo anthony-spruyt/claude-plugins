@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
 from core.globbing import MAX_ENTRIES, MAX_WORDS, expand
 from core.rule_engine import normalise
+from core.shell_parse import parse_commands, render
 
 
 @pytest.fixture
@@ -97,5 +98,33 @@ class TestLimits:
     def test_many_globs_share_one_budget(self, tmp_path):
         for n in range(MAX_ENTRIES // 4):
             (tmp_path / str(n)).touch()
-        lines = normalise("cat " + " ".join("?%d*" % n for n in range(10)), str(tmp_path))
-        assert lines is None
+        overflow = []
+        render(parse_commands("cat " + " ".join("?%d*" % n for n in range(10))), str(tmp_path), overflow)
+        assert overflow
+
+
+class TestOverflow:
+    """A word that expands past the limits stays as written, so rules still see it."""
+
+    def test_too_many_matches_keeps_word(self, tmp_path):
+        for n in range(MAX_WORDS + 10):
+            (tmp_path / str(n)).mkdir()
+            (tmp_path / str(n) / "environ").touch()
+        overflow = []
+        lines = render(parse_commands("cat */environ"), str(tmp_path), overflow)
+        assert lines == ["cat '*/environ'"]
+        assert overflow
+
+    def test_too_many_braces_keeps_word(self):
+        overflow = []
+        lines = render(parse_commands("cat /proc/{1..%d}/environ" % (MAX_WORDS * 2)), '', overflow)
+        assert lines == ["cat '/proc/{1..%d}/environ'" % (MAX_WORDS * 2)]
+        assert overflow
+
+    def test_small_expansion_does_not_overflow(self, tree):
+        overflow = []
+        assert render(parse_commands("cat .e?v x{1..3}"), str(tree), overflow) == ["cat .env x1 x2 x3"]
+        assert not overflow
+
+    def test_normalise_still_parses(self):
+        assert normalise("echo {1..%d}" % (MAX_WORDS * 2)) is not None
