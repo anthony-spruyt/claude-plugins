@@ -225,6 +225,12 @@ class TestNestedCode:
     def test_single_quoted_dollar_is_literal(self):
         assert names("echo '$(env)'") == ["echo"]
 
+    def test_single_quoted_dollar_in_default_is_literal(self):
+        assert pairs("echo ${X:-'$T'}")[0][1][0].shown == "${X:-'\\$T'}"
+
+    def test_double_quoted_default_keeps_expansion(self):
+        assert pairs('echo "${X:-\'$T\'}"')[0][1][0].shown == "${X:-'$T'}"
+
 
 class TestWrappers:
     @pytest.mark.parametrize("command, expected", [

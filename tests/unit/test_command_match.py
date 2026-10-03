@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 from core.config_loader import Condition, Rule, extract_frontmatter
 from core import rule_engine
 from core.rule_engine import RuleEngine
+from core.globbing import MAX_ENTRIES
 from core.shell_parse import normalise
 
 PATTERN = r"^(env|printenv)( -\S+)*$"
@@ -81,18 +82,48 @@ class TestCleanLines:
 
 
 class TestUnparseable:
-    CMD = "$X; env"
+    CMD = "$X env"
 
     def test_command_really_is_unparseable(self):
         assert normalise(self.CMD) is None
 
     def test_uses_fallback(self):
-        assert _matches(_rule(fallback=r";\s*env\b"), self.CMD)
+        assert _matches(_rule(fallback=r"\$X\s+env\b"), self.CMD)
         assert not _matches(_rule(fallback=r"printenv"), self.CMD)
 
     def test_without_fallback_uses_pattern_on_raw_command(self):
         assert not _matches(_rule(), self.CMD)
         assert _matches(_rule(pattern=r"\benv$"), self.CMD)
+
+
+class TestUnparseableSegments:
+    @pytest.mark.parametrize("cmd", [
+        "n=$((1)); env",
+        "n=$((1)) && sudo env -0",
+        "case x in x) env;; esac",
+        "n=$((1)); if true; then e''nv; fi",
+        "n=$((1)); echo x | env",
+    ])
+    def test_block_rule_matches_pattern_on_each_segment(self, cmd):
+        assert normalise(cmd) is None
+        assert _matches(_rule(fallback=r"nomatch"), cmd)
+
+    def test_warn_rule_keeps_fallback_only(self):
+        rule = _rule(fallback=r"nomatch")
+        rule.action = "warn"
+        assert not _matches(rule, "n=$((1)); env")
+
+    def test_segments_share_one_glob_budget(self, tmp_path, monkeypatch):
+        for n in range(MAX_ENTRIES // 4):
+            (tmp_path / str(n)).touch()
+        monkeypatch.chdir(tmp_path)
+        rule_engine.segment_lines.cache_clear()
+        _, overflow = rule_engine.segment_lines("n=$((1)); " + "; ".join(["ls 7?"] * 8), str(tmp_path))
+        assert overflow
+
+    @pytest.mark.parametrize("cmd", ["n=$((1)); echo env", "case x in x) cd env;; esac"])
+    def test_segments_keep_the_pattern_anchor(self, cmd):
+        assert not _matches(_rule(fallback=r"nomatch"), cmd)
 
 
 class TestMasking:
@@ -204,3 +235,19 @@ def test_unknown_operator_still_false():
 
 def test_regex_condition_without_fallback_arg():
     assert Condition("command", "regex_match", "x").fallback is None
+
+
+class TestGlobOverflow:
+    def _rule(self):
+        return _rule(pattern="", operator="glob_overflow")
+
+    @pytest.mark.parametrize("cmd", ["echo {1..300}", "n=$((1)); echo {1..300}", "bash -c 'echo {1..300}'"])
+    def test_matches_word_past_the_limits(self, cmd):
+        assert _matches(self._rule(), cmd)
+
+    @pytest.mark.parametrize("cmd", ["echo {1..3}", "echo '{1..300}'", "n=$((1)); echo x"])
+    def test_ignores_small_or_quoted_words(self, cmd):
+        assert not _matches(self._rule(), cmd)
+
+    def test_other_tools_never_match(self):
+        assert not _matches(self._rule(), "echo {1..300}", tool="PowerShell")

@@ -51,11 +51,12 @@ Specifies how to match.
 | `starts_with`     | Prefix check                                                   |
 | `ends_with`       | Suffix check                                                   |
 | `command_match`   | Regex matches any clean line of a Bash command -- hookify-plus |
+| `glob_overflow`   | A glob or brace expands past the limits -- hookify-plus        |
 
 ### command_match / fallback
 
 For `field: command`, the engine parses the command into "clean lines": one per simple command bash would run, quotes removed, wrappers (`sudo`, `bash -c`, `eval`, ...) unwrapped, redirects and pipes kept. `sudo -E e''nv | wc -l` gives `sudo -E env | wc -l`, `env | wc -l` and `wc -l`. The condition matches if `pattern` regex-searches any clean line. If the command can't be parsed, `fallback` (or
-`pattern` if there is no `fallback`) is matched against the raw command instead. That raw command is masked when the rule sets `mask_data: true`. On other fields, `command_match` behaves like `regex_match`.
+`pattern` if there is no `fallback`) is matched against the raw command instead. That raw command is masked when the rule sets `mask_data: true`. Block rules also match `pattern` on each piece of the unparsed command that parses on its own. On other fields, `command_match` behaves like `regex_match`.
 
 ```yaml
 conditions:
