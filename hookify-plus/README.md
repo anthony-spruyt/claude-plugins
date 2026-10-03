@@ -132,11 +132,15 @@ You're editing a .env file. Make sure it's in .gitignore!
 | `starts_with`     | Prefix match                                               |
 | `ends_with`       | Suffix match                                               |
 | `command_match`   | Regex matches any command bash would run (`command` field) |
+| `glob_overflow`   | A glob or brace expands past the limits (`command` field)  |
 
 ### command_match
 
 `command_match` parses the Bash command and regex-searches each "clean line": one per simple command bash would run, with quotes removed and wrappers (`sudo`, `bash -c`, `eval`, ...) unwrapped, keeping redirects and pipes. `sudo -E e''nv | wc -l` gives `sudo -E env | wc -l`, `env | wc -l` and `wc -l`. If the command can't be parsed, `fallback` (or `pattern` if there is no `fallback`) is matched
-against the raw command instead. That raw command is masked when the rule sets `mask_data: true`.
+against the raw command instead. That raw command is masked when the rule sets `mask_data: true`. Block rules also split an unparsed command on `;`, `&`, `|`, newlines and parens and match `pattern` on every piece that parses, so one piece the parser can't read doesn't hide the rest.
+
+Unquoted globs and braces expand the way bash would, against the hook's `cwd`: in a folder holding `.env`, `cat .e?v` gives `cat .env` and `cat .{e,x}nv` gives `cat .env .xnv`. A glob that matches nothing stays as written. If expansion would read more than 20,000 directory entries or make more than 256 words, the word stays as written. The `glob_overflow` operator (no `pattern`) matches a Bash
+command holding such a word.
 
 ```yaml
 conditions:

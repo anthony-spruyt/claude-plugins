@@ -2,10 +2,11 @@
 name: block-gpg-decrypt
 enabled: true
 event: bash
+# Second branch: with no command option gpg runs its default action, which decrypts
 conditions:
   - field: command
     operator: command_match
-    pattern: '^gpg2?(?: (?!\|)\S+)* (?:-[a-zA-Z]*d[a-zA-Z]*|--decr[a-z-]*)(?: |$)'
+    pattern: '^gpg2?(?: (?!\|)\S+)* (?:-[a-zA-Z]*d[a-zA-Z]*|--decr[a-z-]*)(?: |$)|^gpg2?(?!(?: (?!\|)\S+)*? (?:-[a-zA-Z]*[sbeckKh][a-zA-Z]*(?: |$)|--(?:sign|clear|clearsign|detach|encrypt|symmetric|store|verify|list|check|fingerprint|show-keys|gen|generate|full|quick|delete|edit|lsign|export|import|send|recv|receive|search|refresh|fetch|locate|update|fix-trustdb|rebuild|card|change|passwd|print|server|tofu|dearmor|enarmor|desig|gpgconf|dump|help|version|warranty|apropos)(?:-[a-z-]*)?(?<!-options)(?<!-filter)(?<!-to)(?:=| |$)))(?: (?!\|)\S+)*(?: \||$)'
     fallback: 'gpg\s+(-d|--decrypt)'
 action: block
 mask_data: true

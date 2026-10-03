@@ -10,6 +10,8 @@ import shlex
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
+from core.globbing import MAX_ENTRIES, expand
+
 MAX_LENGTH = 20000
 MAX_DEPTH = 8
 # Rendered pipelines repeat their tails, so output can grow quadratically in input.
@@ -77,12 +79,20 @@ class _Expansion(str):
 
 
 LITERAL = re.compile(r'[\\$`]')
+BACKSLASH_MATCH = r'\\\g<0>'
 
 
 class Word(str):
-    """Word text; `shown` escapes literal `\\`, `$` and backticks so rules can tell them from an expansion."""
+    """Word text; `shown` escapes literal `\\`, `$` and backticks so rules can tell them from an expansion.
+
+    `pattern` is set when bash would brace- and glob-expand the word.
+    """
 
     shown = ''
+    pattern = ''
+
+
+GLOB_SPECIAL = re.compile(r'[\\*?\[\]{},]')
 
 
 def _word_text(buf) -> str:
@@ -90,7 +100,13 @@ def _word_text(buf) -> str:
     if '$' not in text and '`' not in text:
         return text
     word = Word(text)
-    word.shown = ''.join(p if isinstance(p, _Expansion) else LITERAL.sub(r'\\\g<0>', p) for p in buf)
+    word.shown = ''.join(p if isinstance(p, _Expansion) else LITERAL.sub(BACKSLASH_MATCH, p) for p in buf)
+    return word
+
+
+def _glob_word(text: str, pattern: str) -> Word:
+    word = Word(text)
+    word.shown, word.pattern = getattr(text, 'shown', ''), pattern
     return word
 
 
@@ -550,13 +566,16 @@ class _Parser:
 
     def word(self) -> Tuple[str, int]:
         s, buf, flags = self.s, [], 0
+        # Glob pattern for the word: quoted text escaped, unquoted glob and brace characters live
+        pattern = []
         while self.i < len(s):
             m = PLAIN.match(s, self.i)
             if m:
                 buf.append(m.group())
+                pattern.append(m.group())
                 self.i = m.end()
                 continue
-            c = s[self.i]
+            c, start = s[self.i], len(buf)
             if c in '<>' and s.startswith('(', self.i + 1):
                 flags |= self.nested(buf, 2)
             elif c in ' \t\n;&|()<>':
@@ -586,8 +605,14 @@ class _Parser:
                 self.i, flags = self.i + 2, flags | QUOTED
             else:
                 buf.append(c)
+                pattern.append(c)
                 self.i, flags = self.i + 1, flags | GLOB
-        return _word_text(buf), flags
+                continue
+            pattern.append(GLOB_SPECIAL.sub(BACKSLASH_MATCH, ''.join(buf[start:])))
+        text = _word_text(buf)
+        if flags & GLOB and not flags & EXPANDED:
+            text = _glob_word(text, ''.join(pattern))
+        return text, flags
 
     def double_quoted(self, buf: List[str], closing: bool = True) -> int:
         s, flags = self.s, 0
@@ -639,8 +664,10 @@ class _Parser:
                 raise _Unsure
             self.i += 2
             self.enter()
-            self.brace_param(quoted)
+            text = '${' + self.brace_param(quoted)
             self.leave()
+            buf.append(_Expansion(text))
+            return EXPANDED
         else:
             m = VARIABLE.match(s, self.i + 1)
             if not m:
@@ -653,33 +680,40 @@ class _Parser:
         buf.append(_Expansion(s[start:self.i]))
         return EXPANDED
 
-    def brace_param(self, quoted: bool) -> None:
-        s, scratch = self.s, []
+    def brace_param(self, quoted: bool) -> str:
+        """Skip to the closing brace; the source text with single-quoted `$` shown as literal."""
+        s, scratch, shown = self.s, [], []
         while self.i < len(s):
+            start = self.i
             m = PARAM_PLAIN.match(s, self.i)
             if m:
                 self.i = m.end()
+                shown.append(m.group())
                 continue
             c = s[self.i]
             if c == '}':
                 self.i += 1
-                return
+                return ''.join(shown) + '}'
             if c == "'" and not quoted:
                 end = s.find("'", self.i + 1)
                 if end < 0:
                     raise _Unsure
                 self.i = end + 1
-            elif c == '"':
+                shown.append(LITERAL.sub(BACKSLASH_MATCH, s[start:self.i]))
+                continue
+            if c == '"':
                 self.i += 1
                 self.double_quoted(scratch)
             elif c == '$':
-                self.dollar(scratch, quoted)
+                self.dollar(shown, quoted)
+                continue
             elif c == '`':
                 self.backtick(scratch, quoted)
             elif c == '\\':
                 self.i += 2
             else:
                 self.i += 1
+            shown.append(s[start:self.i])
         raise _Unsure
 
     def nested(self, buf: List[str], skip: int) -> int:
@@ -1104,28 +1138,45 @@ def parse_commands(command: str, functions: Optional[set] = None) -> Optional[Li
 NEEDS_QUOTE = re.compile(r'[\s|&;<>()$`\\"\'#*?\[\]{}]')
 
 
-def _word(arg: str) -> str:
+def _quoted(arg: str) -> str:
     arg = getattr(arg, 'shown', arg) or arg
     return shlex.quote(arg) if not arg or NEEDS_QUOTE.search(arg) else arg
+
+
+def _word(arg: str, glob=None) -> str:
+    pattern = getattr(arg, 'pattern', '')
+    words = glob(pattern) if pattern and glob is not None else None
+    return _quoted(arg) if words is None else ' '.join(_quoted(w) for w in words)
 
 
 # Expanding heredoc bodies by redirect id, filled while parsing and read while rendering
 _BODIES = {}
 
 
-def _redirects(redirects, skip=None) -> str:
-    return ''.join(' %s %s' % (op, _word(_BODIES.get(id(r), r[1]))) for r in redirects
+def _redirects(redirects, skip=None, glob=None) -> str:
+    return ''.join(' %s %s' % (op, _word(_BODIES.get(id(r), r[1]), glob)) for r in redirects
                    for op in (r[0],) if r != skip)
 
 
-def normalise(command: str) -> Optional[List[str]]:
+def normalise(command: str, cwd: str = '') -> Optional[List[str]]:
     _BODIES.clear()
     commands = parse_commands(command)
-    return None if commands is None else render(commands)
+    return None if commands is None else render(commands, cwd)
 
 
-def render(commands: List[SimpleCommand]) -> Optional[List[str]]:
+def render(commands: List[SimpleCommand], cwd: str = '', overflow: Optional[list] = None,
+           entries: Optional[List[int]] = None) -> Optional[List[str]]:
+    """Clean lines. A word that expands past the globbing limits stays as written and lands in `overflow`."""
     rendered, inherited, budget = {}, {}, [OUTPUT_LIMIT]
+    entries, globbed = [MAX_ENTRIES] if entries is None else entries, {}
+    overflow = [] if overflow is None else overflow
+
+    def glob(pattern):
+        if pattern not in globbed:
+            globbed[pattern] = expand(pattern, entries, cwd)
+            if globbed[pattern] is None:
+                overflow.append(pattern)
+        return globbed[pattern]
 
     def spend(text):
         budget[0] -= len(text)
@@ -1140,8 +1191,8 @@ def render(commands: List[SimpleCommand]) -> Optional[List[str]]:
             cmd = cmd.pipe_to
         # Tail-first so a long pipeline costs a loop, not a recursion per stage.
         for stage in reversed(chain):
-            text = ' '.join([_base(stage.name) or stage.name] + [_word(a) for a in stage.args])
-            text += _redirects(stage.redirects)
+            text = ' '.join([_base(stage.name) or stage.name] + [_word(a, glob) for a in stage.args])
+            text += _redirects(stage.redirects, glob=glob)
             if stage.pipe_to is not None:
                 text = spend(text + ' | ' + rendered[id(stage.pipe_to)])
             rendered[id(stage)] = text
@@ -1151,7 +1202,7 @@ def render(commands: List[SimpleCommand]) -> Optional[List[str]]:
         key = (id(cmd.parent), cmd.feed)
         if key not in inherited:
             parent = cmd.parent
-            text = _redirects(parent.redirects, cmd.feed)
+            text = _redirects(parent.redirects, cmd.feed, glob)
             if parent.pipe_to is not None:
                 text += ' | ' + pipeline(parent.pipe_to)
             if parent.parent is not None:

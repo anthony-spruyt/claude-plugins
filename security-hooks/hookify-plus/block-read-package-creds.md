@@ -6,14 +6,14 @@ action: block
 conditions:
   - field: file_path
     operator: regex_match
-    pattern: [/\\]\.(npmrc|pypirc|netrc)$
+    pattern: [/\\]\.(npmrc|pypirc|netrc|git-credentials)$
 ---
 
 **Blocked: Reading package manager credentials**
 
-**What was blocked:** `.npmrc`, `.pypirc`, or `.netrc` files.
+**What was blocked:** `.npmrc`, `.pypirc`, `.netrc`, or `.git-credentials` files.
 
-**Why:** These contain authentication tokens for npm, PyPI, or network services.
+**Why:** These contain authentication tokens for npm, PyPI, git hosts, or network services.
 
 **Alternatives:**
 

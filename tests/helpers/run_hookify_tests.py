@@ -60,6 +60,24 @@ def get_result_type(result: dict) -> str:
     return "allow"
 
 
+def evaluate_in(files, engine, rules, input_data) -> dict:
+    """Evaluate in a temp dir holding `files`, so globs expand against them."""
+    if not files:
+        return engine.evaluate_rules(rules, input_data)
+    cwd = os.getcwd()
+    workdir = tempfile.mkdtemp(prefix="hookify-test-files-")
+    try:
+        for name in files:
+            path = os.path.join(workdir, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            open(path, "w", encoding="utf-8").close()
+        os.chdir(workdir)
+        return engine.evaluate_rules(rules, input_data)
+    finally:
+        os.chdir(cwd)
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 def run_tests(config_path: str, verbose: bool = False) -> list:
     """Run all test cases from config file.
 
@@ -131,7 +149,7 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
                 }
 
             rules = load_rules(event=event_for_tool(tool))
-            result = engine.evaluate_rules(rules, input_data)
+            result = evaluate_in(test.get('files'), engine, rules, input_data)
 
             actual = get_result_type(result)
 
