@@ -16,7 +16,7 @@ MAX_NESTING = 8
 MAX_CHARS = 320000
 
 SEQUENCE = re.compile(r'(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])(?:\.\.(-?\d+))?$')
-GLOB = re.compile(r'(?<!\\)(?:\\\\)*[*?\[]')
+GLOB = re.compile(r'\\.|([*?\[])', re.S)
 UNESCAPE = re.compile(r'\\(.)', re.S)
 CLASSES = {
     'alpha': 'a-zA-Z', 'digit': '0-9', 'alnum': 'a-zA-Z0-9', 'upper': 'A-Z', 'lower': 'a-z',
@@ -35,7 +35,7 @@ def expand(pattern: str, budget: Optional[List[int]] = None, cwd: str = '') -> O
     try:
         out = []
         for word in _braces(pattern):
-            matches = _glob(word, budget, cwd) if GLOB.search(word) else []
+            matches = _glob(word, budget, cwd) if _has_glob(word) else []
             # An unmatched glob stays as written, as bash leaves it without nullglob
             out.extend(matches or [UNESCAPE.sub(r'\1', word)])
             if len(out) > MAX_WORDS:
@@ -43,6 +43,10 @@ def expand(pattern: str, budget: Optional[List[int]] = None, cwd: str = '') -> O
         return out
     except (_TooMuch, RecursionError):
         return None
+
+
+def _has_glob(word: str) -> bool:
+    return any(m.group(1) for m in GLOB.finditer(word))
 
 
 def _braces(word: str, depth: int = 0) -> List[str]:
@@ -123,7 +127,7 @@ def _glob(word: str, budget: List[int], cwd: str) -> List[str]:
         if not part:
             continue
         last = n == len(parts) - 1 or not any(parts[n + 1:])
-        if not GLOB.search(part):
+        if not _has_glob(part):
             paths = [p + UNESCAPE.sub(r'\1', part) + ('' if last else '/') for p in paths]
             continue
         regex, dotted = _segment(part), part.lstrip('\\').startswith('.')

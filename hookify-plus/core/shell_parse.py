@@ -79,6 +79,7 @@ class _Expansion(str):
 
 
 LITERAL = re.compile(r'[\\$`]')
+BACKSLASH_MATCH = r'\\\g<0>'
 
 
 class Word(str):
@@ -99,7 +100,7 @@ def _word_text(buf) -> str:
     if '$' not in text and '`' not in text:
         return text
     word = Word(text)
-    word.shown = ''.join(p if isinstance(p, _Expansion) else LITERAL.sub(r'\\\g<0>', p) for p in buf)
+    word.shown = ''.join(p if isinstance(p, _Expansion) else LITERAL.sub(BACKSLASH_MATCH, p) for p in buf)
     return word
 
 
@@ -607,7 +608,7 @@ class _Parser:
                 pattern.append(c)
                 self.i, flags = self.i + 1, flags | GLOB
                 continue
-            pattern.append(GLOB_SPECIAL.sub(r'\\\g<0>', ''.join(buf[start:])))
+            pattern.append(GLOB_SPECIAL.sub(BACKSLASH_MATCH, ''.join(buf[start:])))
         text = _word_text(buf)
         if flags & GLOB and not flags & EXPANDED:
             text = _glob_word(text, ''.join(pattern))
@@ -698,7 +699,7 @@ class _Parser:
                 if end < 0:
                     raise _Unsure
                 self.i = end + 1
-                shown.append(LITERAL.sub(r'\\\g<0>', s[start:self.i]))
+                shown.append(LITERAL.sub(BACKSLASH_MATCH, s[start:self.i]))
                 continue
             if c == '"':
                 self.i += 1
