@@ -7,6 +7,7 @@ Standardized development container synced across repos via repo-operator. Edits 
 The heavy lifting is baked into `docker.io/aspruyt/devcontainer-common` (built from `container-images/devcontainer-common/`). That image includes:
 
 - Python, Node, GitHub CLI, pre-commit
+- bats, with `bats-support` and `bats-assert` loadable via `bats_load_library`
 - Podman, with `podman`/`docker` wrappers at `/usr/local/bin` that run it via `sudo`
 - safe-chain supply-chain protection
 - `agent-run` policy-enforcing podman wrapper at `/usr/local/bin/agent-run`
@@ -22,6 +23,7 @@ Repo-operator syncs a thin layer on top.
 - `initialize.sh` — host-side SSH agent socket setup (runs before container creation).
 - `post-start.sh` — runs every `post-start.d/*.sh` on each container start, before the editor or Claude attaches. Groups add hooks by syncing a file into `post-start.d/`. A failing hook only warns.
 - `post-start.d/claude-plugins.sh` (`claude` group) — refreshes plugin marketplaces and updates user-scope and this repo's Claude Code plugins. `~/.claude` persists across rebuilds (host bind mount locally, home PVC on Coder), so `claude plugin install` alone never upgrades them.
+- `post-start.d/claude-state.sh` (`claude` group) — marks Claude Code onboarding done, trusts the workspace folder and dismisses the auto-mode nudge in `~/.claude.json`. That file lives outside `~/.claude`, so a rebuild wipes it. Login is skipped only when `CLAUDE_CODE_OAUTH_TOKEN` is set, which locally comes from `~/.secrets/.env.common` (make it with `claude setup-token`).
 - `podman-seccomp.json` — vendored podman default seccomp profile, synced by repo-operator. Applied to the outer container via `runArgs: --security-opt seccomp=<path>`.
 
 ## What `devcontainer-post-create` does at runtime

@@ -7,7 +7,7 @@ Plugin monorepo for Claude Code. Contains the hookify-plus engine and rule plugi
 ## Structure
 
 - `hookify-plus/` — Rule engine plugin (convention-based discovery)
-- `security-hooks/` — 31 blocking rules (requires hookify-plus)
+- `security-hooks/` — 32 blocking rules (requires hookify-plus)
 - `best-practices/` — 4 warning rules (requires hookify-plus)
 - `tests/` — Integration tests for all rules
 
@@ -22,6 +22,12 @@ bats tests/hooks/
 
 # Run unit tests
 pytest tests/unit/ -v
+
+# Replay real session logs through the rules (see the replay-logs skill)
+python3 tests/helpers/replay_transcripts.py --exclude-project claude-plugins
+
+# Fuzz the rules: speed (slow regexes), crash (parser), bypass (real leaks no rule blocks)
+python3 tests/helpers/fuzz_rules.py speed|crash|bypass
 ```
 
 ## Versioning
