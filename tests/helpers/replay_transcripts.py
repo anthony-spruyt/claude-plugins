@@ -25,32 +25,47 @@ MAX_SHOWN = 400
 MAX_EXAMPLES = 25
 MAX_SUSPECTS = 300
 
-HOOK_FIRE = re.compile(r"(?:PreToolUse|PostToolUse)[^\n]*\*\*\[([a-z0-9][a-z0-9-]*)\]\*\*")
 RULE_NAME = re.compile(r"\*\*\[([a-z0-9][a-z0-9-]*)\]\*\*")
 
 SUSPECT = re.compile(
-    r"\.env\b|\.ssh/|id_(?:rsa|ed25519|ecdsa)|\.aws/|\.kube/config|\.docker/config|\.npmrc|\.pypirc|"
+    r"\.env\b|\.ssh\b|id_(?:rsa|ed25519|ecdsa)|\.aws\b|\.kube/config|\.docker/config|\.npmrc|\.pypirc|"
     r"\.netrc|\.git-credentials|credentials|secret|token|passw|private.?key|\bsops\b|\bage\b|"
     r"\bgpg\b|decrypt|\bprintenv\b|(?<![\w./-])env(?![\w./-])|/proc/\S*environ|\bdeclare -p\b|\bset\b\s*(?:\||$)",
-    re.IGNORECASE,
+    re.IGNORECASE | re.MULTILINE,
 )
+SUSPECT_FIELDS = ("command", "file_path", "notebook_path", "path", "glob", "pattern")
 
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)", re.DOTALL),
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}|"
-               r"AKIA[0-9A-Z]{16}|xox[abposr]-[A-Za-z0-9-]{10,}|AGE-SECRET-KEY-1\w+|glpat-[\w-]{20,})"),
+               r"AKIA[0-9A-Z]{16}|xox[abposr]-[A-Za-z0-9-]{10,}|AGE-SECRET-KEY-1\w+|glpat-[\w-]{20,}|"
+               r"AIza[\w-]{30,}|[sr]k_(?:live|test)_\w{16,}|npm_\w{30,}|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]{5,})"),
+]
+KEEP_PREFIX = [
+    re.compile(r"(?i)(\b(?:Bearer|Basic)\s+)(?![$<])[\w.~+/=-]{8,}"),
+    re.compile(r"(://[^/@\s:]+:)[^@\s/]+(?=@)"),
+    re.compile(r"(?i)(\b(?:x-)?(?:api-?key|auth-token)\s*:\s*)(?![$<])[^\s'\"]+"),
+    re.compile(r"(?i)(--?(?:password|passwd|token|secret|api-?key)[= ]['\"]?)(?![$<])[^\s'\"]+"),
+    re.compile(r"(?i)(\"[^\"\n]*(?:token|secret|passw|api_?key|private_?key|credential)[^\"\n]*\"\s*:\s*\")[^\"]+"),
 ]
 SECRET_ASSIGNMENT = re.compile(
-    r"\b(\w*(?:TOKEN|SECRET|PASSW(?:OR)?D|API_?KEY|PRIVATE_KEY|CREDENTIALS?)\w*\s*[=:]\s*)"
-    r"(['\"]?)(?![$'\"])([^\s'\";&|]+)\2",
-    re.IGNORECASE,
+    r"(?i)\b(\w*(?:TOKEN|SECRET|PASSW(?:OR)?D|PASS|API_?KEY|PRIVATE_KEY|CREDENTIALS?)\w*\s*[=:]\s*|(?:\w*_)?PAT\s*=\s*)"
+    r"('(?!\$)[^'\n]*'|\"(?!\$)[^\"\n]*\"|(?![$'\"])[^\s'\";&|]+)"
 )
+
+
+def _mask_value(m: re.Match) -> str:
+    value = m.group(2)
+    quote = value[0] if value[:1] in ("'", '"') else ""
+    return f"{m.group(1)}{quote}<redacted>{quote}"
 
 
 def redact(text: str) -> str:
     for pattern in SECRET_PATTERNS:
         text = pattern.sub("<redacted>", text)
-    return SECRET_ASSIGNMENT.sub(lambda m: f"{m.group(1)}{m.group(2)}<redacted>{m.group(2)}", text)
+    for pattern in KEEP_PREFIX:
+        text = pattern.sub(lambda m: m.group(1) + "<redacted>", text)
+    return SECRET_ASSIGNMENT.sub(_mask_value, text)
 
 
 def find_transcripts(root: str, include=None, exclude=None) -> list:
@@ -75,10 +90,16 @@ def _text(content) -> str:
     return ""
 
 
+def _dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
 def parse_transcript(path: str):
     """Return (tool calls, {tool_use_id: rule names that fired})."""
     calls = []
     fired = defaultdict(set)
+    blocked = set()
+    timed_out = set()
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             try:
@@ -88,25 +109,36 @@ def parse_transcript(path: str):
             if not isinstance(entry, dict):
                 continue
             kind = entry.get("type")
-            content = (entry.get("message") or {}).get("content")
+            content = _dict(entry.get("message")).get("content")
             if kind == "assistant" and isinstance(content, list):
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "tool_use":
                         calls.append({"id": block.get("id"), "tool": block.get("name"),
-                                      "input": block.get("input") or {}, "cwd": entry.get("cwd", ""),
+                                      "input": _dict(block.get("input")), "cwd": entry.get("cwd", ""),
                                       "source": path})
             elif kind == "user" and isinstance(content, list):
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "tool_result":
-                        names = HOOK_FIRE.findall(_text(block.get("content")))
+                        text = _text(block.get("content"))
+                        names = RULE_NAME.findall(text) if text.lstrip().startswith("PreToolUse:") else []
                         if names:
                             fired[block.get("tool_use_id")].update(names)
+                            blocked.add(block.get("tool_use_id"))
             elif kind == "attachment":
-                attachment = entry.get("attachment") or {}
-                if attachment.get("type", "").startswith("hook_") and attachment.get("toolUseID"):
-                    names = RULE_NAME.findall(json.dumps(attachment.get("blockingError", "")))
-                    if names:
-                        fired[attachment["toolUseID"]].update(names)
+                attachment = _dict(entry.get("attachment"))
+                hook_type = str(attachment.get("type") or "")
+                tool_id = attachment.get("toolUseID")
+                if not hook_type.startswith("hook_") or not tool_id:
+                    continue
+                if hook_type == "hook_cancelled" and attachment.get("timedOut") \
+                        and attachment.get("hookEvent") == "PreToolUse":
+                    timed_out.add(tool_id)
+                names = RULE_NAME.findall(json.dumps(attachment.get("blockingError", "")))
+                if names:
+                    fired[tool_id].update(names)
+    for call in calls:
+        call["blocked"] = call["id"] in blocked
+        call["timed_out"] = call["id"] in timed_out
     return calls, dict(fired)
 
 
@@ -123,6 +155,10 @@ def load_rule_dir(*dirs: str) -> list:
 def repo_rule_dirs() -> list:
     dirs = sorted(glob.glob(os.path.join(REPO_ROOT, "*", "hookify-plus"))) + [os.path.join(REPO_ROOT, ".claude", "hookify-plus")]
     return [d for d in dirs if glob.glob(os.path.join(d, "*.md"))]
+
+
+def resolve_rule_dirs(extra=None) -> list:
+    return repo_rule_dirs() + list(extra or [])
 
 
 def matching_rules(call: dict, rules: list) -> set:
@@ -149,12 +185,12 @@ def _shown(call: dict) -> str:
     return text if len(text) <= MAX_SHOWN else text[:MAX_SHOWN] + " …[truncated]"
 
 
-def is_suspect(call: dict, matched: set) -> bool:
-    if any(name.startswith("block-") for name in matched):
+def is_suspect(call: dict, matched_blocks: set) -> bool:
+    """Secret-looking call that no block rule matched."""
+    if matched_blocks or call["tool"] not in ("Bash", "PowerShell", "Monitor", "Read", "Grep", "Glob"):
         return False
-    tool_input = call["input"]
-    text = tool_input.get("command") or tool_input.get("file_path") or tool_input.get("pattern") or ""
-    return call["tool"] in ("Bash", "PowerShell", "Monitor", "Read", "Grep", "Glob") and bool(SUSPECT.search(str(text)))
+    text = "\n".join(str(call["input"][f]) for f in SUSPECT_FIELDS if call["input"].get(f))
+    return bool(SUSPECT.search(text))
 
 
 def _example(call: dict, bucket: dict, cap: int = MAX_EXAMPLES) -> None:
@@ -168,8 +204,11 @@ def _example(call: dict, bucket: dict, cap: int = MAX_EXAMPLES) -> None:
 
 def build_report(paths: list, rules: list) -> dict:
     names = {r.name for r in rules}
+    block_names = {r.name for r in rules if r.action == "block"}
     per_rule = {name: {"hits": 0, "examples": {}, "started": {}, "stopped": {}} for name in names}
     suspects = {}
+    suspect_keys = set()
+    timeouts = {}
     calls_seen = 0
     for path in paths:
         calls, fired = parse_transcript(path)
@@ -177,21 +216,27 @@ def build_report(paths: list, rules: list) -> dict:
             calls_seen += 1
             matched = matching_rules(call, rules)
             then = fired.get(call["id"], set()) & names
+            # PostToolUse never runs on a call PreToolUse blocked, so warn drift there is noise
+            drifting = names if not call.get("blocked") else block_names
             for name in matched:
                 per_rule[name]["hits"] += 1
                 _example(call, per_rule[name]["examples"])
-            for name in matched - then:
+            for name in (matched - then) & drifting:
                 _example(call, per_rule[name]["started"])
-            for name in then - matched:
+            for name in (then - matched) & drifting:
                 _example(call, per_rule[name]["stopped"])
-            if is_suspect(call, matched):
+            if is_suspect(call, matched & block_names):
+                suspect_keys.add((call["tool"], _shown(call)))
                 _example(call, suspects, MAX_SUSPECTS)
+            if call.get("timed_out"):
+                _example(call, timeouts)
     for stats in per_rule.values():
         for bucket in ("examples", "started", "stopped"):
             stats[bucket] = list(stats[bucket].values())
     return {"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "transcripts": len(paths), "calls": calls_seen,
-            "rules": dict(sorted(per_rule.items())), "suspects": list(suspects.values())}
+            "rules": dict(sorted(per_rule.items())), "suspects": list(suspects.values()),
+            "suspects_total": len(suspect_keys), "timeouts": list(timeouts.values())}
 
 
 def _block(examples: list) -> str:
@@ -213,8 +258,25 @@ def render_markdown(report: dict) -> str:
             out += ["", "### Matches now, did not fire in the log", "", _block(stats["started"])]
         if stats["stopped"]:
             out += ["", "### Fired in the log, does not match now", "", _block(stats["stopped"])]
-    out += ["", "## Suspects (secret-looking, no block rule matched)", "", _block(report["suspects"]) or "_none_"]
+    out += ["", "## PreToolUse timeouts (no block rule ran)", "", _block(report["timeouts"]) or "_none_"]
+    shown = len(report["suspects"])
+    out += ["", f"## Suspects (secret-looking, no block rule matched): {shown} of {report['suspects_total']}", "",
+            _block(report["suspects"]) or "_none_"]
     return "\n".join(out) + "\n"
+
+
+def _write_private(path: str, text: str) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def write_report(report: dict, out: str) -> None:
+    os.makedirs(out, mode=0o700, exist_ok=True)
+    os.chmod(out, 0o700)
+    _write_private(os.path.join(out, "report.json"), json.dumps(report, indent=1))
+    _write_private(os.path.join(out, "report.md"), render_markdown(report))
 
 
 def main():
@@ -222,30 +284,27 @@ def main():
     parser.add_argument("--projects", default=os.path.expanduser("~/.claude/projects"),
                         help="Folder holding Claude Code session logs")
     parser.add_argument("--rules", action="append", default=None,
-                        help="Rule folder to load (repeatable). Default: every rule folder in this repo")
+                        help="Extra rule folder to load on top of this repo's (repeatable)")
     parser.add_argument("--project", action="append", help="Only project folders containing this text (repeatable)")
     parser.add_argument("--exclude-project", action="append", help="Skip project folders containing this text (repeatable)")
     parser.add_argument("--since", help="Only logs modified on or after this date (YYYY-MM-DD)")
     parser.add_argument("--out", default="/tmp/hookify-replay", help="Where to write report.md and report.json")
     args = parser.parse_args()
 
-    rule_dirs = args.rules or repo_rule_dirs()
+    rule_dirs = resolve_rule_dirs(args.rules)
     paths = find_transcripts(args.projects, args.project, args.exclude_project)
     if args.since:
         cutoff = datetime.strptime(args.since, "%Y-%m-%d").timestamp()
         paths = [p for p in paths if os.path.getmtime(p) >= cutoff]
 
     report = build_report(paths, load_rule_dir(*rule_dirs))
-    os.makedirs(args.out, exist_ok=True)
-    with open(os.path.join(args.out, "report.json"), "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=1)
-    with open(os.path.join(args.out, "report.md"), "w", encoding="utf-8") as f:
-        f.write(render_markdown(report))
+    write_report(report, args.out)
 
     print(f"{report['transcripts']} transcripts, {report['calls']} tool calls")
     for name, stats in report["rules"].items():
         print(f"  {name:40} hits={stats['hits']:<5} started={len(stats['started']):<3} stopped={len(stats['stopped'])}")
-    print(f"  suspects={len(report['suspects'])}")
+    print(f"  timeouts={len(report['timeouts'])}")
+    print(f"  suspects={report['suspects_total']} (report shows {len(report['suspects'])})")
     print(f"Report: {os.path.join(args.out, 'report.md')}")
 
 

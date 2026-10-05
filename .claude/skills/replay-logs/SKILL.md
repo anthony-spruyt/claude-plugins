@@ -14,9 +14,11 @@ python3 tests/helpers/replay_transcripts.py --exclude-project claude-plugins
 python3 tests/helpers/replay_transcripts.py --project claude-plugins --out /tmp/hookify-replay-dev
 ```
 
-The first run is real-world use. The second is this repo's own dev sessions: they are full of deliberate attack strings written while testing rules, so treat their hits as low-signal. Other flags: `--project <text>` (repeatable), `--since YYYY-MM-DD`, `--rules <dir>` (repeatable; add another repo's `.claude/hookify-plus` to replay its project rules).
+The first run is real-world use. The second is this repo's own dev sessions: they are full of deliberate attack strings written while testing rules, so treat their hits as low-signal. Other flags: `--project <text>` (repeatable), `--since YYYY-MM-DD`, `--rules <dir>` (repeatable; loads another repo's `.claude/hookify-plus` on top of this repo's rules).
 
-Output: a summary table on stdout, then `/tmp/hookify-replay/report.md` and `report.json`. Commands in the report have known token shapes and `*TOKEN=`-style values redacted, but treat the report as sensitive: never commit it, and never echo secret values from it.
+Output: a summary table on stdout, then `/tmp/hookify-replay/report.md` and `report.json`, readable only by you. Common token shapes and secret-named values are redacted, but redaction is best-effort: treat the report as sensitive, never commit it, and never echo secret values from it.
+
+The report also lists **PreToolUse timeouts**: calls where the hook ran past its 10 s limit, so no block rule ran. Each one is a speed bug; reproduce it with the `speed` fuzzer or time the rule on that command.
 
 ## 2. Read the columns
 
@@ -26,7 +28,7 @@ Output: a summary table on stdout, then `/tmp/hookify-replay/report.md` and `rep
 
 Drift has innocent causes. Check these before calling something a bug:
 
-- Warn rules with `warn_once` only fire once per agent, so warn **started** is mostly expected.
+- Warn rules with `warn_once` only fire once per agent, so warn **started** is mostly expected. Warn drift is left out for calls a block rule stopped, since PostToolUse never ran on them.
 - The session may have run an older plugin version, or in a project without the plugin enabled.
 - **stopped** on a block rule is either a deliberate false-positive fix or a regression. Find which with `git log -S` on the rule file.
 
@@ -40,9 +42,9 @@ python3 tests/helpers/fuzz_rules.py bypass --count 3000 --seed 1
 
 They are independent; run them in parallel. Each exits 1 when it finds something. Change `--seed` between runs to explore new inputs; keep it to reproduce one.
 
-- **speed** repeats a random unit up to 20,000 characters and times every rule. `SLOW` lines name the rule and unit. A rule past the 10 s hook timeout fails open, so every block rule is skipped: treat it as a bypass.
-- **crash** mutates commands from the YAML suites (plus real log commands with `--from-logs`) and runs the shell parser. `CRASH` lines give the smallest input per crash site.
-- **bypass** runs random commands for real in a temp dir with stub `git`/`gh` and a canary `SECRET_TOKEN` in the environment and in `.env`. It reports commands that leak the canary while no block rule matches: `dump` (name=value output, the serious kind), `print` (bare value on stdout), `error` (value only in a shell error, e.g. run as a command name - lowest priority).
+- **speed** repeats a random unit up to 20,000 characters and times every rule on Bash commands (file-content rules are not covered). `SLOW` lines name the rule and unit; a rule still running at 15 s is cut off and reported at 15 s. A rule past the 10 s hook timeout fails open, so every block rule is skipped: treat it as a bypass. Trial count depends on wall-clock time, so a seed alone does not reproduce a run; rerun the reported unit instead.
+- **crash** mutates commands from the YAML suites (plus real log commands with `--from-logs`) and runs the shell parser. `CRASH` lines give the error, the `file:line` of the deepest frame and the smallest input (redacted); a parse running past 5 s is reported as `Timeout`.
+- **bypass** runs random commands for real with stub `git`/`gh` executables first on `PATH` and a canary `SECRET_TOKEN` in the environment and in `.env`. When `bwrap` works it runs inside it: read-only root, writable temp dir only, no network. Without it a warning prints and only the stubs protect you. It reports commands that leak the canary while no block rule matches: `dump` (name=value output, the serious kind), `persist` (the value reached git/gh arguments or stdin, i.e. a commit, PR or release), `print` (bare value on stdout), `error` (value only in a shell error, e.g. run as a command name - lowest priority).
 
 ## 4. Triage
 
@@ -51,7 +53,7 @@ Sort every finding into one bucket:
 | Bucket | Means | Signal |
 | --- | --- | --- |
 | False positive | Rule fires on a harmless call | A block or warn **hit** a human would not want stopped |
-| Miss | A leak no rule caught | A **suspect**, a block rule **stopped** on a call that still leaks, a `BYPASS`, or a `SLOW` rule |
+| Miss | A leak no rule caught | A **suspect**, a block rule **stopped** on a call that still leaks, a `BYPASS`, a `SLOW` rule, or a PreToolUse timeout |
 | Crash | Parser throws | A `CRASH` line |
 | Fine | Working as intended | Everything else |
 

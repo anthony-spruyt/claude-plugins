@@ -6,6 +6,7 @@ import os
 import random
 import shutil
 import sys
+import time
 
 import pytest
 
@@ -78,17 +79,44 @@ class TestSpeed:
     def test_repeat_unit_fills_to_the_length_cap(self):
         assert len(fz.repeat_unit("ab ", 1000)) == 1000
 
+    def test_a_hanging_rule_is_cut_off_and_reported(self, tmp_path, monkeypatch):
+        class Hangs:
+            def _rule_matches(self, rule, data):
+                time.sleep(5)
+        monkeypatch.setattr(fz, "RuleEngine", Hangs)
+        rules = rules_from(tmp_path, BLOCK_ENV)
+        start = time.monotonic()
+        slow = fz.slow_rules(rules, "x", limit=0.1, cap=0.3)
+        assert time.monotonic() - start < 2
+        assert [name for _, name in slow] == ["block-test-env"]
+
 
 class TestCrash:
     def test_returns_none_when_parse_succeeds(self):
         assert fz.crash_key("git status") is None
 
-    def test_returns_error_type_and_line_on_crash(self, monkeypatch):
+    def test_returns_error_type_and_deepest_file_and_line(self, monkeypatch):
         def boom(_):
             raise ValueError("x")
         monkeypatch.setattr(fz, "normalise", boom)
-        kind, line = fz.crash_key("anything")
-        assert kind == "ValueError" and isinstance(line, int)
+        kind, where = fz.crash_key("anything")
+        assert kind == "ValueError"
+        assert where.startswith("test_fuzz_rules.py:")
+
+    def test_a_hang_is_reported_as_a_timeout(self, monkeypatch):
+        monkeypatch.setattr(fz, "normalise", lambda _: time.sleep(5))
+        monkeypatch.setattr(fz, "CRASH_TIMEOUT", 0.2)
+        start = time.monotonic()
+        assert fz.crash_key("anything")[0] == "Timeout"
+        assert time.monotonic() - start < 2
+
+    def test_printed_crashes_are_redacted(self, monkeypatch, capsys):
+        def boom(_):
+            raise ValueError("x")
+        monkeypatch.setattr(fz, "normalise", boom)
+        token = "ghp_" + "Q" * 36
+        fz.run_crash(["curl -H 'x: " + token + "'"], random.Random(1), 0)
+        assert token not in capsys.readouterr().out
 
 
 @pytest.mark.skipif(not shutil.which("bash"), reason="needs bash")
@@ -114,6 +142,33 @@ class TestBypass:
     def test_env_quoted_as_message_text_is_not_a_bypass(self, tmp_path):
         assert fz.bypass_kind("git commit -m 'env'", [], str(tmp_path)) is None
 
-    def test_real_git_and_gh_never_run(self, tmp_path):
-        assert fz.bypass_kind("git init; gh pr merge 1", [], str(tmp_path)) is None
+    @pytest.mark.parametrize("command", [
+        "git init; gh pr merge 1",
+        "timeout 5 git init",
+        "nohup git init",
+        "echo init | xargs git",
+        "bash -c 'git init'",
+        "find . -maxdepth 0 -exec git init \\;",
+        "command git init",
+    ])
+    def test_real_git_never_runs_even_through_wrappers(self, tmp_path, command):
+        fz.bypass_kind(command, [], str(tmp_path))
         assert not (tmp_path / ".git").exists()
+
+    def test_secret_sent_into_git_or_gh_text_is_a_persist(self, tmp_path):
+        assert fz.bypass_kind('gh pr create --title x --body "$SECRET_TOKEN"', [], str(tmp_path)) == "persist"
+
+    @pytest.mark.skipif(not fz.sandbox_available(), reason="bwrap sandbox not usable here")
+    def test_sandbox_blocks_writes_outside_the_work_dir(self, tmp_path):
+        work = tmp_path / "work"
+        work.mkdir()
+        fz.bypass_kind("touch ../escaped", [], str(work))
+        assert not (tmp_path / "escaped").exists()
+
+
+class TestMain:
+    def test_count_zero_runs_nothing(self, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv", ["fuzz_rules.py", "bypass", "--count", "0"])
+        with pytest.raises(SystemExit):
+            fz.main()
+        assert capsys.readouterr().out.startswith("0 commands run")

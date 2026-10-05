@@ -5,6 +5,8 @@ import json
 import os
 import sys
 
+import pytest
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "tests", "helpers"))
 
@@ -88,7 +90,45 @@ class TestParseTranscript:
     def test_extracts_tool_calls_with_cwd(self, tmp_path):
         path = write_jsonl(tmp_path / "t.jsonl", [tool_use("t1", "Bash", {"command": "ls"}, cwd="/repo")])
         calls, _ = rt.parse_transcript(path)
-        assert calls == [{"id": "t1", "tool": "Bash", "input": {"command": "ls"}, "cwd": "/repo", "source": path}]
+        assert calls == [{"id": "t1", "tool": "Bash", "input": {"command": "ls"}, "cwd": "/repo", "source": path,
+                          "blocked": False, "timed_out": False}]
+
+    def test_every_rule_in_a_multi_rule_block_is_recorded(self, tmp_path):
+        path = write_jsonl(tmp_path / "t.jsonl", [
+            tool_use("t1", "Bash", {"command": "env"}),
+            tool_result("t1", "PreToolUse:Bash hook error: [x]: **[block-a]**\nmsg\n\n**[block-b]**\nmsg"),
+        ])
+        _, fired = rt.parse_transcript(path)
+        assert fired == {"t1": {"block-a", "block-b"}}
+
+    def test_hook_message_quoted_inside_output_is_not_a_fire(self, tmp_path):
+        path = write_jsonl(tmp_path / "t.jsonl", [
+            tool_use("t1", "Bash", {"command": "grep -r hook logs"}),
+            tool_result("t1", "logs/a: PreToolUse:Bash hook error: **[block-a]**"),
+        ])
+        _, fired = rt.parse_transcript(path)
+        assert fired == {}
+
+    def test_pretooluse_timeout_marks_the_call(self, tmp_path):
+        path = write_jsonl(tmp_path / "t.jsonl", [
+            tool_use("t1", "Bash", {"command": "x"}),
+            {"type": "attachment", "attachment": {"type": "hook_cancelled", "toolUseID": "t1",
+                                                  "hookEvent": "PreToolUse", "timedOut": True}},
+        ])
+        calls, _ = rt.parse_transcript(path)
+        assert calls[0]["timed_out"] is True
+
+    def test_malformed_entries_do_not_crash(self, tmp_path):
+        path = write_jsonl(tmp_path / "t.jsonl", [
+            {"type": "attachment", "attachment": {"type": None, "toolUseID": "t9"}},
+            {"type": "attachment", "attachment": "text"},
+            {"type": "assistant", "message": "text"},
+            {"type": "user", "message": {"content": [{"type": "tool_result", "content": None}]}},
+            tool_use("t1", "Bash", "not a dict"),
+        ])
+        calls, fired = rt.parse_transcript(path)
+        assert [(c["id"], c["input"]) for c in calls] == [("t1", {})]
+        assert fired == {}
 
     def test_pretooluse_block_in_tool_result_is_recorded_as_fired(self, tmp_path):
         path = write_jsonl(tmp_path / "t.jsonl", [
@@ -137,6 +177,11 @@ class TestRepoRules:
     def test_skips_the_engine_folder_with_no_rules(self):
         assert "hookify-plus/hookify-plus" not in [os.path.relpath(d, REPO_ROOT) for d in rt.repo_rule_dirs()]
 
+    def test_extra_rule_folders_add_to_the_repo_ones(self, tmp_path):
+        dirs = rt.resolve_rule_dirs([str(tmp_path)])
+        assert dirs[-1] == str(tmp_path)
+        assert set(rt.repo_rule_dirs()) <= set(dirs)
+
 
 class TestReplay:
     def test_reports_each_matching_rule_by_name(self, tmp_path):
@@ -176,6 +221,15 @@ class TestSuspects:
 
     def test_bare_env_command_is_a_suspect(self):
         assert rt.is_suspect({"tool": "Bash", "input": {"command": "cd x && env | sort"}}, set())
+
+    def test_any_matched_block_rule_clears_a_suspect_whatever_its_name(self):
+        assert not rt.is_suspect({"tool": "Bash", "input": {"command": "cat ~/.aws/credentials"}}, {"no-secrets"})
+
+    def test_grep_path_into_a_secret_folder_is_a_suspect(self):
+        assert rt.is_suspect({"tool": "Grep", "input": {"pattern": "x", "path": "/home/u/.ssh"}}, set())
+
+    def test_set_dump_before_a_newline_is_a_suspect(self):
+        assert rt.is_suspect({"tool": "Bash", "input": {"command": "set\necho done"}}, set())
 
 
 class TestBuildReport:
@@ -227,6 +281,31 @@ class TestBuildReport:
         report = self.run_report(tmp_path, [tool_use("t1", "Bash", {"command": "cat ~/.ssh/id_rsa"})], BLOCK_RULE)
         assert [s["command"] for s in report["suspects"]] == ["cat ~/.ssh/id_rsa"]
 
+    def test_warn_rules_skip_drift_when_a_block_stopped_the_call(self, tmp_path):
+        report = self.run_report(tmp_path, [
+            tool_use("t1", "Bash", {"command": "cat dumpall"}),
+            tool_result("t1", "PreToolUse:Bash hook error: **[block-test-dump]**\nblocked"),
+        ], BLOCK_RULE, WARN_RULE)
+        assert report["rules"]["warn-test-cat"]["started"] == []
+        assert report["rules"]["block-test-dump"]["started"] == []
+
+    def test_hook_timeouts_are_listed(self, tmp_path):
+        report = self.run_report(tmp_path, [
+            tool_use("t1", "Bash", {"command": "slow thing"}),
+            {"type": "attachment", "attachment": {"type": "hook_cancelled", "toolUseID": "t1",
+                                                  "hookEvent": "PreToolUse", "timedOut": True}},
+        ], BLOCK_RULE)
+        assert [t["command"] for t in report["timeouts"]] == ["slow thing"]
+
+    def test_suspect_total_counts_past_the_cap(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(rt, "MAX_SUSPECTS", 1)
+        report = self.run_report(tmp_path, [
+            tool_use("t1", "Bash", {"command": "cat ~/.ssh/id_rsa"}),
+            tool_use("t2", "Bash", {"command": "cat ~/.aws/credentials"}),
+        ], BLOCK_RULE)
+        assert len(report["suspects"]) == 1
+        assert report["suspects_total"] == 2
+
     def test_long_commands_are_truncated(self, tmp_path):
         report = self.run_report(tmp_path, [tool_use("t1", "Bash", {"command": "cat " + "x" * 5000})], WARN_RULE)
         assert len(report["rules"]["warn-test-cat"]["examples"][0]["command"]) <= rt.MAX_SHOWN + 20
@@ -249,6 +328,37 @@ class TestRedact:
 
     def test_leaves_variable_references_alone(self):
         assert rt.redact('echo "$API_TOKEN" TOKEN=$X') == 'echo "$API_TOKEN" TOKEN=$X'
+
+    # Built at runtime so gitleaks does not flag the fakes
+    SHAPES = {
+        "jwt": ("jwt=" + "ey" + "JhbGciOiJIUzI1NiJ9" + "." + "ey" + "JzdWIiOiIxMjMifQ" + ".c2lnbmF0dXJlc2ln",
+                "c2lnbmF0dXJlc2ln"),
+        "bearer": ("header 'Authorization" + ": Bearer opaquevalue1234'", "opaquevalue1234"),
+        "url-userinfo": ("git clone https://bob:hunter2pass@example.com/r", "hunter2pass"),
+        "password-flag": ("mysql --password hunter2pass", "hunter2pass"),
+        "token-flag-equals": ("tool --token=hunter2pass", "hunter2pass"),
+        "json-key": ('{"api_token": "hunter2pass"}', "hunter2pass"),
+        "quoted-with-spaces": ("PASSWORD='hunter2 pass word' run", "pass word"),
+        "api-key-header": ("header 'X-Api-Key" + ": hunter2pass'", "hunter2pass"),
+        "google": ("key=" + "AIza" + "B" * 35, "B" * 35),
+        "stripe": ("k " + "sk_" + "live_" + "C" * 24, "C" * 24),
+        "npm": ("t " + "npm_" + "D" * 36, "D" * 36),
+    }
+
+    @pytest.mark.parametrize("shape", sorted(SHAPES))
+    def test_redacts_common_secret_shapes(self, shape):
+        text, secret = self.SHAPES[shape]
+        assert secret not in rt.redact(text)
+
+
+class TestWriteReport:
+    def test_report_folder_and_files_are_private(self, tmp_path):
+        out = tmp_path / "out"
+        rt.write_report({"generated": "now", "transcripts": 0, "calls": 0, "rules": {}, "suspects": [],
+                         "suspects_total": 0, "timeouts": []}, str(out))
+        assert out.stat().st_mode & 0o777 == 0o700
+        for name in ("report.json", "report.md"):
+            assert (out / name).stat().st_mode & 0o777 == 0o600
 
 
 class TestFindTranscripts:

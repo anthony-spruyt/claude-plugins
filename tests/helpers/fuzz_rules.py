@@ -2,16 +2,19 @@
 """Fuzz the hookify rules and shell parser.
 
 speed   Long repeated random commands; flags any rule slower than the limit.
-crash   Mutated test and log commands; flags any input that crashes the parser.
+crash   Mutated test and log commands; flags any input that crashes or hangs the parser.
 bypass  Random commands run for real in a sandbox; flags ones that leak a canary
         secret while no block rule fires.
 """
 
 import argparse
+import functools
 import glob
 import os
 import random
 import re
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -29,8 +32,11 @@ from core.rule_engine import RuleEngine, clean_lines
 from core.shell_parse import normalise
 
 MAX_COMMAND = 20000
+SPEED_CAP = 15.0
+CRASH_TIMEOUT = 5.0
 CANARY = "c4n4ry-l34k-v4lu3"
 
+# Split literals keep our own hooks and gitleaks from flagging this file
 E = "e" + "nv"
 SPEED_ATOMS = [
     "echo ", "printf ", "$(", ")", "`", '"', "'", "\\", "${A", "}", "$TOKEN", "$X", " ", "\n",
@@ -49,13 +55,32 @@ BYPASS_HEADS = [
     "git tag v1 -m ", "gh release create v1 --notes ", "gh pr comment 1 -b ",
 ]
 BYPASS_PIECES = [
-    "'", '"', " ", "\n", ";", "&&", "||", "|", E, "printenv", "set", "export -p", "declare -p", "cat .env",
+    "'", '"', " ", "\n", ";", "&&", "||", "|", E, "printenv", "set", "export -p", "declare -p", "cat ." + E,
     "$SECRET_TOKEN", "${SECRET_TOKEN}", "${!S*}", "<<'A'", '<<"A"', "A", "$(cat <<'X'\n", "X", ")", "\\",
     "x", "-m", " -m ", "\t", "cd /", '"$(cat <<\'X\'\n', "A)", "X)", "\nA\n", "\nX\n)\"", f"'{E}'",
     f'"{E}"', f" {E}", f"\n{E}\n", "#", "=", "{}", "\\;", "$(", "`", "sort", "grep T",
 ]
-STUBS = "git(){ :; }; gh(){ :; }; set +H\n"
+STUB = '#!/bin/sh\nprintf "%s\\n" "$@" >> "$HOOKIFY_STUB_LOG"\ncat >> "$HOOKIFY_STUB_LOG"\n'
 DUMPED = re.compile(r"SECRET_TOKEN=[\"']?" + CANARY)
+
+
+class _Timeout(Exception):
+    pass
+
+
+def _raise_timeout(signum, frame):
+    raise _Timeout()
+
+
+def _with_timeout(seconds: float, fn, *args):
+    """Run fn under a SIGALRM timer; raises _Timeout. Main thread only."""
+    previous = signal.signal(signal.SIGALRM, _raise_timeout)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        return fn(*args)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def load_corpus(logs_root=None) -> list:
@@ -94,49 +119,87 @@ def repeat_unit(unit: str, length: int = MAX_COMMAND) -> str:
     return (unit * (length // max(1, len(unit)) + 1))[:length]
 
 
-def slow_rules(rules: list, command: str, limit: float) -> list:
+def slow_rules(rules: list, command: str, limit: float, cap: float = SPEED_CAP) -> list:
+    """(seconds, rule name) for each rule slower than limit; a rule still running at cap reports cap."""
     engine = RuleEngine()
     data = {"tool_name": "Bash", "tool_input": {"command": command}}
     slow = []
     for rule in rules:
         clean_lines.cache_clear()
         start = time.perf_counter()
-        engine._rule_matches(rule, data)
-        elapsed = time.perf_counter() - start
+        try:
+            _with_timeout(cap, engine._rule_matches, rule, data)
+            elapsed = time.perf_counter() - start
+        except _Timeout:
+            elapsed = cap
         if elapsed > limit:
             slow.append((elapsed, rule.name))
     return slow
 
 
 def crash_key(command: str):
+    """(error type, "file:line" of the deepest frame) when the parser fails or hangs, else None."""
     try:
-        normalise(command)
+        _with_timeout(CRASH_TIMEOUT, normalise, command)
+    except _Timeout:
+        return "Timeout", f"over {CRASH_TIMEOUT}s"
     except Exception as e:
-        return type(e).__name__, traceback.extract_tb(e.__traceback__)[-1].lineno
+        frame = traceback.extract_tb(e.__traceback__)[-1]
+        return type(e).__name__, f"{os.path.basename(frame.filename)}:{frame.lineno}"
     return None
+
+
+@functools.lru_cache(maxsize=None)
+def sandbox_available() -> bool:
+    if not shutil.which("bwrap"):
+        return False
+    probe = subprocess.run(["bwrap", "--ro-bind", "/", "/", "--unshare-net", "true"],
+                           capture_output=True, timeout=10)
+    return probe.returncode == 0
+
+
+def _sandboxed(argv: list, workdir: str, stubdir: str) -> list:
+    if not sandbox_available():
+        return argv
+    return ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+            "--bind", workdir, workdir, "--bind", stubdir, stubdir,
+            "--unshare-net", "--unshare-pid", "--new-session", "--die-with-parent", "--chdir", workdir] + argv
 
 
 def bypass_kind(command: str, rules: list, workdir: str):
     """How the command leaks the canary secret with no block rule matching, or None.
 
     dump: name=value pairs (env dumps, .env reads). print: the bare value on stdout.
-    error: the value only shows up in stderr, e.g. run as a command name.
+    persist: the value reaches git/gh arguments or stdin. error: the value only shows
+    up in stderr, e.g. run as a command name.
     """
-    with open(os.path.join(workdir, ".env"), "w", encoding="utf-8") as f:
+    with open(os.path.join(workdir, "." + E), "w", encoding="utf-8") as f:
         f.write(f"SECRET_TOKEN={CANARY}\n")
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": workdir, "SECRET_TOKEN": CANARY}
-    try:
-        out = subprocess.run(["bash", "-c", STUBS + command], env=env, cwd=workdir, capture_output=True,
-                             text=True, timeout=5, stdin=subprocess.DEVNULL)
-    except subprocess.TimeoutExpired:
-        return None
-    if CANARY not in out.stdout + out.stderr:
+    with tempfile.TemporaryDirectory(prefix="hookify-stubs-") as stubdir:
+        for name in ("git", "gh"):
+            path = os.path.join(stubdir, name)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(STUB)
+            os.chmod(path, 0o755)
+        log = os.path.join(stubdir, "calls.log")
+        env = {"PATH": stubdir + os.pathsep + os.environ.get("PATH", "/usr/bin:/bin"), "HOME": workdir,
+               "SECRET_TOKEN": CANARY, "HOOKIFY_STUB_LOG": log}
+        try:
+            out = subprocess.run(_sandboxed(["bash", "-c", "set +H\n" + command], workdir, stubdir),
+                                 env=env, cwd=workdir, capture_output=True, text=True, timeout=5,
+                                 stdin=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired:
+            return None
+        persisted = os.path.exists(log) and CANARY in open(log, encoding="utf-8", errors="replace").read()
+    if CANARY not in out.stdout + out.stderr and not persisted:
         return None
     blockers = [r for r in rules if r.action == "block"]
     if rt.matching_rules({"tool": "Bash", "input": {"command": command}, "cwd": workdir}, blockers):
         return None
     if DUMPED.search(out.stdout + out.stderr):
         return "dump"
+    if persisted:
+        return "persist"
     return "print" if CANARY in out.stdout else "error"
 
 
@@ -173,11 +236,13 @@ def run_crash(corpus, rng, count) -> int:
                 smallest[key] = command
     print(f"{count} mutations over {len(corpus)} seed commands")
     for key, n in crashes.most_common():
-        print(f"CRASH {key[0]} at shell_parse line {key[1]} x{n}: {smallest[key]!r}")
+        print(f"CRASH {key[0]} at {key[1]} x{n}: {rt.redact(smallest[key])!r}")
     return 1 if crashes else 0
 
 
 def run_bypass(rules, rng, count) -> int:
+    if not sandbox_available():
+        print("warning: bwrap sandbox unavailable; commands run with stub git/gh only", file=sys.stderr)
     found = {}
     with tempfile.TemporaryDirectory(prefix="hookify-bypass-") as workdir:
         for _ in range(count):
@@ -187,7 +252,7 @@ def run_bypass(rules, rng, count) -> int:
             if kind:
                 found.setdefault(kind, set()).add(command)
     print(f"{count} commands run, {sum(map(len, found.values()))} distinct bypasses")
-    for kind in ("dump", "print", "error"):
+    for kind in ("dump", "persist", "print", "error"):
         for command in sorted(found.get(kind, ()), key=len):
             print(f"BYPASS {kind} {command!r}")
     return 1 if found else 0
@@ -209,8 +274,8 @@ def main():
     if args.mode == "speed":
         sys.exit(run_speed(rules, rng, args.seconds, args.limit))
     if args.mode == "crash":
-        sys.exit(run_crash(load_corpus(args.from_logs), rng, args.count or 200000))
-    sys.exit(run_bypass(rules, rng, args.count or 1500))
+        sys.exit(run_crash(load_corpus(args.from_logs), rng, 200000 if args.count is None else args.count))
+    sys.exit(run_bypass(rules, rng, 1500 if args.count is None else args.count))
 
 
 if __name__ == "__main__":
