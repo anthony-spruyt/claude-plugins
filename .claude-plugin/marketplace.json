@@ -17,8 +17,8 @@
     },
     {
       "name": "security-hooks",
-      "description": "31 blocking rules preventing secret exposure via CLI commands and file reads",
-      "version": "2.7.1",
+      "description": "32 blocking rules preventing secret exposure via CLI commands and file reads",
+      "version": "2.8.0",
       "author": {
         "name": "anthony-spruyt"
       },
