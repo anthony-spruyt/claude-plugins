@@ -4,6 +4,7 @@
 import json
 import os
 import sys
+import time
 
 import pytest
 
@@ -77,6 +78,15 @@ def post_hook(tool_id, rule_name):
     }
 
 
+EMPTY_REPORT = {"generated": "now", "transcripts": 0, "calls": 0, "rules": {}, "suspects": [],
+                "suspects_total": 0, "timeouts": []}
+
+
+def timeout_entry(tool_id, command="python3 ${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse.py"):
+    return {"type": "attachment", "attachment": {"type": "hook_cancelled", "toolUseID": tool_id, "command": command,
+                                                 "hookEvent": "PreToolUse", "timedOut": True}}
+
+
 def write_jsonl(path, entries):
     path.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
     return str(path)
@@ -116,11 +126,28 @@ class TestParseTranscript:
     def test_pretooluse_timeout_marks_the_call(self, tmp_path):
         path = write_jsonl(tmp_path / "t.jsonl", [
             tool_use("t1", "Bash", {"command": "x"}),
-            {"type": "attachment", "attachment": {"type": "hook_cancelled", "toolUseID": "t1",
-                                                  "hookEvent": "PreToolUse", "timedOut": True}},
+            timeout_entry("t1"),
         ])
         calls, _ = rt.parse_transcript(path)
         assert calls[0]["timed_out"] is True
+
+    def test_timeout_of_another_hook_script_is_ignored(self, tmp_path):
+        path = write_jsonl(tmp_path / "t.jsonl", [
+            tool_use("t1", "Bash", {"command": "x"}),
+            timeout_entry("t1", command="node other-plugin/check.js"),
+        ])
+        calls, _ = rt.parse_transcript(path)
+        assert calls[0]["timed_out"] is False
+
+    def test_unhashable_ids_do_not_crash(self, tmp_path):
+        path = write_jsonl(tmp_path / "t.jsonl", [
+            tool_use(["t1"], "Bash", {"command": "x"}),
+            tool_result(["t1"], "PreToolUse:Bash hook error: **[block-x]**"),
+            timeout_entry(["t1"]),
+        ])
+        calls, fired = rt.parse_transcript(path)
+        assert fired == {}
+        assert [c["blocked"] for c in calls] == [False]
 
     def test_malformed_entries_do_not_crash(self, tmp_path):
         path = write_jsonl(tmp_path / "t.jsonl", [
@@ -296,8 +323,7 @@ class TestBuildReport:
     def test_hook_timeouts_are_listed(self, tmp_path):
         report = self.run_report(tmp_path, [
             tool_use("t1", "Bash", {"command": "slow thing"}),
-            {"type": "attachment", "attachment": {"type": "hook_cancelled", "toolUseID": "t1",
-                                                  "hookEvent": "PreToolUse", "timedOut": True}},
+            timeout_entry("t1"),
         ], BLOCK_RULE)
         assert [t["command"] for t in report["timeouts"]] == ["slow thing"]
 
@@ -330,6 +356,19 @@ class TestRedact:
         shown = rt.redact("-----BEGIN OPENSSH " + "PRIVATE KEY-----\nAAAAB3Nza\n-----END OPENSSH " + "PRIVATE KEY-----")
         assert "AAAAB3Nza" not in shown
 
+    def test_long_keyword_runs_redact_in_linear_time(self):
+        start = time.perf_counter()
+        rt.redact("pass" * 15000)
+        rt.redact("token" * 12000 + "=x")
+        assert time.perf_counter() - start < 0.5
+
+    @pytest.mark.parametrize("text", [
+        "BYPASS=1", "compass=north", "--passes=3", "max_tokens: 4096", "SSH_PASSPHRASE_FILE=/run/x",
+        "GITHUB_TOKEN_PATH=/run/y", "pat=/y", "uses Basic authentication here",
+    ])
+    def test_leaves_harmless_lookalikes_alone(self, text):
+        assert rt.redact(text) == text
+
     def test_leaves_variable_references_alone(self):
         assert rt.redact('echo "$API_TOKEN" TOKEN=$X') == 'echo "$API_TOKEN" TOKEN=$X'
 
@@ -347,6 +386,14 @@ class TestRedact:
         "google": ("key=" + "AIza" + "B" * 35, "B" * 35),
         "stripe": ("k " + "sk_" + "live_" + "C" * 24, "C" * 24),
         "npm": ("t " + "npm_" + "D" * 36, "D" * 36),
+        "auth-token-scheme": ("header 'Authorization" + ": token " + FAKE + "'", FAKE),
+        "mysql-short-flag": ("mysql -uroot -p" + FAKE + " db", FAKE),
+        "aws-secret": ("echo " + "wJalrXUtnFEMI/K7MDENG/" + "bPxRfiCYEXAMPLEKEY", "bPxRfiCYEXAMPLEKEY"),
+        "json-escaped-quote": ('{"password": "ab\\"' + FAKE + '"}', FAKE),
+        "passphrase": ("PASSPHRASE=" + FAKE, FAKE),
+        "pgpass": ("PGPASS=" + FAKE, FAKE),
+        "camel-case": ("apiToken=" + FAKE, FAKE),
+        "pat-suffix": ("GH_PAT=" + FAKE, FAKE),
     }
 
     @pytest.mark.parametrize("shape", sorted(SHAPES))
@@ -356,10 +403,17 @@ class TestRedact:
 
 
 class TestWriteReport:
+    def test_existing_out_folder_permissions_are_left_alone(self, tmp_path):
+        out = tmp_path / "shared"
+        out.mkdir(mode=0o755)
+        out.chmod(0o755)
+        rt.write_report(EMPTY_REPORT, str(out))
+        assert out.stat().st_mode & 0o777 == 0o755
+        assert (out / "report.md").stat().st_mode & 0o777 == 0o600
+
     def test_report_folder_and_files_are_private(self, tmp_path):
         out = tmp_path / "out"
-        rt.write_report({"generated": "now", "transcripts": 0, "calls": 0, "rules": {}, "suspects": [],
-                         "suspects_total": 0, "timeouts": []}, str(out))
+        rt.write_report(EMPTY_REPORT, str(out))
         assert out.stat().st_mode & 0o777 == 0o700
         for name in ("report.json", "report.md"):
             assert (out / name).stat().st_mode & 0o777 == 0o600

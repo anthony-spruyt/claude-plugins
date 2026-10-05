@@ -5,7 +5,9 @@ import math
 import os
 import random
 import shutil
+import signal
 import sys
+import threading
 import time
 
 import pytest
@@ -91,6 +93,25 @@ class TestSpeed:
         assert [name for _, name in slow] == ["block-test-env"]
 
 
+class TestTimeout:
+    def test_an_outer_timer_survives(self):
+        previous = signal.signal(signal.SIGALRM, lambda *_: None)
+        signal.setitimer(signal.ITIMER_REAL, 30)
+        try:
+            fz._with_timeout(1, lambda: None)
+            assert signal.getitimer(signal.ITIMER_REAL)[0] > 25
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous)
+
+    def test_off_the_main_thread_a_clean_parse_is_not_a_crash(self):
+        result = []
+        worker = threading.Thread(target=lambda: result.append(fz.crash_key("git status")))
+        worker.start()
+        worker.join()
+        assert result == [None]
+
+
 class TestCrash:
     def test_returns_none_when_parse_succeeds(self):
         assert fz.crash_key("git status") is None
@@ -164,6 +185,26 @@ class TestBypass:
         work.mkdir()
         fz.bypass_kind("touch ../escaped", [], str(work))
         assert not (tmp_path / "escaped").exists()
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="needs bwrap")
+class TestSandboxFailure:
+    @pytest.fixture(autouse=True)
+    def broken_bwrap(self, monkeypatch):
+        real = fz._bwrap_argv
+        monkeypatch.setattr(fz, "_bwrap_argv", lambda *a: real(*a)[:1] + ["--no-such-flag"] + real(*a)[1:])
+        probe = fz.sandbox_available
+        probe.cache_clear()
+        yield
+        probe.cache_clear()
+
+    def test_probe_uses_the_real_flags(self):
+        assert fz.sandbox_available() is False
+
+    def test_a_bwrap_error_at_run_time_is_raised_not_hidden(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(fz, "sandbox_available", lambda: True)
+        with pytest.raises(RuntimeError, match="bwrap"):
+            fz.bypass_kind("env", [], str(tmp_path))
 
 
 class TestMain:

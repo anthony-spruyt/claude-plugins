@@ -40,16 +40,26 @@ SECRET_PATTERNS = [
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}|"
                r"AKIA[0-9A-Z]{16}|xox[abposr]-[A-Za-z0-9-]{10,}|AGE-SECRET-KEY-1\w+|glpat-[\w-]{20,}|"
                r"AIza[\w-]{30,}|[sr]k_(?:live|test)_\w{16,}|npm_\w{30,}|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]{5,})"),
+    re.compile(r"(?<![\w/+=.-])(?=[\w/+]{0,39}[A-Z])(?=[\w/+]{0,39}[a-z])(?=[\w/+]{0,39}[0-9])"
+               r"[A-Za-z0-9/+]{40}(?![\w/+=.-])"),
 ]
 KEEP_PREFIX = [
-    re.compile(r"(?i)(\b(?:Bearer|Basic)\s+)(?![$<])[\w.~+/=-]{8,}"),
+    re.compile(r"(?i)(\bAuthorization\s*:\s*(?:\w+\s+)?)(?![$<])[^\s'\"]+"),
+    re.compile(r"(?i)(\b(?:Bearer|Basic)\s+)(?![$<])(?=[\w.~+/=-]*(?-i:[A-Z0-9+/=]))[\w.~+/=-]{8,}"),
     re.compile(r"(://[^/@\s:]+:)[^@\s/]+(?=@)"),
     re.compile(r"(?i)(\b(?:x-)?(?:api-?key|auth-token)\s*:\s*)(?![$<])[^\s'\"]+"),
     re.compile(r"(?i)(--?(?:password|passwd|token|secret|api-?key)[= ]['\"]?)(?![$<])[^\s'\"]+"),
-    re.compile(r"(?i)(\"[^\"\n]*(?:token|secret|passw|api_?key|private_?key|credential)[^\"\n]*\"\s*:\s*\")[^\"]+"),
+    re.compile(r"(\bmysql\w*\b[^\n|;&]*?\s-p)(?![$<\s])\S+"),
+    re.compile(r"(?i)(\"[^\"\n]*(?:token|secret|passw|api_?key|private_?key|credential)[^\"\n]*\"\s*:\s*\")"
+               r"(?:\\.|[^\"\\])+"),
 ]
+# Bounded runs keep this linear on long keyword-heavy text; PASS/PAT only match as whole name segments
+SECRET_NAME = (
+    r"\b(?:\w{0,32}?(?:TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|API_?KEY|PRIVATE_?KEY|CREDENTIALS?)"
+    r"|(?:\w{1,32}_)?(?:PG)?PASS|\w{1,32}_PAT)(?:_\w{1,32})?(?<!_FILE)(?<!_PATH)(?<!_DIR)"
+)
 SECRET_ASSIGNMENT = re.compile(
-    r"(?i)\b(\w*(?:TOKEN|SECRET|PASSW(?:OR)?D|PASS|API_?KEY|PRIVATE_KEY|CREDENTIALS?)\w*\s*[=:]\s*|(?:\w*_)?PAT\s*=\s*)"
+    r"(?i)(" + SECRET_NAME + r"\s*[=:]\s*)"
     r"('(?!\$)[^'\n]*'|\"(?!\$)[^\"\n]*\"|(?![$'\"])[^\s'\";&|]+)"
 )
 
@@ -113,7 +123,8 @@ def parse_transcript(path: str):
             if kind == "assistant" and isinstance(content, list):
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "tool_use":
-                        calls.append({"id": block.get("id"), "tool": block.get("name"),
+                        tool_id = block.get("id")
+                        calls.append({"id": tool_id if isinstance(tool_id, str) else None, "tool": block.get("name"),
                                       "input": _dict(block.get("input")), "cwd": entry.get("cwd", ""),
                                       "source": path})
             elif kind == "user" and isinstance(content, list):
@@ -121,17 +132,19 @@ def parse_transcript(path: str):
                     if isinstance(block, dict) and block.get("type") == "tool_result":
                         text = _text(block.get("content"))
                         names = RULE_NAME.findall(text) if text.lstrip().startswith("PreToolUse:") else []
-                        if names:
-                            fired[block.get("tool_use_id")].update(names)
-                            blocked.add(block.get("tool_use_id"))
+                        tool_id = block.get("tool_use_id")
+                        if names and isinstance(tool_id, str):
+                            fired[tool_id].update(names)
+                            blocked.add(tool_id)
             elif kind == "attachment":
                 attachment = _dict(entry.get("attachment"))
                 hook_type = str(attachment.get("type") or "")
                 tool_id = attachment.get("toolUseID")
-                if not hook_type.startswith("hook_") or not tool_id:
+                if not hook_type.startswith("hook_") or not isinstance(tool_id, str) or not tool_id:
                     continue
                 if hook_type == "hook_cancelled" and attachment.get("timedOut") \
-                        and attachment.get("hookEvent") == "PreToolUse":
+                        and attachment.get("hookEvent") == "PreToolUse" \
+                        and "pretooluse.py" in str(attachment.get("command", "")):
                     timed_out.add(tool_id)
                 names = RULE_NAME.findall(json.dumps(attachment.get("blockingError", "")))
                 if names:
@@ -273,8 +286,9 @@ def _write_private(path: str, text: str) -> None:
 
 
 def write_report(report: dict, out: str) -> None:
-    os.makedirs(out, mode=0o700, exist_ok=True)
-    os.chmod(out, 0o700)
+    if not os.path.isdir(out):
+        os.makedirs(out)
+        os.chmod(out, 0o700)
     _write_private(os.path.join(out, "report.json"), json.dumps(report, indent=1))
     _write_private(os.path.join(out, "report.md"), render_markdown(report))
 

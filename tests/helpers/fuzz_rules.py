@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from collections import Counter
@@ -73,14 +74,20 @@ def _raise_timeout(signum, frame):
 
 
 def _with_timeout(seconds: float, fn, *args):
-    """Run fn under a SIGALRM timer; raises _Timeout. Main thread only."""
+    """Run fn under a SIGALRM timer; raises _Timeout. Off the main thread fn runs with no limit."""
+    if threading.current_thread() is not threading.main_thread():
+        return fn(*args)
     previous = signal.signal(signal.SIGALRM, _raise_timeout)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
+    outer_delay, outer_interval = signal.setitimer(signal.ITIMER_REAL, seconds)
+    start = time.monotonic()
     try:
         return fn(*args)
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
+        if outer_delay:
+            remaining = outer_delay - (time.monotonic() - start)
+            signal.setitimer(signal.ITIMER_REAL, max(remaining, 1e-3), outer_interval)
 
 
 def load_corpus(logs_root=None) -> list:
@@ -149,21 +156,23 @@ def crash_key(command: str):
     return None
 
 
+def _bwrap_argv(argv: list, workdir: str, stubdir: str) -> list:
+    return ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+            "--bind", workdir, workdir, "--bind", stubdir, stubdir,
+            "--unshare-net", "--unshare-pid", "--new-session", "--die-with-parent", "--chdir", workdir] + argv
+
+
 @functools.lru_cache(maxsize=None)
 def sandbox_available() -> bool:
     if not shutil.which("bwrap"):
         return False
-    probe = subprocess.run(["bwrap", "--ro-bind", "/", "/", "--unshare-net", "true"],
-                           capture_output=True, timeout=10)
+    with tempfile.TemporaryDirectory(prefix="hookify-probe-") as probe_dir:
+        probe = subprocess.run(_bwrap_argv(["true"], probe_dir, probe_dir), capture_output=True, timeout=10)
     return probe.returncode == 0
 
 
 def _sandboxed(argv: list, workdir: str, stubdir: str) -> list:
-    if not sandbox_available():
-        return argv
-    return ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
-            "--bind", workdir, workdir, "--bind", stubdir, stubdir,
-            "--unshare-net", "--unshare-pid", "--new-session", "--die-with-parent", "--chdir", workdir] + argv
+    return _bwrap_argv(argv, workdir, stubdir) if sandbox_available() else argv
 
 
 def bypass_kind(command: str, rules: list, workdir: str):
@@ -190,6 +199,8 @@ def bypass_kind(command: str, rules: list, workdir: str):
                                  stdin=subprocess.DEVNULL)
         except subprocess.TimeoutExpired:
             return None
+        if sandbox_available() and out.stderr.startswith("bwrap:"):
+            raise RuntimeError(out.stderr.strip())
         persisted = os.path.exists(log) and CANARY in open(log, encoding="utf-8", errors="replace").read()
     if CANARY not in out.stdout + out.stderr and not persisted:
         return None

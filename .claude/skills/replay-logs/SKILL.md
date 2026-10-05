@@ -16,9 +16,9 @@ python3 tests/helpers/replay_transcripts.py --project claude-plugins --out /tmp/
 
 The first run is real-world use. The second is this repo's own dev sessions: they are full of deliberate attack strings written while testing rules, so treat their hits as low-signal. Other flags: `--project <text>` (repeatable), `--since YYYY-MM-DD`, `--rules <dir>` (repeatable; loads another repo's `.claude/hookify-plus` on top of this repo's rules).
 
-Output: a summary table on stdout, then `/tmp/hookify-replay/report.md` and `report.json`, readable only by you. Common token shapes and secret-named values are redacted, but redaction is best-effort: treat the report as sensitive, never commit it, and never echo secret values from it.
+Output: a summary table on stdout, then `/tmp/hookify-replay/report.md` and `report.json`. The files are readable only by you; a new `--out` folder is too, an existing one keeps its permissions. Common token shapes and secret-named values are redacted, but redaction is best-effort: treat the report as sensitive, never commit it, and never echo secret values from it.
 
-The report also lists **PreToolUse timeouts**: calls where the hook ran past its 10 s limit, so no block rule ran. Each one is a speed bug; reproduce it with the `speed` fuzzer or time the rule on that command.
+The report also lists **PreToolUse timeouts**: calls where a `pretooluse.py` hook ran past its 10 s limit. If it was hookify-plus, no block rule ran, so it is a likely speed bug; reproduce it with the `speed` fuzzer or time the rules on that command. The log does not name the plugin, so check the session's cwd and enabled plugins first.
 
 ## 2. Read the columns
 
