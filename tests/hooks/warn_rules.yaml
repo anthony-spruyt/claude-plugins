@@ -36,6 +36,46 @@ test_cases:
     tool: Bash
     command: "git log --oneline | head -5"
     expect: allow
+  - name: "warn-use-read-tool: quiet for head as a filter when the parser gives up"
+    tool: Bash
+    command: "echo $((1 + 1)) | head -20"
+    expect: allow
+  - name: "warn-use-read-tool: quiet for head -n as a filter when the parser gives up"
+    tool: Bash
+    command: "echo $((1 + 1)) | tail -n 5"
+    expect: allow
+  - name: "warn-use-read-tool: cat a file still warns when the parser gives up"
+    tool: Bash
+    command: "echo $((1 + 1)); cat README.md"
+    expect: warn
+  - name: "warn-use-read-tool: cat < file still warns when the parser gives up"
+    tool: Bash
+    command: "echo $((1 + 1)); cat < notes.txt"
+    expect: warn
+  - name: "warn-use-read-tool: quiet for a heredoc write when the parser gives up"
+    tool: Bash
+    command: "echo $((1 + 1)); cat > out.txt <<'EOF'\nhello\nEOF"
+    expect: allow
+  - name: "warn-code-scanning-ref: alerts without a ref"
+    tool: Bash
+    command: 'gh api "repos/o/r/code-scanning/alerts?per_page=100"'
+    expect: warn
+  - name: "warn-code-scanning-ref: quiet with the PR merge ref"
+    tool: Bash
+    command: 'gh api "repos/o/r/code-scanning/alerts?ref=refs/pull/7/merge"'
+    expect: allow
+  - name: "warn-code-scanning-ref: quiet with pr="
+    tool: Bash
+    command: 'gh api "repos/o/r/code-scanning/alerts?pr=7&per_page=100"'
+    expect: allow
+  - name: "warn-code-scanning-ref: quiet with pr= after another param"
+    tool: Bash
+    command: 'gh api "repos/o/r/code-scanning/alerts?state=open&pr=7"'
+    expect: allow
+  - name: "warn-code-scanning-ref: pr= in another word still warns"
+    tool: Bash
+    command: 'gh api "repos/o/r/code-scanning/alerts?per_page=100" --jq ".[] | .expr=1"'
+    expect: warn
   - name: "warn-use-edit-tool: sed -i"
     tool: Bash
     command: "sed -i 's/a/b/' f.txt"
