@@ -35,16 +35,7 @@ jobs:
       - name: "Run unit tests"
         run: "python -m pytest tests/unit/ -v"
       - name: "Install bats"
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq bats
-          sudo mkdir -p /usr/local/lib/bats
-          for lib in bats-support bats-assert; do
-            sudo git clone --depth 1 --branch v0.3.0 \
-              "https://github.com/bats-core/${lib}.git" \
-              "/usr/local/lib/bats/${lib}"
-          done
-          sudo chmod -R a+r /usr/local/lib/bats
+        run: "sudo apt-get update -qq && sudo apt-get install -y -qq bats bats-support bats-assert"
       - name: "Run integration tests"
         run: "bats tests/hooks/ -t"
   summary:

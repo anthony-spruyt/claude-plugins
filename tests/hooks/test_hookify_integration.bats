@@ -2,8 +2,8 @@
 
 # End-to-end tests: pipe hook JSON into the real hook scripts from this repo
 
-load '/usr/local/lib/bats/bats-support/load'
-load '/usr/local/lib/bats/bats-assert/load'
+bats_load_library bats-support
+bats_load_library bats-assert
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)}"
 
