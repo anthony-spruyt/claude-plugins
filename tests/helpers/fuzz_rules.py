@@ -189,7 +189,7 @@ def bypass_kind(command: str, rules: list, workdir: str):
             path = os.path.join(stubdir, name)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(STUB)
-            os.chmod(path, 0o755)
+            os.chmod(path, 0o700)
         log = os.path.join(stubdir, "calls.log")
         env = {"PATH": stubdir + os.pathsep + os.environ.get("PATH", "/usr/bin:/bin"), "HOME": workdir,
                "SECRET_TOKEN": CANARY, "HOOKIFY_STUB_LOG": log}
