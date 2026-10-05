@@ -360,6 +360,8 @@ class TestRedact:
         start = time.perf_counter()
         rt.redact("pass" * 15000)
         rt.redact("token" * 12000 + "=x")
+        rt.redact('"' + "token" * 12000)
+        rt.redact("mysql " * 10000)
         assert time.perf_counter() - start < 0.5
 
     @pytest.mark.parametrize("text", [
@@ -394,6 +396,11 @@ class TestRedact:
         "pgpass": ("PGPASS=" + FAKE, FAKE),
         "camel-case": ("apiToken=" + FAKE, FAKE),
         "pat-suffix": ("GH_PAT=" + FAKE, FAKE),
+        "plural-name": ("API_TOKENS=" + FAKE, FAKE),
+        "digit-suffix": ("AUTH_TOKEN2=" + FAKE, FAKE),
+        "joined-suffix": ("DJANGO_SECRETKEY=" + FAKE, FAKE),
+        "long-prefix": ("NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_SECRET=" + FAKE, FAKE),
+        "lowercase-bearer": ("Bearer " + "q" * 24, "q" * 24),
     }
 
     @pytest.mark.parametrize("shape", sorted(SHAPES))
@@ -403,6 +410,22 @@ class TestRedact:
 
 
 class TestWriteReport:
+    def test_planted_symlinks_are_not_followed(self, tmp_path):
+        out = tmp_path / "out"
+        out.mkdir()
+        target = tmp_path / "victim"
+        target.write_text("keep")
+        (out / "report.md").symlink_to(target)
+        with pytest.raises(OSError):
+            rt.write_report(EMPTY_REPORT, str(out))
+        assert target.read_text() == "keep"
+
+    def test_refuses_a_folder_owned_by_someone_else(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(rt.os, "getuid", lambda: os.stat(tmp_path).st_uid + 1)
+        with pytest.raises(PermissionError):
+            rt.write_report(EMPTY_REPORT, str(tmp_path))
+        assert not (tmp_path / "report.md").exists()
+
     def test_existing_out_folder_permissions_are_left_alone(self, tmp_path):
         out = tmp_path / "shared"
         out.mkdir(mode=0o755)

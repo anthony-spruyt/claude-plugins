@@ -45,22 +45,23 @@ SECRET_PATTERNS = [
 ]
 KEEP_PREFIX = [
     re.compile(r"(?i)(\bAuthorization\s*:\s*(?:\w+\s+)?)(?![$<])[^\s'\"]+"),
-    re.compile(r"(?i)(\b(?:Bearer|Basic)\s+)(?![$<])(?=[\w.~+/=-]*(?-i:[A-Z0-9+/=]))[\w.~+/=-]{8,}"),
+    re.compile(r"(?i)(\b(?:Bearer|Basic)\s+)(?![$<])"
+               r"(?:(?=[\w.~+/=-]*(?-i:[A-Z0-9+/=]))[\w.~+/=-]{8,}|[\w.~+/=-]{20,})"),
     re.compile(r"(://[^/@\s:]+:)[^@\s/]+(?=@)"),
     re.compile(r"(?i)(\b(?:x-)?(?:api-?key|auth-token)\s*:\s*)(?![$<])[^\s'\"]+"),
     re.compile(r"(?i)(--?(?:password|passwd|token|secret|api-?key)[= ]['\"]?)(?![$<])[^\s'\"]+"),
-    re.compile(r"(\bmysql\w*\b[^\n|;&]*?\s-p)(?![$<\s])\S+"),
-    re.compile(r"(?i)(\"[^\"\n]*(?:token|secret|passw|api_?key|private_?key|credential)[^\"\n]*\"\s*:\s*\")"
+    re.compile(r"(\bmysql\w*\b[^\n|;&]{0,200}?\s-p)(?![$<\s])\S+"),
+    re.compile(r"(?i)(\"[^\"\n]{0,64}?(?:token|secret|passw|api_?key|private_?key|credential)[^\"\n]{0,64}\"\s*:\s*\")"
                r"(?:\\.|[^\"\\])+"),
 ]
-# Bounded runs keep this linear on long keyword-heavy text; PASS/PAT only match as whole name segments
+# Bounded runs keep this linear on long text; PASS/PAT only match as whole name segments
 SECRET_NAME = (
-    r"\b(?:\w{0,32}?(?:TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|API_?KEY|PRIVATE_?KEY|CREDENTIALS?)"
-    r"|(?:\w{1,32}_)?(?:PG)?PASS|\w{1,32}_PAT)(?:_\w{1,32})?(?<!_FILE)(?<!_PATH)(?<!_DIR)"
+    r"\b(?:\w{0,64}?(?:TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|API_?KEY|PRIVATE_?KEY|CREDENTIAL)\w{0,64}"
+    r"|(?:\w{1,64}_)?(?:PG)?PASS(?:_\w{1,64})?|\w{1,64}_PAT(?:_\w{1,64})?)(?<!_FILE)(?<!_PATH)(?<!_DIR)"
 )
 SECRET_ASSIGNMENT = re.compile(
     r"(?i)(" + SECRET_NAME + r"\s*[=:]\s*)"
-    r"('(?!\$)[^'\n]*'|\"(?!\$)[^\"\n]*\"|(?![$'\"])[^\s'\";&|]+)"
+    r"('(?!\$)[^'\n]*'|\"(?!\$)[^\"\n]*\"|(?![$'\"])(?!\d{1,6}\b)[^\s'\";&|]+)"
 )
 
 
@@ -279,7 +280,7 @@ def render_markdown(report: dict) -> str:
 
 
 def _write_private(path: str, text: str) -> None:
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)
@@ -289,6 +290,8 @@ def write_report(report: dict, out: str) -> None:
     if not os.path.isdir(out):
         os.makedirs(out)
         os.chmod(out, 0o700)
+    elif os.stat(out).st_uid != os.getuid():
+        raise PermissionError(f"{out} is owned by another user")
     _write_private(os.path.join(out, "report.json"), json.dumps(report, indent=1))
     _write_private(os.path.join(out, "report.md"), render_markdown(report))
 
