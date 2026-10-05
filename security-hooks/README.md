@@ -6,7 +6,7 @@ Blocking rules for Claude Code that prevent accidental secret exposure.
 
 Requires the **hookify-plus** plugin to be installed from this same marketplace. Without the engine, these rule files are inert markdown with no effect.
 
-## Rules (31)
+## Rules (32)
 
 | Rule                          | Blocks                                                  |
 | ----------------------------- | ------------------------------------------------------- |
@@ -37,6 +37,7 @@ Requires the **hookify-plus** plugin to be installed from this same marketplace.
 | block-read-proc-environ       | Opening `/proc/*/environ` with a file tool              |
 | block-read-secrets-generic    | Generic secret/token/key files                          |
 | block-read-ssh-keys           | SSH private keys                                        |
+| block-s3cret-as-command       | A secret variable run as a command: `eval $TOKEN`       |
 | block-set-dump                | `set` bare command                                      |
 | block-shell-read-secret-files | Shell reads of the files the `block-read-*` rules guard |
 | block-sops-decrypt            | `sops -d` / `sops --decrypt` / `sops exec-*`            |

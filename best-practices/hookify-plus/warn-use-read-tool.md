@@ -7,7 +7,7 @@ conditions:
   - field: command
     operator: command_match
     pattern: '^(?:cat|head|tail|less|more)(?!.* (?:\d*|&)?>)(?: -\S+)*(?: \d+)? [^-|<>\s]|^(?:cat|head|tail|less|more)(?: -\S+)* < [^-\s]'
-    fallback: '(^|\s|&&|\|\||;|\(|`)(cat|head|tail|less|more)\s+[^|]'
+    fallback: '(?:^|\s|&&|\|\||;|\(|`)(?:cat|head|tail|less|more)(?:\s+-\S+)*(?:\s+\d+)?\s+(?!\d+(?:[\s;&|)]|$))(?:[^-|<>\s;&)]|<\s*[^-\s<])'
 mask_data: true
 action: warn
 warn_once: true
