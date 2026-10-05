@@ -71,6 +71,7 @@ INPUTS = {
     "commit-open-substitutions": 'git commit -m "' + "$((" * 6600,
     "gh-body-many-dollars": "gh pr create --body " + "$ " * 9900,
     "gh-global-options-body": "gh" + " -a" * 6000 + " pr create --body $A_TOKEN",
+    "gh-bodies-in-open-quote": (("'$" + "e" + "nv:X=gh pr create --body ") * 700)[:20000],
     "declare-n-many-names": "declare -n" + " a=b" * 4900,
     "declare-many-flags-n": "declare" + " -a" * 6000 + " -n",
     "indirect-bang-braces": "${!" * 6600,
