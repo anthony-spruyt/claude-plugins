@@ -124,6 +124,27 @@ class TestRedirects:
         (cmd,) = parse_commands("cat <<-'EOF'\nx\nEOF")
         assert cmd.redirects == [("<<-", "EOF")]
 
+    @pytest.mark.parametrize("command", ["cat <<EOF\nenv", "cat <<'EOF'\nenv\n", "cat <<EOF"])
+    def test_heredoc_ends_at_end_of_input(self, command):
+        assert names(command) == ["cat"]
+
+    def test_heredoc_at_end_of_input_still_feeds_a_shell(self):
+        assert names("sh <<'EOF'\nenv") == ["sh", "env"]
+
+    def test_heredoc_at_end_of_input_inside_substitution_fails_closed(self):
+        assert parse_commands("x=$(cat <<EOF\nhi") is None
+
+    @pytest.mark.parametrize("command", [
+        "cat <<A$x\nenv\nA$x\necho done", "cat <<'A'#${!S*}x\nenv\nA#${!S*}x\necho done",
+    ])
+    def test_heredoc_delimiter_is_not_expanded(self, command):
+        assert names(command) == ["cat", "echo"]
+
+    @pytest.mark.parametrize("command", ["cat <<A$(b)\nx\nA$(b)", "cat <<A`b`\nx\nA`b`",
+                                         "cat <<A${b c}\nx\nA${b c}"])
+    def test_heredoc_delimiter_with_substitution_fails_closed(self, command):
+        assert parse_commands(command) is None
+
 
 class TestAssignments:
     def test_leading_assignment(self):
@@ -277,6 +298,13 @@ class TestWrappers:
     def test_env_options(self):
         assert names("env -i -0 -u X --unset=Y -C /tmp --chdir=/ - A=1 printenv") == [
             "env", "printenv"]
+
+    @pytest.mark.parametrize("command", ["env =", "env =x", "env A=b=c"])
+    def test_env_takes_any_word_with_equals_as_assignment(self, command):
+        assert pairs(command) == [("env", [])]
+
+    def test_brace_pair_command_name(self):
+        assert names("env;{}") == ["env", "{}"]
 
     def test_env_split_string(self):
         assert pairs("env -S 'FOO=1 printenv HOME' -0") == [
@@ -445,7 +473,6 @@ class TestFailClosed:
         "`printf env`",
         "echo 'unterminated",
         'echo "unterminated',
-        "cat <<EOF\nenv",
         "echo ${!x}",
         "echo $_",
         "echo ${_}",
@@ -544,6 +571,13 @@ class TestLiteralDollar:
 
     def test_mixed_word(self):
         assert normalise("echo \"$A\"'$B'") == ["echo '$A\\$B'"]
+
+    @pytest.mark.parametrize("cmd", ["echo $X'y'", 'echo "$X"y', "echo $X\\y", "echo $X''y"])
+    def test_variable_glued_to_literal_text_is_braced(self, cmd):
+        assert normalise(cmd) == ["echo '${X}y'"]
+
+    def test_variable_before_punctuation_stays_bare(self):
+        assert normalise("echo $X'-y'") == ["echo '$X-y'"]
 
     def test_literal_backslash_before_expansion(self):
         assert normalise("echo \\\\$X") == ["echo '\\\\$X'"]

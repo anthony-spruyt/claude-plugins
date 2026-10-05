@@ -686,3 +686,43 @@ test_cases:
     tool: Bash
     command: 'ps -e'
     expect: allow
+  - name: 'fuzzer: blocks env with a bare = argument'
+    tool: Bash
+    command: "timeout 5 'env'\t="
+    expect: block
+  - name: 'fuzzer: blocks piped env fed an unterminated heredoc'
+    tool: Bash
+    command: 'echo |''env''<<''A''#"env"'
+    expect: block
+  - name: 'fuzzer: blocks unterminated heredoc whose delimiter holds ${...}'
+    tool: Bash
+    command: 'xargs "env"<<''A''#${!S*}set'
+    expect: block
+  - name: 'fuzzer: blocks xargs env fed an unterminated heredoc'
+    tool: Bash
+    command: 'xargs ''env''<<"A"||"env"export -p'
+    expect: block
+  - name: 'fuzzer: blocks sh -c env followed by a {} command'
+    tool: Bash
+    command: 'sh -c ''env''\;{}'
+    expect: block
+  - name: 'fuzzer: blocks reading .env with an unterminated heredoc'
+    tool: Bash
+    command: 'cat .env<<''A'''
+    expect: block
+  - name: 'fuzzer: blocks env with an unterminated heredoc on a later line'
+    tool: Bash
+    command: "gh release create v1 --notes x\n\"env\"<<'A'"
+    expect: block
+  - name: 'fuzzer: blocks echo of a secret glued to quoted text'
+    tool: Bash
+    command: 'echo =$SECRET_TOKEN''env'''
+    expect: block
+  - name: 'fuzzer: allows an unterminated heredoc into sort'
+    tool: Bash
+    command: "sort <<'A'\nhello"
+    expect: allow
+  - name: 'fuzzer: allows a literal heredoc delimiter that looks like an expansion'
+    tool: Bash
+    command: "sort <<'A'#${!S*}set\nhello\nA#${!S*}set\necho done"
+    expect: allow
