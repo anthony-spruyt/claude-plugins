@@ -59,14 +59,17 @@ SECRET_NAME = (
     r"\b(?:\w{0,64}?(?:TOKEN|SECRET|PASSW(?:OR)?D|PASSPHRASE|API_?KEY|PRIVATE_?KEY|CREDENTIAL)\w{0,64}"
     r"|(?:\w{1,64}_)?(?:PG)?PASS(?:_\w{1,64})?|\w{1,64}_PAT(?:_\w{1,64})?)(?<!_FILE)(?<!_PATH)(?<!_DIR)"
 )
+COUNT_NAME = re.compile(r"(?i)MAX|COUNT|LIMIT|NUM|TOKENS\s*[=:]")
 SECRET_ASSIGNMENT = re.compile(
     r"(?i)(" + SECRET_NAME + r"\s*[=:]\s*)"
-    r"('(?!\$)[^'\n]*'|\"(?!\$)[^\"\n]*\"|(?![$'\"])(?!\d{1,6}\b)[^\s'\";&|]+)"
+    r"('(?!\$)[^'\n]*'|\"(?!\$)[^\"\n]*\"|(?![$'\"])[^\s'\";&|]+)"
 )
 
 
 def _mask_value(m: re.Match) -> str:
     value = m.group(2)
+    if value.isdigit() and COUNT_NAME.search(m.group(1)):
+        return m.group(0)
     quote = value[0] if value[:1] in ("'", '"') else ""
     return f"{m.group(1)}{quote}<redacted>{quote}"
 

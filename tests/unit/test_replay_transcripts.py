@@ -365,7 +365,7 @@ class TestRedact:
         assert time.perf_counter() - start < 0.5
 
     @pytest.mark.parametrize("text", [
-        "BYPASS=1", "compass=north", "--passes=3", "max_tokens: 4096", "SSH_PASSPHRASE_FILE=/run/x",
+        "BYPASS=1", "compass=north", "CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000", "--passes=3", "max_tokens: 4096", "SSH_PASSPHRASE_FILE=/run/x",
         "GITHUB_TOKEN_PATH=/run/y", "pat=/y", "uses Basic authentication here",
     ])
     def test_leaves_harmless_lookalikes_alone(self, text):
@@ -401,6 +401,9 @@ class TestRedact:
         "joined-suffix": ("DJANGO_SECRETKEY=" + FAKE, FAKE),
         "long-prefix": ("NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_SECRET=" + FAKE, FAKE),
         "lowercase-bearer": ("Bearer " + "q" * 24, "q" * 24),
+        "digits-then-punctuation": ("DB_PASSWORD=2024!" + FAKE, FAKE),
+        "all-digit-password": ("DB_PASSWORD=831597", "831597"),
+        "all-digit-pin": ("SIM_PIN_PASSWORD=4821", "4821"),
     }
 
     @pytest.mark.parametrize("shape", sorted(SHAPES))
