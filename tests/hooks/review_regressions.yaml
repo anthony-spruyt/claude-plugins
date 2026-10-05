@@ -686,3 +686,152 @@ test_cases:
     tool: Bash
     command: 'ps -e'
     expect: allow
+  - name: 'fuzzer: blocks env with a bare = argument'
+    tool: Bash
+    command: "timeout 5 'env'\t="
+    expect: block
+  - name: 'fuzzer: blocks piped env fed an unterminated heredoc'
+    tool: Bash
+    command: 'echo |''env''<<''A''#"env"'
+    expect: block
+  - name: 'fuzzer: blocks unterminated heredoc whose delimiter holds ${...}'
+    tool: Bash
+    command: 'xargs "env"<<''A''#${!S*}set'
+    expect: block
+  - name: 'fuzzer: blocks xargs env fed an unterminated heredoc'
+    tool: Bash
+    command: 'xargs ''env''<<"A"||"env"export -p'
+    expect: block
+  - name: 'fuzzer: blocks sh -c env followed by a {} command'
+    tool: Bash
+    command: 'sh -c ''env''\;{}'
+    expect: block
+  - name: 'fuzzer: blocks reading .env with an unterminated heredoc'
+    tool: Bash
+    command: 'cat .env<<''A'''
+    expect: block
+  - name: 'fuzzer: blocks env with an unterminated heredoc on a later line'
+    tool: Bash
+    command: "gh release create v1 --notes x\n\"env\"<<'A'"
+    expect: block
+  - name: 'fuzzer: blocks echo of a secret glued to quoted text'
+    tool: Bash
+    command: 'echo =$SECRET_TOKEN''env'''
+    expect: block
+  - name: 'fuzzer: allows an unterminated heredoc into sort'
+    tool: Bash
+    command: "sort <<'A'\nhello"
+    expect: allow
+  - name: 'fuzzer: allows a literal heredoc delimiter that looks like an expansion'
+    tool: Bash
+    command: "sort <<'A'#${!S*}set\nhello\nA#${!S*}set\necho done"
+    expect: allow
+  # The parser gives up on a dynamic command name, so these hit the fallback
+  - name: 'secret-as-command: blocks eval of a secret'
+    tool: Bash
+    command: 'eval $SECRET_TOKEN'
+    expect: block
+  - name: 'secret-as-command: blocks eval of a braced secret with text after'
+    tool: Bash
+    command: 'eval ${SECRET_TOKEN}X'
+    expect: block
+  - name: 'secret-as-command: blocks sh -c with a secret as the script'
+    tool: Bash
+    command: 'sh -c $SECRET_TOKEN'
+    expect: block
+  - name: 'secret-as-command: blocks bash -c with a braced secret'
+    tool: Bash
+    command: 'bash -c ${SECRET_TOKEN};'
+    expect: block
+  - name: 'secret-as-command: blocks xargs running a secret'
+    tool: Bash
+    command: 'xargs $SECRET_TOKEN'
+    expect: block
+  - name: 'secret-as-command: blocks text glued before a secret'
+    tool: Bash
+    command: 'A$SECRET_TOKEN'
+    expect: block
+  - name: 'secret-as-command: blocks a secret alone'
+    tool: Bash
+    command: '$SECRET_TOKEN'
+    expect: block
+  - name: 'secret-as-command: blocks a secret after a pipe'
+    tool: Bash
+    command: 'echo | ${SECRET_TOKEN}'
+    expect: block
+  - name: 'secret-as-command: blocks a secret after ||'
+    tool: Bash
+    command: 'true||$SECRET_TOKEN'
+    expect: block
+  - name: 'secret-as-command: blocks a secret on a later line'
+    tool: Bash
+    command: "echo ok\n$SECRET_TOKEN"
+    expect: block
+  - name: 'secret-as-command: blocks timeout running a secret'
+    tool: Bash
+    command: 'timeout 5 ${SECRET_TOKEN}'
+    expect: block
+  - name: 'secret-as-command: blocks a quoted secret as the command'
+    tool: Bash
+    command: '"$SECRET_TOKEN" --help'
+    expect: block
+  - name: 'secret-as-command: blocks a secret after assignments'
+    tool: Bash
+    command: 'FOO=1 BAR=''a b'' $SECRET_TOKEN'
+    expect: block
+  - name: 'secret-as-command: blocks a secret run by nohup'
+    tool: Bash
+    command: 'nohup $SECRET_TOKEN'
+    expect: block
+  - name: 'secret-as-command: blocks a secret glued after a flag'
+    tool: Bash
+    command: '-m${SECRET_TOKEN}'
+    expect: block
+  - name: 'secret-as-command: blocks a secret after then'
+    tool: Bash
+    command: 'if true; then $SECRET_TOKEN; fi'
+    expect: block
+  - name: 'secret-as-command: blocks a secret followed by ='
+    tool: Bash
+    command: '$SECRET_TOKEN='
+    expect: block
+  - name: 'secret-as-command: allows a secret as an assignment value'
+    tool: Bash
+    command: 'GH_TOKEN=$SECRET_TOKEN gh pr list'
+    expect: allow
+  - name: 'secret-as-command: allows a secret piped to gh secret set'
+    tool: Bash
+    command: 'gh secret set X --body "$SECRET_TOKEN"'
+    expect: allow
+  - name: 'secret-as-command: allows a set check'
+    tool: Bash
+    command: '[ -n "$SECRET_TOKEN" ] && echo set'
+    expect: allow
+  - name: 'secret-as-command: allows a :+ expansion as the command'
+    tool: Bash
+    command: '${SECRET_TOKEN:+true}'
+    expect: allow
+  - name: 'secret-as-command: allows a single-quoted secret name in grep'
+    tool: Bash
+    command: 'grep -rn ''$SECRET_TOKEN'' docs; ls'
+    expect: allow
+  - name: 'secret-as-command: allows an export'
+    tool: Bash
+    command: 'export A=$SECRET_TOKEN'
+    expect: allow
+  - name: 'secret-as-command: allows a secret name in markdown code in a heredoc'
+    tool: Bash
+    command: "cat > /tmp/i.md <<'EOF'\nRun `xargs $GITHUB_TOKEN` or `$GITHUB_TOKEN` to leak it.\nEOF"
+    expect: allow
+  - name: 'secret-as-command: allows a secret name in parentheses in a heredoc'
+    tool: Bash
+    command: "tee /tmp/i.md <<'EOF'\nNeeds a token ($GITHUB_TOKEN).\nEOF"
+    expect: allow
+  - name: 'secret-as-command: blocks a secret run in a command substitution'
+    tool: Bash
+    command: 'x=$($GITHUB_TOKEN)'
+    expect: block
+  - name: 'secret-as-command: blocks a single-quoted secret as the bash -c script'
+    tool: Bash
+    command: 'bash -c ''${SECRET_TOKEN}'' -m x'
+    expect: block

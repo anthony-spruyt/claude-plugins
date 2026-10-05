@@ -22,6 +22,10 @@ EXPANDED, GLOB, QUOTED = 1, 2, 4
 PLAIN = re.compile(r'[^ \t\n;&|()<>\'"\\$`*?\[{}]+')
 BLANK = re.compile(r'(?:[ \t]+|\\\n)+')
 DQ_PLAIN = re.compile(r'[^"\\$`]+')
+DELIM_PLAIN = re.compile(r'[^ \t\n;&|()<>\'"\\$`]+')
+DELIM_DQ = re.compile(r'"((?:[^"\\$`]|\\[^\n]|\$(?![({]))*)"')
+DELIM_DQ_ESCAPE = re.compile(r'\\([$`"\\])')
+DELIM_PARAM = re.compile(r'\$\{[^\s{}\'"\\$`;&|()<>]*\}')
 PARAM_PLAIN = re.compile(r'[^}\'"\\$`]+')
 VARIABLE = re.compile(r'[A-Za-z_]\w*|[\d@*#?$!-]', re.ASCII)
 UNDERSCORE = re.compile(r'_(?!\w)', re.ASCII)
@@ -79,6 +83,8 @@ class _Expansion(str):
 
 
 LITERAL = re.compile(r'[\\$`]')
+BARE_VARIABLE = re.compile(r'\$[A-Za-z_]\w*', re.ASCII)
+WORD_CHAR = re.compile(r'\w')
 BACKSLASH_MATCH = r'\\\g<0>'
 
 
@@ -99,8 +105,16 @@ def _word_text(buf) -> str:
     text = ''.join(buf)
     if '$' not in text and '`' not in text:
         return text
-    word = Word(text)
-    word.shown = ''.join(p if isinstance(p, _Expansion) else LITERAL.sub(BACKSLASH_MATCH, p) for p in buf)
+    word, shown, after = Word(text), [], ''
+    for p in reversed(buf):
+        if not isinstance(p, _Expansion):
+            p = LITERAL.sub(BACKSLASH_MATCH, p)
+        # `$X'y'` shown bare would read as the variable `$Xy`
+        elif BARE_VARIABLE.fullmatch(p) and WORD_CHAR.match(after):
+            p = '${%s}' % p[1:]
+        shown.append(p)
+        after = p[:1] or after
+    word.shown = ''.join(reversed(shown))
     return word
 
 
@@ -115,7 +129,7 @@ LEADING_TABS = re.compile(r'^\t+', re.M)
 SHELLS = frozenset(['bash', 'sh', 'zsh', 'dash', 'ksh'])
 ECHO_OPTS = re.compile(r'-[neE]+$')
 STDIN_REDIRECT = re.compile(r'0?(?:<|<<|<<-|<<<|<>|<&)$')
-ENV_ASSIGN = re.compile(r'[^=$`]+=')
+ENV_ASSIGN = re.compile(r'[^=$`]*=')
 SPLIT_UNSURE = re.compile(r'[\'"\\$#{`]')
 GLOB_CHARS = re.compile(r'[*?\[]')
 # name: (short options taking a value, long options taking a value, short options whose
@@ -528,7 +542,7 @@ class _Parser:
                  parent: Optional[SimpleCommand] = None, feed: Optional[Tuple[str, str]] = None):
         self.s, self.i, self.out = s, 0, out
         self.depth, self.subst = depth, subst
-        self.parent, self.fed_by, self.base = parent, feed, subst
+        self.parent, self.fed_by, self.base, self.top = parent, feed, subst, subst
         self.pending, self.readers, self.words, self.heredocs = [], {}, {}, {}
         self.bodies_out = _BODIES
         self.registered = 0
@@ -767,7 +781,7 @@ class _Parser:
             else:
                 return None
         name, flags = words[0]
-        if flags & EXPANDED or (flags & GLOB and name != '['):
+        if flags & EXPANDED or (flags & GLOB and name != '[' and _globbing(name)):
             raise _Unsure
         args = _args(name, words)
         cmd = self.out[slot] = SimpleCommand(name, args, redirects)
@@ -844,17 +858,53 @@ class _Parser:
         self.blank()
         if self.i >= len(self.s) or (self.s[self.i] in '\n;&|()<>' and not PROC_SUB.match(self.s, self.i)):
             raise _Unsure
-        target, flags = self.word()
-        redirect = (m.group(), target)
         if m.group(2) in ('<<', '<<-'):
-            if flags & EXPANDED:
-                raise _Unsure
-            self.pending.append((target, m.group(2) == '<<-', bool(flags & QUOTED), redirect))
+            target, quoted = self.delimiter()
+            redirect = (m.group(), target)
+            self.pending.append((target, m.group(2) == '<<-', quoted, redirect))
             self.heredocs[id(redirect)] = [None, None, [], redirect]
-        elif m.group(2) == '<<<':
-            self.heredocs[id(redirect)] = [flags & EXPANDED, target, [], redirect]
+        else:
+            target, flags = self.word()
+            redirect = (m.group(), target)
+            if m.group(2) == '<<<':
+                self.heredocs[id(redirect)] = [flags & EXPANDED, target, [], redirect]
         redirects.append(redirect)
         return True
+
+    def delimiter(self) -> Tuple[str, bool]:
+        """Heredoc delimiter and whether any of it is quoted; bash removes quotes but expands nothing."""
+        s, buf, quoted = self.s, [], False
+        while self.i < len(s):
+            m = DELIM_PLAIN.match(s, self.i) or DELIM_PARAM.match(s, self.i)
+            c = s[self.i]
+            if m:
+                buf.append(m.group())
+                self.i = m.end()
+            elif c in ' \t\n;&|()<>':
+                break
+            elif c == "'":
+                end = s.find("'", self.i + 1)
+                if end < 0:
+                    raise _Unsure
+                buf.append(s[self.i + 1:end])
+                self.i, quoted = end + 1, True
+            elif c == '"':
+                m = DELIM_DQ.match(s, self.i)
+                if not m:
+                    raise _Unsure
+                buf.append(DELIM_DQ_ESCAPE.sub(r'\1', m.group(1)))
+                self.i, quoted = m.end(), True
+            elif c == '\\' and s[self.i + 1:self.i + 2] not in ('', '\n'):
+                buf.append(s[self.i + 1])
+                self.i, quoted = self.i + 2, True
+            elif c == '$' and s[self.i + 1:self.i + 2] not in ('(', '{', "'", '"'):
+                buf.append(c)
+                self.i += 1
+            else:
+                raise _Unsure
+        if not buf and not quoted:
+            raise _Unsure
+        return _word_text(buf), quoted
 
     def array(self) -> None:
         self.i += 1
@@ -872,8 +922,12 @@ class _Parser:
         for delim, strip, quoted, redirect in pending:
             start = i = self.i
             while True:
+                # Bash warns and ends the body at end of input, except inside an open $(
                 if i >= len(s):
-                    raise _Unsure
+                    if self.subst != self.top:
+                        raise _Unsure
+                    nl = len(s)
+                    break
                 nl = s.find('\n', i)
                 nl = len(s) if nl < 0 else nl
                 line = s[i:nl].lstrip('\t') if strip else s[i:nl]
@@ -1112,7 +1166,7 @@ def _run(text: str, out: list, depth: int, subst: int, parent: Optional[SimpleCo
     parser = _Parser(text, out, depth, subst, parent, feed)
     parser.compound_list()
     if parser.pending:
-        raise _Unsure
+        parser.bodies()
     return next(iter(parser.readers.values()), None)
 
 
