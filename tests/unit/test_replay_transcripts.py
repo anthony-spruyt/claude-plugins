@@ -404,6 +404,9 @@ class TestRedact:
         "digits-then-punctuation": ("DB_PASSWORD=2024!" + FAKE, FAKE),
         "all-digit-password": ("DB_PASSWORD=831597", "831597"),
         "all-digit-pin": ("SIM_PIN_PASSWORD=4821", "4821"),
+        "account-is-not-a-count": ("SERVICE_ACCOUNT_PASSWORD=831597", "831597"),
+        "discount-is-not-a-count": ("DISCOUNT_SECRET=831597", "831597"),
+        "long-number-under-max": ("MAX_API_KEY=" + "7" * 20, "7" * 20),
     }
 
     @pytest.mark.parametrize("shape", sorted(SHAPES))
