@@ -22,6 +22,12 @@ bats tests/hooks/
 
 # Run unit tests
 pytest tests/unit/ -v
+
+# Replay real session logs through the rules (see the replay-logs skill)
+python3 tests/helpers/replay_transcripts.py --exclude-project claude-plugins
+
+# Fuzz the rules: speed (slow regexes), crash (parser), bypass (real leaks no rule blocks)
+python3 tests/helpers/fuzz_rules.py speed|crash|bypass
 ```
 
 ## Versioning
