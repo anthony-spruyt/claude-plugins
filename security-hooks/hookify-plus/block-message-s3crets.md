@@ -3,11 +3,12 @@ name: block-message-secrets
 enabled: true
 event: bash
 # $(...) is skipped: the parser keeps its source text, and the commands inside get their own lines
+# Fallback starts each piece once, taking its first gh/git subcommand in a lookahead (atomic): retrying later ones is cubic
 conditions:
   - field: command
     operator: command_match
     pattern: '^(?:gh(?: -\S+(?: (?:''[^'']*''|[^-\s''])(?:''[^'']*''|[^\s''])*)?)* (?:issue|pr|release|gist) |git(?: -\S+(?: (?:''[^'']*''|[^-\s''])(?:''[^'']*''|[^\s''])*)?)* (?:commit|tag|notes)\b)(?:[^$\\]|\\.|\$(?!\()|\$\((?:[^()]|\([^()]*\))*\))*?\$\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)'
-    fallback: '\b(?:gh\s(?:[^\n;&|]*?\s)??(?:issue|pr|release|gist)|git\s(?:[^\n;&|]*?\s)??(?:commit|tag|notes))\b[^\n;&|$]*(?:\$(?!\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+))[^\n;&|$]*)*\$\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)'
+    fallback: '(?:^|(?<=[\n;&|]))(?:(?=((?=([^\n;&|]*?\bgh\s))\2(?:[^\n;&|]*?\s)??(?:issue|pr|release|gist)\b))\1|(?=((?=([^\n;&|]*?\bgit\s))\4(?:[^\n;&|]*?\s)??(?:commit|tag|notes)\b))\3)[^\n;&|$]*(?:\$(?!\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+))[^\n;&|$]*)*\$\{?[A-Za-z0-9_]*(?:_PAT|TOKENS?|SECRETS?|PASSWORD|PASSWD|_PASS|_PWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|SECRET_KEY|ACCESS_KEY|_KEY|_AUTH)[0-9]*\b(?!:?\+)'
 action: block
 ---
 

@@ -24,4 +24,6 @@ conditions:
 
 **This rule matches file names, not folders.** `grep -r` or `rg` over a directory that holds a secrets file is not caught. Add a project rule for those directories.
 
+**Heredoc text counts too.** A heredoc saved to a file or fed to a program (`tee notes.md <<'EOF'`, `python3 - <<'EOF'`) is read as a script that might run later, so naming a secrets file inside it is blocked. To write text that mentions one, use the Write tool.
+
 **False positive?** Open an issue: `gh issue create --repo anthony-spruyt/claude-plugins --title "False positive: block-shell-read-secret-files" --label bug` and describe the blocked command in the body using `--body-file` to avoid re-triggering hooks.
