@@ -5,12 +5,11 @@ This script is called by Claude Code when agent wants to stop.
 It reads .claude/hookify.*.local.md files and evaluates stop rules.
 """
 
+import json
 import os
 import sys
-import json
 
-# CRITICAL: Add plugin root to Python path for imports
-PLUGIN_ROOT = os.environ.get('CLAUDE_PLUGIN_ROOT')
+PLUGIN_ROOT = os.environ.get("CLAUDE_PLUGIN_ROOT")
 if PLUGIN_ROOT and PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
@@ -26,30 +25,21 @@ except ImportError as e:
 def main():
     """Main entry point for Stop hook."""
     try:
-        # Read input from stdin
         input_data = json.load(sys.stdin)
-
-        # Load stop rules
-        rules = load_rules(event='stop')
-
-        # Evaluate rules
+        rules = load_rules(event="stop")
         engine = RuleEngine()
         result = engine.evaluate_rules(rules, input_data)
-
-        # Always output JSON (even if empty)
         print(json.dumps(result), file=sys.stdout)
 
     except Exception as e:
-        # On any error, allow the operation
-        error_output = {
-            "systemMessage": f"Hookify error: {str(e)}"
-        }
+        # Fail open: an error must not stop Claude from stopping
+        error_output = {"systemMessage": f"Hookify error: {e!s}"}
         print(json.dumps(error_output), file=sys.stdout)
 
     finally:
-        # ALWAYS exit 0
+        # Claude Code only reads the stdout JSON, block decision included, on exit 0
         sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

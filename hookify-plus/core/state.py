@@ -52,10 +52,10 @@ class WarningState:
                 try:
                     if f.stat().st_mtime < cutoff:
                         f.unlink()
-                except (OSError, IOError):
+                except OSError:  # noqa: PERF203
                     pass
-        except (OSError, IOError):
-            pass  # Ignore if /tmp is inaccessible
+        except OSError:
+            pass
 
     def _load_state(self) -> dict:
         """Load state from file, return empty if stale or missing."""
@@ -76,7 +76,7 @@ class WarningState:
                 return {"created_at": datetime.now().isoformat(), "session_id": self.session_id, "rules": {}}
 
             return state
-        except (json.JSONDecodeError, IOError, OSError):
+        except (json.JSONDecodeError, OSError):
             return {"created_at": datetime.now().isoformat(), "session_id": self.session_id, "rules": {}}
 
     def should_warn(self, rule: "Rule") -> bool:
@@ -96,7 +96,7 @@ class WarningState:
 
         if rule.warn_once:
             return warn_count == 0
-        elif rule.warn_interval > 0:
+        if rule.warn_interval > 0:
             # Warn on 0, N, 2N, 3N, ...
             return warn_count % rule.warn_interval == 0
 
@@ -125,6 +125,7 @@ class WarningState:
             with open(tmp_file, "w") as f:
                 json.dump(self.state, f, indent=2)
             tmp_file.rename(self.state_file)  # Atomic on POSIX
-        except (IOError, OSError) as e:
+        except OSError as e:
             import sys
+
             print(f"Warning: Could not save hookify state: {e}", file=sys.stderr)

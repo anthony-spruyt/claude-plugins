@@ -29,13 +29,17 @@ test warning
 
 def run(hook, cwd, session_id, tool_name="Bash", agent_id=None):
     env = {**os.environ, "CLAUDE_PLUGIN_ROOT": PLUGIN_ROOT, "HOME": str(cwd)}
-    payload = {"tool_name": tool_name, "session_id": session_id,
-               "tool_input": {"command": "echo warnme"}}
+    payload = {"tool_name": tool_name, "session_id": session_id, "tool_input": {"command": "echo warnme"}}
     if agent_id:
         payload["agent_id"] = agent_id
     return subprocess.run(
         [sys.executable, os.path.join(PLUGIN_ROOT, "hooks", hook)],
-        input=json.dumps(payload), capture_output=True, text=True, cwd=cwd, env=env,
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+        env=env,
+        check=False,
     ).returncode
 
 
