@@ -3,15 +3,15 @@
 from typing import Optional
 
 TOOL_EVENTS = {
-    'Bash': 'bash',
-    'PowerShell': 'bash',
-    'Monitor': 'bash',
-    'Edit': 'file',
-    'Write': 'file',
-    'NotebookEdit': 'file',
-    'Read': 'read',
-    'Glob': 'read',
-    'Grep': 'read',
+    "Bash": "bash",
+    "PowerShell": "bash",
+    "Monitor": "bash",
+    "Edit": "file",
+    "Write": "file",
+    "NotebookEdit": "file",
+    "Read": "read",
+    "Glob": "read",
+    "Grep": "read",
 }
 
 

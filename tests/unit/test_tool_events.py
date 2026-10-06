@@ -47,22 +47,29 @@ class TestFieldExtraction:
         assert self.extract(field, "NotebookEdit", {"new_source": "API_KEY=1"}) == "API_KEY=1"
 
     def test_grep_file_path_is_path(self):
-        assert self.extract("file_path", "Grep", {"pattern": "x", "path": "/home/u/.ssh/id_rsa"}) == "/home/u/.ssh/id_rsa"
+        assert (
+            self.extract("file_path", "Grep", {"pattern": "x", "path": "/home/u/.ssh/id_rsa"}) == "/home/u/.ssh/id_rsa"
+        )
 
     def test_grep_file_path_joins_glob_filter(self):
-        assert self.extract("file_path", "Grep", {"pattern": "x", "path": "/home/u", "glob": "id_rsa"}) == "/home/u/id_rsa"
+        assert (
+            self.extract("file_path", "Grep", {"pattern": "x", "path": "/home/u", "glob": "id_rsa"}) == "/home/u/id_rsa"
+        )
 
     def test_grep_glob_without_path(self):
         assert self.extract("file_path", "Grep", {"pattern": "x", "glob": ".env"}) == "/.env"
 
-    @pytest.mark.parametrize("filter_, expected", [
-        (".env*", "/project/.env"),
-        (".env.*", "/project/.env"),
-        (".*", "/project"),
-        ("id_rsa?*", "/project/id_rsa"),
-        ("*", "/project"),
-        ("**", "/project"),
-    ])
+    @pytest.mark.parametrize(
+        ("filter_", "expected"),
+        [
+            (".env*", "/project/.env"),
+            (".env.*", "/project/.env"),
+            (".*", "/project"),
+            ("id_rsa?*", "/project/id_rsa"),
+            ("*", "/project"),
+            ("**", "/project"),
+        ],
+    )
     def test_trailing_wildcards_are_stripped(self, filter_, expected):
         assert self.extract("file_path", "Grep", {"pattern": "x", "path": "/project", "glob": filter_}) == expected
 
@@ -70,22 +77,30 @@ class TestFieldExtraction:
         assert self.extract("file_path", "Glob", {"pattern": "**/.env", "path": "/project"}) == "/project"
 
     def test_grep_trailing_slash_on_path(self):
-        assert self.extract("file_path", "Grep", {"pattern": "x", "path": "/project/", "glob": "*.ts"}) == "/project/*.ts"
+        assert (
+            self.extract("file_path", "Grep", {"pattern": "x", "path": "/project/", "glob": "*.ts"}) == "/project/*.ts"
+        )
 
 
 class TestNotebookEditNewString:
     def test_new_string_rule_matches_notebook_edit(self):
-        rule = Rule.from_dict({
-            "name": "r",
-            "event": "file",
-            "action": "block",
-            "conditions": [{"field": "new_string", "operator": "contains", "pattern": "API_KEY"}],
-        }, "blocked")
-        result = RuleEngine().evaluate_rules([rule], {
-            "hook_event_name": "PreToolUse",
-            "tool_name": "NotebookEdit",
-            "tool_input": {"notebook_path": "/p/n.ipynb", "new_source": "API_KEY=1"},
-        })
+        rule = Rule.from_dict(
+            {
+                "name": "r",
+                "event": "file",
+                "action": "block",
+                "conditions": [{"field": "new_string", "operator": "contains", "pattern": "API_KEY"}],
+            },
+            "blocked",
+        )
+        result = RuleEngine().evaluate_rules(
+            [rule],
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "NotebookEdit",
+                "tool_input": {"notebook_path": "/p/n.ipynb", "new_source": "API_KEY=1"},
+            },
+        )
         assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
@@ -96,14 +111,17 @@ class TestSimplePatternField:
 
 
 class TestFilePathNormalised:
-    @pytest.mark.parametrize("raw, clean", [
-        ("/proc/self/../self/environ", "/proc/self/environ"),
-        ("/proc//self/environ", "/proc/self/environ"),
-        ("/home/u/./.ssh/id_rsa", "/home/u/.ssh/id_rsa"),
-        ("/home/u/.ssh/", "/home/u/.ssh/"),
-        ("a/../.npmrc", ".npmrc"),
-        ("", ""),
-    ])
+    @pytest.mark.parametrize(
+        ("raw", "clean"),
+        [
+            ("/proc/self/../self/environ", "/proc/self/environ"),
+            ("/proc//self/environ", "/proc/self/environ"),
+            ("/home/u/./.ssh/id_rsa", "/home/u/.ssh/id_rsa"),
+            ("/home/u/.ssh/", "/home/u/.ssh/"),
+            ("a/../.npmrc", ".npmrc"),
+            ("", ""),
+        ],
+    )
     def test_read_paths_are_normalised(self, raw, clean):
         assert RuleEngine()._extract_field("file_path", "Read", {"file_path": raw}) == clean
 

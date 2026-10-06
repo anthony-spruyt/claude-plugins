@@ -37,22 +37,30 @@ SUSPECT_FIELDS = ("command", "file_path", "notebook_path", "path", "glob", "patt
 
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)", re.DOTALL),
-    re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}|"
-               r"AKIA[0-9A-Z]{16}|xox[abposr]-[A-Za-z0-9-]{10,}|AGE-SECRET-KEY-1\w+|glpat-[\w-]{20,}|"
-               r"AIza[\w-]{30,}|[sr]k_(?:live|test)_\w{16,}|npm_\w{30,}|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]{5,})"),
-    re.compile(r"(?<![\w/+=.-])(?=[\w/+]{0,39}[A-Z])(?=[\w/+]{0,39}[a-z])(?=[\w/+]{0,39}[0-9])"
-               r"[A-Za-z0-9/+]{40}(?![\w/+=.-])"),
+    re.compile(
+        r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}|"
+        r"AKIA[0-9A-Z]{16}|xox[abposr]-[A-Za-z0-9-]{10,}|AGE-SECRET-KEY-1\w+|glpat-[\w-]{20,}|"
+        r"AIza[\w-]{30,}|[sr]k_(?:live|test)_\w{16,}|npm_\w{30,}|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]{5,})"
+    ),
+    re.compile(
+        r"(?<![\w/+=.-])(?=[\w/+]{0,39}[A-Z])(?=[\w/+]{0,39}[a-z])(?=[\w/+]{0,39}[0-9])"
+        r"[A-Za-z0-9/+]{40}(?![\w/+=.-])"
+    ),
 ]
 KEEP_PREFIX = [
     re.compile(r"(?i)(\bAuthorization\s*:\s*(?:\w+\s+)?)(?![$<])[^\s'\"]+"),
-    re.compile(r"(?i)(\b(?:Bearer|Basic)\s+)(?![$<])"
-               r"(?:(?=[\w.~+/=-]*(?-i:[A-Z0-9+/=]))[\w.~+/=-]{8,}|[\w.~+/=-]{20,})"),
+    re.compile(
+        r"(?i)(\b(?:Bearer|Basic)\s+)(?![$<])"
+        r"(?:(?=[\w.~+/=-]*(?-i:[A-Z0-9+/=]))[\w.~+/=-]{8,}|[\w.~+/=-]{20,})"
+    ),
     re.compile(r"(://[^/@\s:]+:)[^@\s/]+(?=@)"),
     re.compile(r"(?i)(\b(?:x-)?(?:api-?key|auth-token)\s*:\s*)(?![$<])[^\s'\"]+"),
     re.compile(r"(?i)(--?(?:password|passwd|token|secret|api-?key)[= ]['\"]?)(?![$<])[^\s'\"]+"),
     re.compile(r"(\bmysql\w*\b[^\n|;&]{0,200}?\s-p)(?![$<\s])\S+"),
-    re.compile(r"(?i)(\"[^\"\n]{0,64}?(?:token|secret|passw|api_?key|private_?key|credential)[^\"\n]{0,64}\"\s*:\s*\")"
-               r"(?:\\.|[^\"\\])+"),
+    re.compile(
+        r"(?i)(\"[^\"\n]{0,64}?(?:token|secret|passw|api_?key|private_?key|credential)[^\"\n]{0,64}\"\s*:\s*\")"
+        r"(?:\\.|[^\"\\])+"
+    ),
 ]
 # Bounded runs keep this linear on long text; PASS/PAT only match as whole name segments
 SECRET_NAME = (
@@ -99,8 +107,7 @@ def _text(content) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "\n".join(_text(c.get("text", c.get("content", ""))) if isinstance(c, dict) else str(c)
-                         for c in content)
+        return "\n".join(_text(c.get("text", c.get("content", ""))) if isinstance(c, dict) else str(c) for c in content)
     return ""
 
 
@@ -128,9 +135,15 @@ def parse_transcript(path: str):
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "tool_use":
                         tool_id = block.get("id")
-                        calls.append({"id": tool_id if isinstance(tool_id, str) else None, "tool": block.get("name"),
-                                      "input": _dict(block.get("input")), "cwd": entry.get("cwd", ""),
-                                      "source": path})
+                        calls.append(
+                            {
+                                "id": tool_id if isinstance(tool_id, str) else None,
+                                "tool": block.get("name"),
+                                "input": _dict(block.get("input")),
+                                "cwd": entry.get("cwd", ""),
+                                "source": path,
+                            }
+                        )
             elif kind == "user" and isinstance(content, list):
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "tool_result":
@@ -146,9 +159,12 @@ def parse_transcript(path: str):
                 tool_id = attachment.get("toolUseID")
                 if not hook_type.startswith("hook_") or not isinstance(tool_id, str) or not tool_id:
                     continue
-                if hook_type == "hook_cancelled" and attachment.get("timedOut") \
-                        and attachment.get("hookEvent") == "PreToolUse" \
-                        and "pretooluse.py" in str(attachment.get("command", "")):
+                if (
+                    hook_type == "hook_cancelled"
+                    and attachment.get("timedOut")
+                    and attachment.get("hookEvent") == "PreToolUse"
+                    and "pretooluse.py" in str(attachment.get("command", ""))
+                ):
                     timed_out.add(tool_id)
                 names = RULE_NAME.findall(json.dumps(attachment.get("blockingError", "")))
                 if names:
@@ -170,7 +186,10 @@ def load_rule_dir(*dirs: str) -> list:
 
 
 def repo_rule_dirs() -> list:
-    dirs = sorted(glob.glob(os.path.join(REPO_ROOT, "*", "hookify-plus"))) + [os.path.join(REPO_ROOT, ".claude", "hookify-plus")]
+    dirs = [
+        *sorted(glob.glob(os.path.join(REPO_ROOT, "*", "hookify-plus"))),
+        os.path.join(REPO_ROOT, ".claude", "hookify-plus"),
+    ]
     return [d for d in dirs if glob.glob(os.path.join(d, "*.md"))]
 
 
@@ -183,10 +202,13 @@ def matching_rules(call: dict, rules: list) -> set:
     if not event:
         return set()
     engine = RuleEngine()
-    input_data = {"hook_event_name": "PreToolUse", "tool_name": call["tool"],
-                  "tool_input": call["input"], "cwd": call.get("cwd", "")}
-    return {r.name for r in rules
-            if r.event in (event, "all") and engine._rule_matches(r, input_data)}
+    input_data = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": call["tool"],
+        "tool_input": call["input"],
+        "cwd": call.get("cwd", ""),
+    }
+    return {r.name for r in rules if r.event in (event, "all") and engine._rule_matches(r, input_data)}
 
 
 def _shown(call: dict) -> str:
@@ -215,8 +237,7 @@ def _example(call: dict, bucket: dict, cap: int = MAX_EXAMPLES) -> None:
     if key in bucket:
         bucket[key]["count"] += 1
     elif len(bucket) < cap:
-        bucket[key] = {"tool": call["tool"], "command": key[1], "count": 1,
-                       "source": os.path.basename(call["source"])}
+        bucket[key] = {"tool": call["tool"], "command": key[1], "count": 1, "source": os.path.basename(call["source"])}
 
 
 def build_report(paths: list, rules: list) -> dict:
@@ -250,21 +271,35 @@ def build_report(paths: list, rules: list) -> dict:
     for stats in per_rule.values():
         for bucket in ("examples", "started", "stopped"):
             stats[bucket] = list(stats[bucket].values())
-    return {"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "transcripts": len(paths), "calls": calls_seen,
-            "rules": dict(sorted(per_rule.items())), "suspects": list(suspects.values()),
-            "suspects_total": len(suspect_keys), "timeouts": list(timeouts.values())}
+    return {
+        "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "transcripts": len(paths),
+        "calls": calls_seen,
+        "rules": dict(sorted(per_rule.items())),
+        "suspects": list(suspects.values()),
+        "suspects_total": len(suspect_keys),
+        "timeouts": list(timeouts.values()),
+    }
 
 
 def _block(examples: list) -> str:
-    return "\n".join(f"- `{e['tool']}` ×{e['count']} ({e['source']})\n\n  ```\n  "
-                     + e["command"].replace("\n", "\n  ") + "\n  ```" for e in examples)
+    return "\n".join(
+        f"- `{e['tool']}` ×{e['count']} ({e['source']})\n\n  ```\n  "  # noqa: RUF001
+        + e["command"].replace("\n", "\n  ")
+        + "\n  ```"
+        for e in examples
+    )
 
 
 def render_markdown(report: dict) -> str:
-    out = [f"# Hookify replay — {report['generated']}", "",
-           f"{report['transcripts']} transcripts, {report['calls']} tool calls.", "",
-           "| Rule | Hits | Started | Stopped |", "| --- | ---: | ---: | ---: |"]
+    out = [
+        f"# Hookify replay — {report['generated']}",
+        "",
+        f"{report['transcripts']} transcripts, {report['calls']} tool calls.",
+        "",
+        "| Rule | Hits | Started | Stopped |",
+        "| --- | ---: | ---: | ---: |",
+    ]
     for name, stats in report["rules"].items():
         out.append(f"| {name} | {stats['hits']} | {len(stats['started'])} | {len(stats['stopped'])} |")
     for name, stats in report["rules"].items():
@@ -277,8 +312,12 @@ def render_markdown(report: dict) -> str:
             out += ["", "### Fired in the log, does not match now", "", _block(stats["stopped"])]
     out += ["", "## PreToolUse timeouts (no block rule ran)", "", _block(report["timeouts"]) or "_none_"]
     shown = len(report["suspects"])
-    out += ["", f"## Suspects (secret-looking, no block rule matched): {shown} of {report['suspects_total']}", "",
-            _block(report["suspects"]) or "_none_"]
+    out += [
+        "",
+        f"## Suspects (secret-looking, no block rule matched): {shown} of {report['suspects_total']}",
+        "",
+        _block(report["suspects"]) or "_none_",
+    ]
     return "\n".join(out) + "\n"
 
 
@@ -301,12 +340,16 @@ def write_report(report: dict, out: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--projects", default=os.path.expanduser("~/.claude/projects"),
-                        help="Folder holding Claude Code session logs")
-    parser.add_argument("--rules", action="append", default=None,
-                        help="Extra rule folder to load on top of this repo's (repeatable)")
+    parser.add_argument(
+        "--projects", default=os.path.expanduser("~/.claude/projects"), help="Folder holding Claude Code session logs"
+    )
+    parser.add_argument(
+        "--rules", action="append", default=None, help="Extra rule folder to load on top of this repo's (repeatable)"
+    )
     parser.add_argument("--project", action="append", help="Only project folders containing this text (repeatable)")
-    parser.add_argument("--exclude-project", action="append", help="Skip project folders containing this text (repeatable)")
+    parser.add_argument(
+        "--exclude-project", action="append", help="Skip project folders containing this text (repeatable)"
+    )
     parser.add_argument("--since", help="Only logs modified on or after this date (YYYY-MM-DD)")
     parser.add_argument("--out", default="/tmp/hookify-replay", help="Where to write report.md and report.json")
     args = parser.parse_args()

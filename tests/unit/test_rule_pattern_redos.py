@@ -13,8 +13,14 @@ sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
 from core.config_loader import load_rule_file
 
-RULE_NAMES = ["block-env-dump", "block-printenv", "block-env-grep",
-              "block-set-dump", "block-export-dump", "block-declare-dump"]
+RULE_NAMES = [
+    "block-env-dump",
+    "block-printenv",
+    "block-env-grep",
+    "block-set-dump",
+    "block-export-dump",
+    "block-declare-dump",
+]
 
 PATTERNS = {}
 for _name in RULE_NAMES:
@@ -60,4 +66,4 @@ def test_pattern_is_fast(rule, label):
         start = time.perf_counter()
         regex.search(text)
         best = min(best, time.perf_counter() - start)
-    assert best < 0.02, "%s took %.1f ms on %s" % (rule, best * 1000, label)
+    assert best < 0.02, f"{rule} took {best * 1000:.1f} ms on {label}"

@@ -6,11 +6,11 @@ Supports rate limiting via warn_once and warn_interval.
 Uses stderr + exit 2 to ensure messages reach Claude (fix for #12446).
 """
 
+import json
 import os
 import sys
-import json
 
-PLUGIN_ROOT = os.environ.get('CLAUDE_PLUGIN_ROOT')
+PLUGIN_ROOT = os.environ.get("CLAUDE_PLUGIN_ROOT")
 if PLUGIN_ROOT and PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
@@ -29,24 +29,24 @@ def main():
     try:
         input_data = json.load(sys.stdin)
 
-        tool_name = input_data.get('tool_name', '')
-        session_id = input_data.get('session_id', '')
+        tool_name = input_data.get("tool_name", "")
+        session_id = input_data.get("session_id", "")
 
         rules = load_rules(event=event_for_tool(tool_name))
 
-        warn_rules = [r for r in rules if r.action == 'warn']
+        warn_rules = [r for r in rules if r.action == "warn"]
 
         if not warn_rules:
             sys.exit(0)
 
-        state = WarningState(session_id, input_data.get('agent_id'))
+        state = WarningState(session_id, input_data.get("agent_id"))
 
         engine = RuleEngine()
         matching_rules = []
 
         for rule in warn_rules:
             test_result = engine.evaluate_rules([rule], input_data)
-            if test_result.get('systemMessage'):
+            if test_result.get("systemMessage"):
                 if state.should_warn(rule):
                     matching_rules.append(rule)
                 # Always record match for rate limiting
@@ -65,9 +65,9 @@ def main():
     except json.JSONDecodeError:
         sys.exit(0)
     except Exception as e:
-        print(f"Hookify error: {str(e)}", file=sys.stderr)
+        print(f"Hookify error: {e!s}", file=sys.stderr)
         sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
