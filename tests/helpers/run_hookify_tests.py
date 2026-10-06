@@ -91,9 +91,7 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
     """
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    # Build a temp cache layout: {marketplace}/{plugin}/{version}/
-    # _get_plugin_rules() traverses two levels up from CLAUDE_PLUGIN_ROOT
-    # and only scans version dirs with .in_use markers.
+    # _get_plugin_rules() only scans {marketplace}/{plugin}/{version}/ dirs marked .in_use
     cache_dir = tempfile.mkdtemp(prefix="hookify-test-cache-")
     hp_version = os.path.join(cache_dir, "hookify-plus", "test")
     os.makedirs(hp_version)

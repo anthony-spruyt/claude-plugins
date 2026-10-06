@@ -55,7 +55,7 @@ class WarningState:
                 except OSError:  # noqa: PERF203
                     pass
         except OSError:
-            pass  # Ignore if /tmp is inaccessible
+            pass
 
     def _load_state(self) -> dict:
         """Load state from file, return empty if stale or missing."""

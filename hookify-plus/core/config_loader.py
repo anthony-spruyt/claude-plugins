@@ -368,7 +368,7 @@ def load_rules(event: str | None = None) -> list[Rule]:
                 continue
             if rule.enabled:
                 rules.append(rule)
-        except (OSError, PermissionError) as e:
+        except OSError as e:
             print(f"Warning: Failed to read {file_path}: {e}", file=sys.stderr)
             continue
         except (ValueError, KeyError, AttributeError, TypeError) as e:
@@ -399,7 +399,7 @@ def load_rule_file(file_path: str) -> Rule | None:
 
         return Rule.from_dict(frontmatter, message)
 
-    except (OSError, PermissionError) as e:
+    except OSError as e:
         print(f"Error: Cannot read {file_path}: {e}", file=sys.stderr)
         return None
     except (ValueError, KeyError, AttributeError, TypeError) as e:

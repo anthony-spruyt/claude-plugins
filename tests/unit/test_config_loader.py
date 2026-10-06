@@ -7,7 +7,6 @@ import sys
 
 import pytest
 
-# Add hookify-plus to path
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
@@ -164,7 +163,6 @@ class TestPluginRules:
         marketplace = tmp_path / "marketplace"
         (marketplace / "hookify-plus" / "2.0.0").mkdir(parents=True)
 
-        # File in marketplace dir (not a plugin)
         (marketplace / "README.md").write_text("not a plugin")
 
         sibling_version = marketplace / "security-hooks" / "1.0.0"
@@ -181,12 +179,10 @@ class TestPluginRules:
         marketplace = tmp_path / "marketplace"
         (marketplace / "hookify-plus" / "2.0.0").mkdir(parents=True)
 
-        # Real plugin outside marketplace
         external = tmp_path / "external" / "1.0.0" / "hookify-plus"
         external.mkdir(parents=True)
         (external / "evil-rule.md").write_text("---\nname: evil\n---\n")
 
-        # Symlink into marketplace
         os.symlink(tmp_path / "external", marketplace / "evil-plugin")
 
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(marketplace / "hookify-plus" / "2.0.0"))
@@ -240,17 +236,14 @@ class TestDiscoverRuleFiles:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
 
-        # Project rule
         proj_dir = tmp_path / ".claude" / "hookify-plus"
         proj_dir.mkdir(parents=True)
         (proj_dir / "proj.md").write_text("---\nname: proj\n---\n")
 
-        # Global rule
         global_dir = tmp_path / "home" / ".claude" / "hookify-plus"
         global_dir.mkdir(parents=True)
         (global_dir / "global.md").write_text("---\nname: global\n---\n")
 
-        # Plugin rule
         marketplace = tmp_path / "marketplace"
         (marketplace / "hookify-plus" / "2.0.0").mkdir(parents=True)
         sibling_version = marketplace / "my-plugin" / "1.0.0"

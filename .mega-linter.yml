@@ -1,7 +1,4 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/oxsecurity/megalinter/main/megalinter/descriptors/schemas/megalinter-configuration.jsonschema.json
-# Project-specific MegaLinter configuration
-# Extends the base config from repo-operator
-# Add custom linters or overrides below
 
 EXTENDS:
   - ".mega-linter-base.yml"
