@@ -14,8 +14,11 @@ sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 from core.config_loader import load_rule_file
 from core.rule_engine import RuleEngine, clean_lines
 
-RULES = [load_rule_file(f) for plugin in ("security-hooks", "best-practices")
-         for f in sorted(glob.glob(os.path.join(REPO_ROOT, plugin, "hookify-plus", "*.md")))]
+RULES = [
+    load_rule_file(f)
+    for plugin in ("security-hooks", "best-practices")
+    for f in sorted(glob.glob(os.path.join(REPO_ROOT, plugin, "hookify-plus", "*.md")))
+]
 
 INPUTS = {
     "many-heredocs-one-line": "cat <<A " * 5000,

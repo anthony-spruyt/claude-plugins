@@ -5,14 +5,15 @@ Reads test cases from YAML config and runs them through the hookify rule engine.
 Uses the actual hookify implementation for accurate testing.
 """
 
-import sys
-import os
 import argparse
 import glob
+import os
 import shutil
+import sys
 import tempfile
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 def find_hookify_plugin():
     """Find hookify plugin path - local monorepo or installed."""
@@ -31,14 +32,14 @@ def find_hookify_plugin():
         if matches:
             return max(matches)
 
-    raise RuntimeError(
-        "No hookify-plus found. Run tests from monorepo root or install plugin."
-    )
+    raise RuntimeError("No hookify-plus found. Run tests from monorepo root or install plugin.")
+
 
 sys.path.insert(0, find_hookify_plugin())
 
 import yaml
-from core import load_rules, RuleEngine
+
+from core import RuleEngine, load_rules
 from core.tools import event_for_tool
 
 
@@ -53,9 +54,9 @@ def get_result_type(result: dict) -> str:
     """
     if not result:
         return "allow"
-    if result.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny':
+    if result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":
         return "block"
-    if 'systemMessage' in result:
+    if "systemMessage" in result:
         return "warn"
     return "allow"
 
@@ -90,9 +91,7 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
     """
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    # Build a temp cache layout: {marketplace}/{plugin}/{version}/
-    # _get_plugin_rules() traverses two levels up from CLAUDE_PLUGIN_ROOT
-    # and only scans version dirs with .in_use markers.
+    # _get_plugin_rules() only scans {marketplace}/{plugin}/{version}/ dirs marked .in_use
     cache_dir = tempfile.mkdtemp(prefix="hookify-test-cache-")
     hp_version = os.path.join(cache_dir, "hookify-plus", "test")
     os.makedirs(hp_version)
@@ -119,37 +118,37 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
         failures = []
         passed = 0
 
-        for test in config.get('test_cases', []):
-            name = test.get('name', 'unnamed')
-            tool = test.get('tool', 'Bash')
-            expect = test.get('expect', 'allow')
+        for test in config.get("test_cases", []):
+            name = test.get("name", "unnamed")
+            tool = test.get("tool", "Bash")
+            expect = test.get("expect", "allow")
 
-            if tool == 'Bash':
+            if tool == "Bash":
                 input_data = {
                     "hook_event_name": "PreToolUse",
                     "tool_name": "Bash",
-                    "tool_input": {"command": test.get('command', '')}
+                    "tool_input": {"command": test.get("command", "")},
                 }
-            elif tool in ['Read', 'Edit', 'Write']:
+            elif tool in ["Read", "Edit", "Write"]:
                 input_data = {
                     "hook_event_name": "PreToolUse",
                     "tool_name": tool,
                     "tool_input": {
-                        "file_path": test.get('file_path', ''),
-                        "content": test.get('content', ''),
-                        "new_string": test.get('new_string', ''),
-                        "old_string": test.get('old_string', '')
-                    }
+                        "file_path": test.get("file_path", ""),
+                        "content": test.get("content", ""),
+                        "new_string": test.get("new_string", ""),
+                        "old_string": test.get("old_string", ""),
+                    },
                 }
             else:
                 input_data = {
                     "hook_event_name": "PreToolUse",
                     "tool_name": tool,
-                    "tool_input": test.get('tool_input', {})
+                    "tool_input": test.get("tool_input", {}),
                 }
 
             rules = load_rules(event=event_for_tool(tool))
-            result = evaluate_in(test.get('files'), engine, rules, input_data)
+            result = evaluate_in(test.get("files"), engine, rules, input_data)
 
             actual = get_result_type(result)
 
@@ -176,10 +175,9 @@ def run_tests(config_path: str, verbose: bool = False) -> list:
 
 def main():
     """CLI entry point for running hookify tests."""
-    parser = argparse.ArgumentParser(description='Run hookify test cases')
-    parser.add_argument('config', help='Path to test cases YAML file')
-    parser.add_argument('--verbose', '-v', action='store_true',
-                       help='Print detailed output')
+    parser = argparse.ArgumentParser(description="Run hookify test cases")
+    parser.add_argument("config", help="Path to test cases YAML file")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Print detailed output")
     args = parser.parse_args()
 
     failures = run_tests(args.config, args.verbose)

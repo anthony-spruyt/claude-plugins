@@ -26,16 +26,19 @@ def tree(tmp_path, monkeypatch):
 
 
 class TestGlobs:
-    @pytest.mark.parametrize("pattern, expected", [
-        (".e?v", [".env"]),
-        (".en[v]", [".env"]),
-        (".e[[:alpha:]]v", [".env"]),
-        (".e[!x]v", [".env"]),
-        ("*.md", ["README.md", "notes.md"]),
-        ("*/.e?v", ["app/.env"]),
-        ("a?b.txt", ["a b.txt"]),
-        ("ap*/", ["app/"]),
-    ])
+    @pytest.mark.parametrize(
+        ("pattern", "expected"),
+        [
+            (".e?v", [".env"]),
+            (".en[v]", [".env"]),
+            (".e[[:alpha:]]v", [".env"]),
+            (".e[!x]v", [".env"]),
+            ("*.md", ["README.md", "notes.md"]),
+            ("*/.e?v", ["app/.env"]),
+            ("a?b.txt", ["a b.txt"]),
+            ("ap*/", ["app/"]),
+        ],
+    )
     def test_matches(self, tree, pattern, expected):
         assert expand(pattern) == expected
 
@@ -57,14 +60,17 @@ class TestGlobs:
 
 
 class TestBraces:
-    @pytest.mark.parametrize("pattern, expected", [
-        (".{e,x}nv", [".env", ".xnv"]),
-        ("{a,b{c,d}}", ["a", "bc", "bd"]),
-        ("x{1..3}", ["x1", "x2", "x3"]),
-        ("{a..c}", ["a", "b", "c"]),
-        ("{5..1..2}", ["5", "3", "1"]),
-        ("{e..e}", ["e"]),
-    ])
+    @pytest.mark.parametrize(
+        ("pattern", "expected"),
+        [
+            (".{e,x}nv", [".env", ".xnv"]),
+            ("{a,b{c,d}}", ["a", "bc", "bd"]),
+            ("x{1..3}", ["x1", "x2", "x3"]),
+            ("{a..c}", ["a", "b", "c"]),
+            ("{5..1..2}", ["5", "3", "1"]),
+            ("{e..e}", ["e"]),
+        ],
+    )
     def test_expands(self, pattern, expected):
         assert expand(pattern) == expected
 
@@ -78,7 +84,7 @@ class TestBraces:
 
 class TestLimits:
     def test_too_many_words(self):
-        assert expand("{1..%d}" % (MAX_WORDS * 2)) is None
+        assert expand(f"{{1..{MAX_WORDS * 2}}}") is None
 
     def test_nested_braces_multiply(self):
         assert expand("{a,b}" * 12) is None
@@ -99,7 +105,7 @@ class TestLimits:
         for n in range(MAX_ENTRIES // 4):
             (tmp_path / str(n)).touch()
         overflow = []
-        render(parse_commands("cat " + " ".join("?%d*" % n for n in range(10))), str(tmp_path), overflow)
+        render(parse_commands("cat " + " ".join(f"?{n}*" for n in range(10))), str(tmp_path), overflow)
         assert overflow
 
 
@@ -117,8 +123,8 @@ class TestOverflow:
 
     def test_too_many_braces_keeps_word(self):
         overflow = []
-        lines = render(parse_commands("cat /proc/{1..%d}/environ" % (MAX_WORDS * 2)), '', overflow)
-        assert lines == ["cat '/proc/{1..%d}/environ'" % (MAX_WORDS * 2)]
+        lines = render(parse_commands(f"cat /proc/{{1..{MAX_WORDS * 2}}}/environ"), "", overflow)
+        assert lines == [f"cat '/proc/{{1..{MAX_WORDS * 2}}}/environ'"]
         assert overflow
 
     def test_small_expansion_does_not_overflow(self, tree):
@@ -127,4 +133,4 @@ class TestOverflow:
         assert not overflow
 
     def test_normalise_still_parses(self):
-        assert normalise("echo {1..%d}" % (MAX_WORDS * 2)) is not None
+        assert normalise(f"echo {{1..{MAX_WORDS * 2}}}") is not None

@@ -5,11 +5,11 @@ Evaluates blocking rules before tool execution.
 Uses stderr + exit 2 to ensure messages reach Claude (fix for #12446).
 """
 
+import json
 import os
 import sys
-import json
 
-PLUGIN_ROOT = os.environ.get('CLAUDE_PLUGIN_ROOT')
+PLUGIN_ROOT = os.environ.get("CLAUDE_PLUGIN_ROOT")
 if PLUGIN_ROOT and PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
@@ -28,11 +28,11 @@ def main():
     try:
         input_data = json.load(sys.stdin)
 
-        tool_name = input_data.get('tool_name', '')
+        tool_name = input_data.get("tool_name", "")
 
         rules = load_rules(event=event_for_tool(tool_name))
 
-        block_rules = [r for r in rules if r.action == 'block']
+        block_rules = [r for r in rules if r.action == "block"]
 
         if not block_rules:
             sys.exit(0)
@@ -40,15 +40,15 @@ def main():
         engine = RuleEngine()
         result = engine.evaluate_rules(block_rules, input_data)
 
-        is_block = result.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny'
+        is_block = result.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
 
         if is_block:
-            message = result.get('systemMessage', 'Blocked by hookify rule')
+            message = result.get("systemMessage", "Blocked by hookify rule")
 
             try:
-                with open('/dev/tty', 'w') as tty:
+                with open("/dev/tty", "w") as tty:
                     tty.write(f"\n🚫 BLOCKED: {message}\n")
-            except (OSError, IOError):
+            except OSError:
                 pass
 
             # Send to Claude via stderr + exit 2 (fix for #12446)
@@ -60,10 +60,10 @@ def main():
     except json.JSONDecodeError:
         sys.exit(0)
     except Exception as e:
-        print(f"Hookify error: {str(e)}", file=sys.stderr)
+        print(f"Hookify error: {e!s}", file=sys.stderr)
         # A crafted input that crashes evaluation must not skip block rules
         sys.exit(2 if block_rules else 0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

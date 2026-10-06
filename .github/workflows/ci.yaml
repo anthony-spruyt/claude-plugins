@@ -18,7 +18,6 @@ permissions:
 jobs:
   lint:
     uses: "anthony-spruyt/repo-operator/.github/workflows/_lint.yaml@main"
-    secrets: "inherit"
   test:
     runs-on: "ubuntu-latest"
     steps:
