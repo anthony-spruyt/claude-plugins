@@ -15,6 +15,8 @@ ENABLE_LINTERS:
   - "REPOSITORY_TRIVY"
   - "SPELL_LYCHEE"
   - "YAML_YAMLLINT"
+  - "PYTHON_RUFF"
+  - "PYTHON_RUFF_FORMAT"
 ADDITIONAL_EXCLUDED_DIRECTORIES:
   - ".claude"
   - ".output"
@@ -39,3 +41,5 @@ REPOSITORY_TRIVY_CONFIG_FILE: "trivy-mega-linter.yaml"
 REPOSITORY_TRIVY_COMMAND_REMOVE_ARGUMENTS:
   - "--scanners"
   - "vuln,misconfig"
+PYTHON_RUFF_CONFIG_FILE: "pyproject.toml"
+PYTHON_RUFF_FORMAT_CONFIG_FILE: "pyproject.toml"

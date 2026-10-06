@@ -52,6 +52,7 @@
         ".yamllint.yml",
         "LICENSE",
         "lint.sh",
+        "ruff-base.toml",
         "trivy-mega-linter.yaml"
       ]
     }
