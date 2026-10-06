@@ -4,17 +4,16 @@
 import json
 import os
 import sys
-import tempfile
+
 import pytest
 
 # Add hookify-plus to path
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
-from core.config_loader import _get_project_rules, _get_global_rules, _get_plugin_rules, _active_version_dirs, discover_rule_files
+from core.config_loader import _get_global_rules, _get_plugin_rules, _get_project_rules, discover_rule_files
 
-
-DEAD_PID = 2 ** 31 - 1
+DEAD_PID = 2**31 - 1
 
 
 def _proc_start(pid):
@@ -193,7 +192,6 @@ class TestPluginRules:
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(marketplace / "hookify-plus" / "2.0.0"))
         result = _get_plugin_rules()
         assert len(result) == 0
-
 
     def test_skips_versions_held_only_by_other_sessions(self, tmp_path, monkeypatch):
         """With live markers, only versions in use by this session load."""

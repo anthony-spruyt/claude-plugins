@@ -51,8 +51,7 @@ class TestMasksMessageArguments:
         assert masked.endswith(" && git push")
 
     def test_safe_git_and_gh_segments_around_message(self):
-        cmd = ("git add -A && git commit -m 'set' && git push -u origin feat"
-               " && git status && gh pr view --web")
+        cmd = "git add -A && git commit -m 'set' && git push -u origin feat && git status && gh pr view --web"
         assert "set" not in mask_data(cmd)
 
     def test_cd_before_commit(self):
@@ -62,85 +61,143 @@ class TestMasksMessageArguments:
         assert mask_data('git commit -m "fix: x" && env').endswith("&& env")
 
 
-@pytest.mark.parametrize("cmd", [
-    f"cat > /tmp/s <<'EOF'\n{PROSE}\nEOF",
-    f"bash <<'EOF'\n{PROSE}\nEOF",
-    f"gh pr create --body-file - <<EOF\n{PROSE}\nEOF",
-    "kubectl run x -m 'set'",
-    "git -c alias.x='!sh' x -m 'set'",
-    "git status && sh -c 'eval \"$1\"' -m 'set'",
-    "git log -m 'set'",
-], ids=["heredoc-to-cat", "heredoc-to-bash", "unquoted-delimiter",
-        "not-gh-or-git", "git-config-override", "git-earlier-on-line", "git-non-message"])
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        f"cat > /tmp/s <<'EOF'\n{PROSE}\nEOF",
+        f"bash <<'EOF'\n{PROSE}\nEOF",
+        f"gh pr create --body-file - <<EOF\n{PROSE}\nEOF",
+        "kubectl run x -m 'set'",
+        "git -c alias.x='!sh' x -m 'set'",
+        "git status && sh -c 'eval \"$1\"' -m 'set'",
+        "git log -m 'set'",
+    ],
+    ids=[
+        "heredoc-to-cat",
+        "heredoc-to-bash",
+        "unquoted-delimiter",
+        "not-gh-or-git",
+        "git-config-override",
+        "git-earlier-on-line",
+        "git-non-message",
+    ],
+)
 def test_leaves_non_message_text_alone(cmd):
     assert mask_data(cmd) == cmd
 
 
-@pytest.mark.parametrize("cmd", [
-    "git commit -m 'set' \\\n&& env",
-    "echo $((1<<2)) && git commit -m 'set'",
-    "git commit -m 'set' # note",
-    "git commit -m 'set' | sh",
-    "git commit -m 'set' > /tmp/out",
-    "git commit -m 'set' 2>&1",
-    'gh issue comment 5 --body "Never run `env`"',
-    'git commit -m "$(env)"',
-    'gh pr create --body "$( $(echo env) )"',
-    'gh pr create --body "$(case x in x) env;; esac)"',
-    'git commit -m "costs $5"',
-    "git commit -m 'unterminated",
-    "git commit -F - <<'EOF'\nno terminator",
-    "cat <<<'EOF'\nset\nEOF",
-    "git commit -m \"$(cat <<'EOF'\nx\nEOF)\"\necho PWNED\n: \"\nEOF\n)\"",
-    "git commit -m \"$(cat <<'EOF'\nx\nEOF )\"; echo PWNED; : \"\nEOF\n)\"",
-    "git commit -F - <<'E'\"OF\"\nx\nEOF\necho PWNED\nE",
-    "git commit -F - <<'E'OF\nx\nEOF\necho PWNED\nE",
-    "alias git=eval; shopt -s expand_aliases\ngit commit -m ';echo PWNED'",
-    "eval 'git(){ eval \"$3\"; }'; git commit -m 'echo PWNED'",
-    "unalias git; git commit -m 'set'",
-    "git commit -m '$(echo PWNED)'; git commit -m \"${_@P}\"",
-    "git commit -m 'x[$(echo PWNED)]'; git commit -m \"${!_}\"",
-    "git commit -m \"${x:-set}\"",
-    "gh release create v1 --target -b .env",
-    "gh release create v1 -R o/r --discussion-category -t ~/.aws/credentials",
-    "gh release create v1 -- -t .env",
-    "gh release create v1 --notes x .env",
-    "gh pr create --unknown-flag -b 'set'",
-    "gh pr create -b'set'",
-    "git commit --pathspec-from-file -m 'set'",
-    "git commit -m 'set' && git rebase --exec 'git log -1 --format=%s | sh' HEAD~1",
-    "git commit -m 'set' && git config alias.r '!sh' && git r",
-    "git commit -m 'set' && git r",
-    "git commit -m 'set' && gh alias set r --shell 'sh'",
-    "git commit -m 'set' && gh r",
-    "git commit -m 'set' && git push --receive-pack='sh x' .",
-    "git commit -m 'set' && git push --rec='sh x' .",
-    "git commit -m 'set' && git fetch --upload-pack='sh x' .",
-    "git commit -m 'set' && git --exec-path=/tmp push",
-], ids=["line-continuation", "arithmetic", "comment", "pipe", "redirect", "fd-redirect",
-        "backtick", "command-substitution", "nested-substitution", "case-in-substitution",
-        "positional-param", "unterminated-quote", "unterminated-heredoc", "here-string",
-        "paren-after-delimiter", "space-paren-after-delimiter", "glued-delimiter-double",
-        "glued-delimiter-bare", "alias-redefines-git", "eval-redefines-git", "other-command-first",
-        "prompt-expansion-of-last-arg", "indirect-last-arg", "parameter-operator",
-        "message-flag-as-value", "message-flag-as-value-long", "end-of-options",
-        "release-asset", "unknown-flag", "glued-message-value", "unknown-git-flag",
-        "rebase-exec", "git-config-alias", "git-alias", "gh-alias-set", "gh-alias",
-        "push-receive-pack", "push-abbreviated-option", "fetch-upload-pack", "git-exec-path"])
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "git commit -m 'set' \\\n&& env",
+        "echo $((1<<2)) && git commit -m 'set'",
+        "git commit -m 'set' # note",
+        "git commit -m 'set' | sh",
+        "git commit -m 'set' > /tmp/out",
+        "git commit -m 'set' 2>&1",
+        'gh issue comment 5 --body "Never run `env`"',
+        'git commit -m "$(env)"',
+        'gh pr create --body "$( $(echo env) )"',
+        'gh pr create --body "$(case x in x) env;; esac)"',
+        'git commit -m "costs $5"',
+        "git commit -m 'unterminated",
+        "git commit -F - <<'EOF'\nno terminator",
+        "cat <<<'EOF'\nset\nEOF",
+        'git commit -m "$(cat <<\'EOF\'\nx\nEOF)"\necho PWNED\n: "\nEOF\n)"',
+        'git commit -m "$(cat <<\'EOF\'\nx\nEOF )"; echo PWNED; : "\nEOF\n)"',
+        "git commit -F - <<'E'\"OF\"\nx\nEOF\necho PWNED\nE",
+        "git commit -F - <<'E'OF\nx\nEOF\necho PWNED\nE",
+        "alias git=eval; shopt -s expand_aliases\ngit commit -m ';echo PWNED'",
+        "eval 'git(){ eval \"$3\"; }'; git commit -m 'echo PWNED'",
+        "unalias git; git commit -m 'set'",
+        "git commit -m '$(echo PWNED)'; git commit -m \"${_@P}\"",
+        "git commit -m 'x[$(echo PWNED)]'; git commit -m \"${!_}\"",
+        'git commit -m "${x:-set}"',
+        "gh release create v1 --target -b .env",
+        "gh release create v1 -R o/r --discussion-category -t ~/.aws/credentials",
+        "gh release create v1 -- -t .env",
+        "gh release create v1 --notes x .env",
+        "gh pr create --unknown-flag -b 'set'",
+        "gh pr create -b'set'",
+        "git commit --pathspec-from-file -m 'set'",
+        "git commit -m 'set' && git rebase --exec 'git log -1 --format=%s | sh' HEAD~1",
+        "git commit -m 'set' && git config alias.r '!sh' && git r",
+        "git commit -m 'set' && git r",
+        "git commit -m 'set' && gh alias set r --shell 'sh'",
+        "git commit -m 'set' && gh r",
+        "git commit -m 'set' && git push --receive-pack='sh x' .",
+        "git commit -m 'set' && git push --rec='sh x' .",
+        "git commit -m 'set' && git fetch --upload-pack='sh x' .",
+        "git commit -m 'set' && git --exec-path=/tmp push",
+    ],
+    ids=[
+        "line-continuation",
+        "arithmetic",
+        "comment",
+        "pipe",
+        "redirect",
+        "fd-redirect",
+        "backtick",
+        "command-substitution",
+        "nested-substitution",
+        "case-in-substitution",
+        "positional-param",
+        "unterminated-quote",
+        "unterminated-heredoc",
+        "here-string",
+        "paren-after-delimiter",
+        "space-paren-after-delimiter",
+        "glued-delimiter-double",
+        "glued-delimiter-bare",
+        "alias-redefines-git",
+        "eval-redefines-git",
+        "other-command-first",
+        "prompt-expansion-of-last-arg",
+        "indirect-last-arg",
+        "parameter-operator",
+        "message-flag-as-value",
+        "message-flag-as-value-long",
+        "end-of-options",
+        "release-asset",
+        "unknown-flag",
+        "glued-message-value",
+        "unknown-git-flag",
+        "rebase-exec",
+        "git-config-alias",
+        "git-alias",
+        "gh-alias-set",
+        "gh-alias",
+        "push-receive-pack",
+        "push-abbreviated-option",
+        "fetch-upload-pack",
+        "git-exec-path",
+    ],
+)
 def test_gives_up_on_anything_it_cannot_parse(cmd):
     assert mask_data(cmd) == cmd
 
 
-@pytest.mark.parametrize("cmd", [
-    'git commit -am "chore: set modes"',
-    'git tag -a v1 -m "set things"',
-    'gh pr create --base main --head feat --title "fix: set x" --body "env is set" --draft',
-    'gh pr merge 5 --squash --subject "fix: set x" --body "env set"',
-    'gh issue create --title "set is noisy" --body "env" --label bug --repo o/r',
-    'gh release create v1.2.0 --title "v1.2.0" --notes "env and set fixes" --latest',
-    'gh pr close 5 --comment "env set"',
-], ids=["combined-short-flags", "annotated-tag", "pr-create-flags", "pr-merge-squash",
-        "issue-create-flags", "release-create", "pr-close-comment"])
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        'git commit -am "chore: set modes"',
+        'git tag -a v1 -m "set things"',
+        'gh pr create --base main --head feat --title "fix: set x" --body "env is set" --draft',
+        'gh pr merge 5 --squash --subject "fix: set x" --body "env set"',
+        'gh issue create --title "set is noisy" --body "env" --label bug --repo o/r',
+        'gh release create v1.2.0 --title "v1.2.0" --notes "env and set fixes" --latest',
+        'gh pr close 5 --comment "env set"',
+    ],
+    ids=[
+        "combined-short-flags",
+        "annotated-tag",
+        "pr-create-flags",
+        "pr-merge-squash",
+        "issue-create-flags",
+        "release-create",
+        "pr-close-comment",
+    ],
+)
 def test_masks_messages_among_known_flags(cmd):
     masked = mask_data(cmd)
     assert "set" not in masked.replace("--subject", "")
@@ -162,8 +219,14 @@ class TestRuleOptIn:
         assert Rule.from_dict(fm, msg).mask_data is False
 
     def _rule(self, mask):
-        return Rule(name="r", enabled=True, event="bash", action="block", mask_data=mask,
-                    conditions=[Condition("command", "regex_match", r"\bset\b")])
+        return Rule(
+            name="r",
+            enabled=True,
+            event="bash",
+            action="block",
+            mask_data=mask,
+            conditions=[Condition("command", "regex_match", r"\bset\b")],
+        )
 
     def _data(self, tool="Bash"):
         return {"tool_name": tool, "tool_input": {"command": 'git commit -m "fix: set x"'}}

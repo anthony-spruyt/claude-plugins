@@ -9,10 +9,10 @@ import pytest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
-from core.config_loader import Condition, Rule, extract_frontmatter
 from core import rule_engine
-from core.rule_engine import RuleEngine
+from core.config_loader import Condition, Rule, extract_frontmatter
 from core.globbing import MAX_ENTRIES
+from core.rule_engine import RuleEngine
 from core.shell_parse import normalise
 
 PATTERN = r"^(env|printenv)( -\S+)*$"
@@ -56,8 +56,14 @@ class TestFrontmatter:
 
 
 def _rule(pattern=PATTERN, fallback=None, mask=False, operator="command_match", field="command"):
-    return Rule(name="r", enabled=True, event="bash", action="block", mask_data=mask,
-                conditions=[Condition(field, operator, pattern, fallback)])
+    return Rule(
+        name="r",
+        enabled=True,
+        event="bash",
+        action="block",
+        mask_data=mask,
+        conditions=[Condition(field, operator, pattern, fallback)],
+    )
 
 
 def _matches(rule, command, tool="Bash"):
@@ -97,13 +103,16 @@ class TestUnparseable:
 
 
 class TestUnparseableSegments:
-    @pytest.mark.parametrize("cmd", [
-        "n=$((1)); env",
-        "n=$((1)) && sudo env -0",
-        "case x in x) env;; esac",
-        "n=$((1)); if true; then e''nv; fi",
-        "n=$((1)); echo x | env",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "n=$((1)); env",
+            "n=$((1)) && sudo env -0",
+            "case x in x) env;; esac",
+            "n=$((1)); if true; then e''nv; fi",
+            "n=$((1)); echo x | env",
+        ],
+    )
     def test_block_rule_matches_pattern_on_each_segment(self, cmd):
         assert normalise(cmd) is None
         assert _matches(_rule(fallback=r"nomatch"), cmd)
@@ -150,6 +159,7 @@ class TestParserCrash:
     def test_exception_uses_fallback(self, monkeypatch):
         def boom(command):
             raise IndexError
+
         monkeypatch.setattr(rule_engine, "normalise", boom)
         rule_engine.clean_lines.cache_clear()
         try:
@@ -162,30 +172,33 @@ class TestParserCrash:
 class TestOpaqueAlsoUsesFallback:
     FALLBACK = r"\bprintenv\b"
 
-    @pytest.mark.parametrize("cmd", [
-        "echo printenv | cat | sh",
-        "bash < <(echo printenv)",
-        "echo printenv | xargs nice",
-        "trap printenv EXIT",
-        "busybox printenv",
-        "docker exec c printenv",
-        "kubectl exec p -- printenv",
-        "tmux new printenv",
-        "find /usr/bin -name printenv -exec {} \\;",
-        "PS4='$(printenv)' bash -xc :",
-        "source ./printenv.sh",
-        "git -c alias.x='!f(){ eval \"$2\"; }; f' x -m printenv",
-        "git -c 'alias.y=!printenv' y",
-        "git config alias.z '!printenv'",
-        "cat <<'EOF' | ash\nprintenv\nEOF",
-        "cat > s <<'EOF'\nprintenv\nEOF\nbash s",
-        "cat <<'EOF' >> ~/.bashrc\nprintenv\nEOF",
-        "echo printenv > run.sh",
-        "printf 'printenv' >> ~/.bashrc",
-        "echo printenv | ssh host",
-        "echo printenv | tee x | bash",
-        "parallel ::: printenv",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "echo printenv | cat | sh",
+            "bash < <(echo printenv)",
+            "echo printenv | xargs nice",
+            "trap printenv EXIT",
+            "busybox printenv",
+            "docker exec c printenv",
+            "kubectl exec p -- printenv",
+            "tmux new printenv",
+            "find /usr/bin -name printenv -exec {} \\;",
+            "PS4='$(printenv)' bash -xc :",
+            "source ./printenv.sh",
+            "git -c alias.x='!f(){ eval \"$2\"; }; f' x -m printenv",
+            "git -c 'alias.y=!printenv' y",
+            "git config alias.z '!printenv'",
+            "cat <<'EOF' | ash\nprintenv\nEOF",
+            "cat > s <<'EOF'\nprintenv\nEOF\nbash s",
+            "cat <<'EOF' >> ~/.bashrc\nprintenv\nEOF",
+            "echo printenv > run.sh",
+            "printf 'printenv' >> ~/.bashrc",
+            "echo printenv | ssh host",
+            "echo printenv | tee x | bash",
+            "parallel ::: printenv",
+        ],
+    )
     def test_opaque_command_also_checks_fallback(self, cmd):
         assert normalise(cmd) is not None
         assert _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)

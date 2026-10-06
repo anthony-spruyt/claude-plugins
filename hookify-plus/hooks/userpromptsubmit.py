@@ -5,12 +5,12 @@ This script is called by Claude Code when user submits a prompt.
 It reads .claude/hookify.*.local.md files and evaluates rules.
 """
 
+import json
 import os
 import sys
-import json
 
 # CRITICAL: Add plugin root to Python path for imports
-PLUGIN_ROOT = os.environ.get('CLAUDE_PLUGIN_ROOT')
+PLUGIN_ROOT = os.environ.get("CLAUDE_PLUGIN_ROOT")
 if PLUGIN_ROOT and PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
@@ -30,7 +30,7 @@ def main():
         input_data = json.load(sys.stdin)
 
         # Load user prompt rules
-        rules = load_rules(event='prompt')
+        rules = load_rules(event="prompt")
 
         # Evaluate rules
         engine = RuleEngine()
@@ -40,9 +40,7 @@ def main():
         print(json.dumps(result), file=sys.stdout)
 
     except Exception as e:
-        error_output = {
-            "systemMessage": f"Hookify error: {str(e)}"
-        }
+        error_output = {"systemMessage": f"Hookify error: {e!s}"}
         print(json.dumps(error_output), file=sys.stdout)
 
     finally:
@@ -50,5 +48,5 @@ def main():
         sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

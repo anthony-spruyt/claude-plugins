@@ -6,12 +6,12 @@ import posixpath
 import re
 import sys
 from functools import lru_cache
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from core.config_loader import Rule, Condition
+from core.config_loader import Condition, Rule
+from core.globbing import MAX_ENTRIES
 from core.masking import mask_data
 from core.opaque import opaque
-from core.globbing import MAX_ENTRIES
 from core.shell_parse import _BODIES, parse_commands, render
 
 
@@ -28,7 +28,7 @@ def compile_regex(pattern: str) -> re.Pattern:
     return re.compile(pattern, re.IGNORECASE | re.DOTALL)
 
 
-def normalise(command: str, cwd: str = '', entries: Optional[List[int]] = None):
+def normalise(command: str, cwd: str = "", entries: Optional[List[int]] = None):
     functions, overflow = set(), []
     _BODIES.clear()
     commands = parse_commands(command, functions)
@@ -40,51 +40,51 @@ def normalise(command: str, cwd: str = '', entries: Optional[List[int]] = None):
 
 def _clean_path(path: str) -> str:
     clean = posixpath.normpath(path)
-    return clean + '/' if path.endswith('/') and clean != '/' else clean
+    return clean + "/" if path.endswith("/") and clean != "/" else clean
 
 
 @lru_cache(maxsize=16)
-def clean_lines(command: str, cwd: str = '') -> Optional[tuple]:
+def clean_lines(command: str, cwd: str = "") -> Optional[tuple]:
     """Cached parse: (clean lines, opaque) or None. Several rules parse the same command."""
     try:
         parsed = normalise(command, cwd)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
     return None if parsed is None else (tuple(parsed[0]), parsed[1], tuple(parsed[2]))
 
 
-SEGMENT_BREAKS = frozenset(';&|\n()`')
-LEADING_KEYWORDS = re.compile(r'^(?:\s*(?:if|then|else|elif|do|while|until|!|\{|\}|fi|done|esac|time)(?=\s|$))+')
+SEGMENT_BREAKS = frozenset(";&|\n()`")
+LEADING_KEYWORDS = re.compile(r"^(?:\s*(?:if|then|else|elif|do|while|until|!|\{|\}|fi|done|esac|time)(?=\s|$))+")
 
 
 def _segments(command: str) -> List[str]:
     """Split on unquoted separators and parens, dropping leading keywords."""
-    out, start, i, quote = [], 0, 0, ''
+    out, start, i, quote = [], 0, 0, ""
     while i < len(command):
         c = command[i]
-        if c == '\\' and quote != "'":
+        if c == "\\" and quote != "'":
             i += 2
             continue
         if quote:
-            quote = '' if c == quote else quote
-        elif c in '\'"':
+            quote = "" if c == quote else quote
+        elif c in "'\"":
             quote = c
         elif c in SEGMENT_BREAKS:
             out.append(command[start:i])
             start = i + 1
         i += 1
     out.append(command[start:])
-    return [s for s in (LEADING_KEYWORDS.sub('', s).strip() for s in out) if s]
+    return [s for s in (LEADING_KEYWORDS.sub("", s).strip() for s in out) if s]
 
 
 @lru_cache(maxsize=16)
-def segment_lines(command: str, cwd: str = '') -> tuple:
+def segment_lines(command: str, cwd: str = "") -> tuple:
     """(clean lines, glob overflow) of each piece of a command that parses on its own."""
     lines, overflow, entries = [], [], [MAX_ENTRIES]
     for segment in _segments(command):
         try:
             parsed = normalise(segment, cwd, entries)
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
         if parsed is not None:
             lines.extend(parsed[0])
@@ -93,11 +93,11 @@ def segment_lines(command: str, cwd: str = '') -> tuple:
 
 
 STRING_OPERATORS = {
-    'contains': lambda value, pattern: pattern in value,
-    'not_contains': lambda value, pattern: pattern not in value,
-    'equals': lambda value, pattern: value == pattern,
-    'starts_with': lambda value, pattern: value.startswith(pattern),
-    'ends_with': lambda value, pattern: value.endswith(pattern),
+    "contains": lambda value, pattern: pattern in value,
+    "not_contains": lambda value, pattern: pattern not in value,
+    "equals": lambda value, pattern: value == pattern,
+    "starts_with": lambda value, pattern: value.startswith(pattern),
+    "ends_with": lambda value, pattern: value.endswith(pattern),
 }
 
 
@@ -106,7 +106,6 @@ class RuleEngine:
 
     def __init__(self):
         """Initialize rule engine."""
-        pass
 
     def evaluate_rules(self, rules: List[Rule], input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate all rules and return combined results.
@@ -122,13 +121,13 @@ class RuleEngine:
             Response dict with systemMessage, hookSpecificOutput, etc.
             Empty dict {} if no rules match.
         """
-        hook_event = input_data.get('hook_event_name', '')
+        hook_event = input_data.get("hook_event_name", "")
         blocking_rules = []
         warning_rules = []
 
         for rule in rules:
             if self._rule_matches(rule, input_data):
-                if rule.action == 'block':
+                if rule.action == "block":
                     blocking_rules.append(rule)
                 else:
                     warning_rules.append(rule)
@@ -137,31 +136,22 @@ class RuleEngine:
             messages = [f"**[{r.name}]**\n{r.message}" for r in blocking_rules]
             combined_message = "\n\n".join(messages)
 
-            if hook_event == 'Stop':
-                return {
-                    "decision": "block",
-                    "reason": combined_message,
-                    "systemMessage": combined_message
-                }
-            elif hook_event in ['PreToolUse', 'PostToolUse']:
+            if hook_event == "Stop":
+                return {"decision": "block", "reason": combined_message, "systemMessage": combined_message}
+            if hook_event in ["PreToolUse", "PostToolUse"]:
                 return {
                     "hookSpecificOutput": {
                         "hookEventName": hook_event,
                         "permissionDecision": "deny",
-                        "permissionDecisionReason": combined_message  # So Claude sees WHY blocked
+                        "permissionDecisionReason": combined_message,  # So Claude sees WHY blocked
                     },
-                    "systemMessage": combined_message
+                    "systemMessage": combined_message,
                 }
-            else:
-                return {
-                    "systemMessage": combined_message
-                }
+            return {"systemMessage": combined_message}
 
         if warning_rules:
             messages = [f"**[{r.name}]**\n{r.message}" for r in warning_rules]
-            return {
-                "systemMessage": "\n\n".join(messages)
-            }
+            return {"systemMessage": "\n\n".join(messages)}
 
         return {}
 
@@ -175,19 +165,19 @@ class RuleEngine:
         Returns:
             True if rule matches, False otherwise
         """
-        tool_name = input_data.get('tool_name', '')
-        tool_input = input_data.get('tool_input', {})
+        tool_name = input_data.get("tool_name", "")
+        tool_input = input_data.get("tool_input", {})
 
-        if rule.tool_matcher:
-            if not self._matches_tool(rule.tool_matcher, tool_name):
-                return False
+        if rule.tool_matcher and not self._matches_tool(rule.tool_matcher, tool_name):
+            return False
 
         if not rule.conditions:
             return False
 
         for condition in rule.conditions:
-            if not self._check_condition(condition, tool_name, tool_input, input_data,
-                                         mask=rule.mask_data, strict=rule.action == 'block'):
+            if not self._check_condition(
+                condition, tool_name, tool_input, input_data, mask=rule.mask_data, strict=rule.action == "block"
+            ):
                 return False
 
         return True
@@ -202,15 +192,21 @@ class RuleEngine:
         Returns:
             True if matches
         """
-        if matcher == '*':
+        if matcher == "*":
             return True
 
-        patterns = matcher.split('|')
+        patterns = matcher.split("|")
         return tool_name in patterns
 
-    def _check_condition(self, condition: Condition, tool_name: str,
-                        tool_input: Dict[str, Any], input_data: Dict[str, Any] = None,
-                        mask: bool = False, strict: bool = True) -> bool:
+    def _check_condition(
+        self,
+        condition: Condition,
+        tool_name: str,
+        tool_input: Dict[str, Any],
+        input_data: Optional[Dict[str, Any]] = None,
+        mask: bool = False,
+        strict: bool = True,
+    ) -> bool:
         """Check if a single condition matches.
 
         Args:
@@ -228,28 +224,39 @@ class RuleEngine:
         if field_value is None:
             return False
         raw_value = field_value
-        if mask and tool_name == 'Bash' and condition.field == 'command':
+        if mask and tool_name == "Bash" and condition.field == "command":
             field_value = mask_data(field_value)
 
-        if condition.operator == 'glob_overflow':
-            return tool_name == 'Bash' and condition.field == 'command' and self._glob_overflow(
-                raw_value, (input_data or {}).get('cwd') or os.getcwd())
-        if condition.operator == 'command_match':
-            cwd = (input_data or {}).get('cwd') or os.getcwd()
+        if condition.operator == "glob_overflow":
+            return (
+                tool_name == "Bash"
+                and condition.field == "command"
+                and self._glob_overflow(raw_value, (input_data or {}).get("cwd") or os.getcwd())
+            )
+        if condition.operator == "command_match":
+            cwd = (input_data or {}).get("cwd") or os.getcwd()
             return self._command_match(condition, tool_name, raw_value, field_value, mask, strict, cwd)
-        if condition.operator == 'regex_match':
+        if condition.operator == "regex_match":
             return self._regex_match(condition.pattern, field_value)
-        if condition.operator == 'not_regex_match':
+        if condition.operator == "not_regex_match":
             return not self._regex_match(condition.pattern, field_value)
         test = STRING_OPERATORS.get(condition.operator)
         return test is not None and test(field_value, condition.pattern)
 
-    def _command_match(self, condition: Condition, tool_name: str, raw_value: str,
-                       field_value: str, mask: bool, strict: bool, cwd: str = '') -> bool:
+    def _command_match(
+        self,
+        condition: Condition,
+        tool_name: str,
+        raw_value: str,
+        field_value: str,
+        mask: bool,
+        strict: bool,
+        cwd: str = "",
+    ) -> bool:
         pattern = condition.pattern
-        if condition.field != 'command':
+        if condition.field != "command":
             return self._regex_match(pattern, raw_value)
-        if tool_name != 'Bash':
+        if tool_name != "Bash":
             return self._regex_match(condition.fallback or pattern, field_value)
         parsed = clean_lines(raw_value, cwd)
         if parsed is None or (strict and parsed[1] and condition.fallback):
@@ -269,15 +276,17 @@ class RuleEngine:
         parsed = clean_lines(command, cwd)
         return bool(parsed[2] if parsed is not None else segment_lines(command, cwd)[1])
 
-    def _extract_field(self, field: str, tool_name: str,
-                      tool_input: Dict[str, Any], input_data: Dict[str, Any] = None) -> Optional[str]:
+    def _extract_field(
+        self, field: str, tool_name: str, tool_input: Dict[str, Any], input_data: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
         value = self._raw_field(field, tool_name, tool_input, input_data)
-        if field == 'file_path' and value:
+        if field == "file_path" and value:
             return _clean_path(value)
         return value
 
-    def _raw_field(self, field: str, tool_name: str,
-                   tool_input: Dict[str, Any], input_data: Dict[str, Any] = None) -> Optional[str]:
+    def _raw_field(
+        self, field: str, tool_name: str, tool_input: Dict[str, Any], input_data: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
         """Extract field value from tool input or hook input data.
 
         Args:
@@ -296,66 +305,66 @@ class RuleEngine:
             return str(value)
 
         if input_data:
-            if field == 'reason':
-                return input_data.get('reason', '')
-            elif field == 'transcript':
-                transcript_path = input_data.get('transcript_path')
+            if field == "reason":
+                return input_data.get("reason", "")
+            if field == "transcript":
+                transcript_path = input_data.get("transcript_path")
                 if transcript_path:
                     try:
-                        with open(transcript_path, 'r') as f:
+                        with open(transcript_path) as f:
                             return f.read()
                     except FileNotFoundError:
                         print(f"Warning: Transcript file not found: {transcript_path}", file=sys.stderr)
-                        return ''
+                        return ""
                     except PermissionError:
                         print(f"Warning: Permission denied reading transcript: {transcript_path}", file=sys.stderr)
-                        return ''
-                    except (IOError, OSError) as e:
+                        return ""
+                    except OSError as e:
                         print(f"Warning: Error reading transcript {transcript_path}: {e}", file=sys.stderr)
-                        return ''
+                        return ""
                     except UnicodeDecodeError as e:
                         print(f"Warning: Encoding error in transcript {transcript_path}: {e}", file=sys.stderr)
-                        return ''
-            elif field == 'user_prompt':
-                return input_data.get('user_prompt', '')
+                        return ""
+            elif field == "user_prompt":
+                return input_data.get("user_prompt", "")
 
-        if tool_name == 'Bash':
-            if field == 'command':
-                return tool_input.get('command', '')
+        if tool_name == "Bash":
+            if field == "command":
+                return tool_input.get("command", "")
 
-        elif tool_name in ['Write', 'Edit']:
-            if field == 'content':
+        elif tool_name in ["Write", "Edit"]:
+            if field == "content":
                 # Write uses 'content', Edit has 'new_string'
-                return tool_input.get('content') or tool_input.get('new_string', '')
-            elif field == 'new_text' or field == 'new_string':
-                return tool_input.get('new_string') or tool_input.get('content', '')
-            elif field == 'old_text' or field == 'old_string':
-                return tool_input.get('old_string', '')
-            elif field == 'file_path':
-                return tool_input.get('file_path', '')
+                return tool_input.get("content") or tool_input.get("new_string", "")
+            if field == "new_text" or field == "new_string":
+                return tool_input.get("new_string") or tool_input.get("content", "")
+            if field == "old_text" or field == "old_string":
+                return tool_input.get("old_string", "")
+            if field == "file_path":
+                return tool_input.get("file_path", "")
 
-        elif tool_name == 'NotebookEdit':
-            if field == 'file_path':
-                return tool_input.get('notebook_path', '')
-            elif field in ['new_text', 'new_string', 'content']:
-                return tool_input.get('new_source', '')
+        elif tool_name == "NotebookEdit":
+            if field == "file_path":
+                return tool_input.get("notebook_path", "")
+            if field in ["new_text", "new_string", "content"]:
+                return tool_input.get("new_source", "")
 
-        elif tool_name == 'Grep' and field == 'file_path':
+        elif tool_name == "Grep" and field == "file_path":
             return self._grep_target(tool_input)
 
-        elif tool_name == 'Glob' and field == 'file_path':
-            return tool_input.get('path', '')
+        elif tool_name == "Glob" and field == "file_path":
+            return tool_input.get("path", "")
 
         return None
 
     @staticmethod
     def _grep_target(tool_input: Dict[str, Any]) -> str:
-        path = tool_input.get('path', '')
+        path = tool_input.get("path", "")
         # Trailing wildcards stripped so `.env*` meets the rules' `$`-anchored patterns
-        name = tool_input.get('glob', '').rstrip('*?.')
+        name = tool_input.get("glob", "").rstrip("*?.")
         if not name:
             return path
-        return path.rstrip('/\\') + '/' + name
+        return path.rstrip("/\\") + "/" + name
 
     def _regex_match(self, pattern: str, text: str) -> bool:
         """Check if pattern matches text using regex.
@@ -376,37 +385,25 @@ class RuleEngine:
             return False
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from core.config_loader import Condition, Rule
 
     rule = Rule(
         name="test-rm",
         enabled=True,
         event="bash",
-        conditions=[
-            Condition(field="command", operator="regex_match", pattern=r"rm\s+-rf")
-        ],
-        message="Dangerous rm command!"
+        conditions=[Condition(field="command", operator="regex_match", pattern=r"rm\s+-rf")],
+        message="Dangerous rm command!",
     )
 
     engine = RuleEngine()
 
-    test_input = {
-        "tool_name": "Bash",
-        "tool_input": {
-            "command": "rm -rf /tmp/test"
-        }
-    }
+    test_input = {"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/test"}}
 
     result = engine.evaluate_rules([rule], test_input)
     print("Match result:", result)
 
-    test_input2 = {
-        "tool_name": "Bash",
-        "tool_input": {
-            "command": "ls -la"
-        }
-    }
+    test_input2 = {"tool_name": "Bash", "tool_input": {"command": "ls -la"}}
 
     result2 = engine.evaluate_rules([rule], test_input2)
     print("Non-match result:", result2)

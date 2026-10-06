@@ -50,7 +50,10 @@ class TestCorpus:
     def test_log_commands_are_added_and_deduped(self, tmp_path):
         log = tmp_path / "p" / "s.jsonl"
         log.parent.mkdir()
-        entry = '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t","name":"Bash","input":{"command":"zz-from-log"}}]}}'
+        entry = (
+            '{"type":"assistant","message":{"content":'
+            '[{"type":"tool_use","id":"t","name":"Bash","input":{"command":"zz-from-log"}}]}}'
+        )
         log.write_text(entry + "\n" + entry.replace('"t"', '"u"') + "\n")
         corpus = fz.load_corpus(logs_root=str(tmp_path))
         assert corpus.count("zz-from-log") == 1
@@ -85,6 +88,7 @@ class TestSpeed:
         class Hangs:
             def _rule_matches(self, rule, data):
                 time.sleep(5)
+
         monkeypatch.setattr(fz, "RuleEngine", Hangs)
         rules = rules_from(tmp_path, BLOCK_ENV)
         start = time.monotonic()
@@ -119,6 +123,7 @@ class TestCrash:
     def test_returns_error_type_and_deepest_file_and_line(self, monkeypatch):
         def boom(_):
             raise ValueError("x")
+
         monkeypatch.setattr(fz, "normalise", boom)
         kind, where = fz.crash_key("anything")
         assert kind == "ValueError"
@@ -134,6 +139,7 @@ class TestCrash:
     def test_printed_crashes_are_redacted(self, monkeypatch, capsys):
         def boom(_):
             raise ValueError("x")
+
         monkeypatch.setattr(fz, "normalise", boom)
         token = "ghp_" + "Q" * 36
         fz.run_crash(["curl -H 'x: " + token + "'"], random.Random(1), 0)
@@ -163,15 +169,18 @@ class TestBypass:
     def test_env_quoted_as_message_text_is_not_a_bypass(self, tmp_path):
         assert fz.bypass_kind("git commit -m 'env'", [], str(tmp_path)) is None
 
-    @pytest.mark.parametrize("command", [
-        "git init; gh pr merge 1",
-        "timeout 5 git init",
-        "nohup git init",
-        "echo init | xargs git",
-        "bash -c 'git init'",
-        "find . -maxdepth 0 -exec git init \\;",
-        "command git init",
-    ])
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "git init; gh pr merge 1",
+            "timeout 5 git init",
+            "nohup git init",
+            "echo init | xargs git",
+            "bash -c 'git init'",
+            "find . -maxdepth 0 -exec git init \\;",
+            "command git init",
+        ],
+    )
     def test_real_git_never_runs_even_through_wrappers(self, tmp_path, command):
         fz.bypass_kind(command, [], str(tmp_path))
         assert not (tmp_path / ".git").exists()
@@ -192,7 +201,7 @@ class TestSandboxFailure:
     @pytest.fixture(autouse=True)
     def broken_bwrap(self, monkeypatch):
         real = fz._bwrap_argv
-        monkeypatch.setattr(fz, "_bwrap_argv", lambda *a: real(*a)[:1] + ["--no-such-flag"] + real(*a)[1:])
+        monkeypatch.setattr(fz, "_bwrap_argv", lambda *a: [*real(*a)[:1], "--no-such-flag", *real(*a)[1:]])
         probe = fz.sandbox_available
         probe.cache_clear()
         yield
