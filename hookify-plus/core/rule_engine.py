@@ -92,6 +92,74 @@ def segment_lines(command: str, cwd: str = "") -> tuple:
     return tuple(lines), tuple(overflow)
 
 
+def _read_transcript(input_data: Dict[str, Any]) -> Optional[str]:
+    """The transcript text, "" when it can't be read, or None without a transcript_path."""
+    transcript_path = input_data.get("transcript_path")
+    if not transcript_path:
+        return None
+    try:
+        with open(transcript_path) as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"Warning: Transcript file not found: {transcript_path}", file=sys.stderr)
+    except PermissionError:
+        print(f"Warning: Permission denied reading transcript: {transcript_path}", file=sys.stderr)
+    except OSError as e:
+        print(f"Warning: Error reading transcript {transcript_path}: {e}", file=sys.stderr)
+    except UnicodeDecodeError as e:
+        print(f"Warning: Encoding error in transcript {transcript_path}: {e}", file=sys.stderr)
+    return ""
+
+
+def _grep_target(tool_input: Dict[str, Any]) -> str:
+    path = tool_input.get("path", "")
+    # Trailing wildcards stripped so `.env*` meets the rules' `$`-anchored patterns
+    name = tool_input.get("glob", "").rstrip("*?.")
+    if not name:
+        return path
+    return path.rstrip("/\\") + "/" + name
+
+
+def _key(name: str):
+    return lambda tool_input: tool_input.get(name, "")
+
+
+def _first(primary: str, fallback: str):
+    # `or`, not a default: an empty primary still falls back
+    return lambda tool_input: tool_input.get(primary) or tool_input.get(fallback, "")
+
+
+HOOK_FIELDS = {
+    "reason": lambda input_data: input_data.get("reason", ""),
+    "transcript": _read_transcript,
+    "user_prompt": lambda input_data: input_data.get("user_prompt", ""),
+}
+
+_FILE_TOOL_FIELDS = {
+    # Write sends `content`, Edit sends `new_string`
+    "content": _first("content", "new_string"),
+    "new_text": _first("new_string", "content"),
+    "new_string": _first("new_string", "content"),
+    "old_text": _key("old_string"),
+    "old_string": _key("old_string"),
+    "file_path": _key("file_path"),
+}
+
+TOOL_FIELDS = {
+    "Bash": {"command": _key("command")},
+    "Write": _FILE_TOOL_FIELDS,
+    "Edit": _FILE_TOOL_FIELDS,
+    "NotebookEdit": {
+        "file_path": _key("notebook_path"),
+        "new_text": _key("new_source"),
+        "new_string": _key("new_source"),
+        "content": _key("new_source"),
+    },
+    "Grep": {"file_path": _grep_target},
+    "Glob": {"file_path": _key("path")},
+}
+
+
 STRING_OPERATORS = {
     "contains": lambda value, pattern: pattern in value,
     "not_contains": lambda value, pattern: pattern not in value,
@@ -300,71 +368,15 @@ class RuleEngine:
         """
         if field in tool_input:
             value = tool_input[field]
-            if isinstance(value, str):
+            return value if isinstance(value, str) else str(value)
+
+        if input_data and field in HOOK_FIELDS:
+            value = HOOK_FIELDS[field](input_data)
+            if value is not None:
                 return value
-            return str(value)
 
-        if input_data:
-            if field == "reason":
-                return input_data.get("reason", "")
-            if field == "transcript":
-                transcript_path = input_data.get("transcript_path")
-                if transcript_path:
-                    try:
-                        with open(transcript_path) as f:
-                            return f.read()
-                    except FileNotFoundError:
-                        print(f"Warning: Transcript file not found: {transcript_path}", file=sys.stderr)
-                        return ""
-                    except PermissionError:
-                        print(f"Warning: Permission denied reading transcript: {transcript_path}", file=sys.stderr)
-                        return ""
-                    except OSError as e:
-                        print(f"Warning: Error reading transcript {transcript_path}: {e}", file=sys.stderr)
-                        return ""
-                    except UnicodeDecodeError as e:
-                        print(f"Warning: Encoding error in transcript {transcript_path}: {e}", file=sys.stderr)
-                        return ""
-            elif field == "user_prompt":
-                return input_data.get("user_prompt", "")
-
-        if tool_name == "Bash":
-            if field == "command":
-                return tool_input.get("command", "")
-
-        elif tool_name in ["Write", "Edit"]:
-            if field == "content":
-                # Write uses 'content', Edit has 'new_string'
-                return tool_input.get("content") or tool_input.get("new_string", "")
-            if field == "new_text" or field == "new_string":
-                return tool_input.get("new_string") or tool_input.get("content", "")
-            if field == "old_text" or field == "old_string":
-                return tool_input.get("old_string", "")
-            if field == "file_path":
-                return tool_input.get("file_path", "")
-
-        elif tool_name == "NotebookEdit":
-            if field == "file_path":
-                return tool_input.get("notebook_path", "")
-            if field in ["new_text", "new_string", "content"]:
-                return tool_input.get("new_source", "")
-
-        elif tool_name == "Grep" and field == "file_path":
-            return self._grep_target(tool_input)
-
-        elif tool_name == "Glob" and field == "file_path":
-            return tool_input.get("path", "")
-
-        return None
-
-    @staticmethod
-    def _grep_target(tool_input: Dict[str, Any]) -> str:
-        path = tool_input.get("path", "")
-        # Trailing wildcards stripped so `.env*` meets the rules' `$`-anchored patterns
-        name = tool_input.get("glob", "").rstrip("*?.")
-        if not name:
-            return path
-        return path.rstrip("/\\") + "/" + name
+        extract = TOOL_FIELDS.get(tool_name, {}).get(field)
+        return None if extract is None else extract(tool_input)
 
     def _regex_match(self, pattern: str, text: str) -> bool:
         """Check if pattern matches text using regex.
