@@ -73,7 +73,7 @@ class TestOptions:
             (_w("x", "--zz", "y"), 1, "u", ("user",), {"flags": ("l", ("login",))}, UNSURE),
         ],
     )
-    def test_options(self, words, start, short, long, kwargs, expected):  # noqa: PLR0913, PLR0917 - parametrized
+    def test_options(self, words, start, short, long, kwargs, expected):  # noqa: PLR0913, PLR0917  # parametrized
         try:
             result = _options(words, start, short, long, **kwargs)
         except _UnsureError:
@@ -150,6 +150,125 @@ class TestRender:
         command = 'bash -c \'bash -c "bash -c \\"echo ' + "a" * 3000 + ' | a | b\\" | c" | d\' | e'
         lines, _ = _render(command)
         assert [len(line) for line in lines] == [3057, 3045, 3035, 3025, 17, 13, 9, 5, 1]
+
+
+def _parsed(command):
+    result = parse_commands(command)
+    return None if result is None else [(c.name, c.args) for c in result]
+
+
+PE = "print" + "env"
+
+
+class TestParserGrammar:
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            ("xargs -I{} {}", None),
+            ("xargs -IX X a", None),
+            ("xargs -i {} a", None),
+            ("xargs --replace=Q Q", None),
+            ("xargs -I{} echo {}", [("xargs", ["-I{}", "echo", "{}"]), ("echo", ["{}"])]),
+            ("xargs -i echo x", [("xargs", ["-i", "echo", "x"]), ("echo", ["x"])]),
+            ("sudo A=1 B=2 " + PE, [("sudo", ["A=1", "B=2", PE]), (PE, [])]),
+            ("sudo A=$X " + PE, None),
+            ("watch -x " + PE, [("watch", ["-x", PE]), (PE, [])]),
+            ("watch --exec " + PE, [("watch", ["--exec", PE]), (PE, [])]),
+            ("flock /l -c " + PE, [("flock", ["/l", "-c", PE]), (PE, [])]),
+            ("flock /l --command " + PE, [("flock", ["/l", "--command", PE]), (PE, [])]),
+            ("flock /l " + PE, [("flock", ["/l", PE]), (PE, [])]),
+            ("flock /l -c", None),
+            ("ssh -p 22 h " + PE, [("ssh", ["-p", "22", "h", PE]), (PE, [])]),
+            ("command -V " + PE, [("command", ["-V", PE])]),
+            ("script -c " + PE, [("script", ["-c", PE]), (PE, [])]),
+            ("script", [("script", [])]),
+        ],
+    )
+    def test_wrappers(self, command, expected):
+        assert _parsed(command) == expected
+
+    @pytest.mark.parametrize("command", ["echo a\\", "a \\", "echo 'a", 'echo "a', "echo $'\\q'", "echo a\\\\\\"])
+    def test_unterminated_word_is_unsure(self, command):
+        assert parse_commands(command) is None
+
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            ("echo a\\\nb", [("echo", ["ab"])]),
+            ("echo a\\ b", [("echo", ["a b"])]),
+            ("echo $\"a\"'b'$'\\x41'", [("echo", ["abA"])]),
+            ("cat <(" + PE + ") >(wc)", [("cat", ["<(" + PE + ")", ">(wc)"]), (PE, []), ("wc", [])]),
+        ],
+    )
+    def test_word_pieces(self, command, expected):
+        assert _parsed(command) == expected
+
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            ("X=1", []),
+            ("X=(a b) " + PE, [(PE, [])]),
+            ("> f", []),
+            ("$(< f)", None),
+            ("echo $(< f)", [("echo", ["$(< f)"]), ("cat", [])]),
+            ("echo $(0<f)", [("echo", ["$(0<f)"]), ("cat", [])]),
+            ("echo $(X=1 < f)", [("echo", ["$(X=1 < f)"])]),
+            ("echo $(< f > g)", [("echo", ["$(< f > g)"]), ("cat", [])]),
+        ],
+    )
+    def test_commands_without_words(self, command, expected):
+        assert _parsed(command) == expected
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "! case x in esac",
+            "! then",
+            "! fi",
+            "time done",
+            "time }",
+            "time select x in a; do :; done",
+            "! ((1))",
+            "((1))",
+            "then",
+            "}",
+        ],
+    )
+    def test_misplaced_keyword_is_unsure(self, command):
+        assert parse_commands(command) is None
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "! ! " + PE,
+            "time ! " + PE,
+            "! time " + PE,
+            "! ( " + PE + " )",
+            "time ( " + PE + " )",
+            "time -p ( " + PE + " )",
+            "time -p -- ( " + PE + " )",
+            "! { " + PE + "; }",
+            "! f() { " + PE + "; }",
+            "time function f { " + PE + "; }",
+            "time for x in a; do " + PE + "; done",
+        ],
+    )
+    def test_prefixed_compound_commands_are_found(self, command):
+        assert _parsed(command) == [(PE, [])]
+
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            ("! if true; then " + PE + "; fi", [("true", []), (PE, [])]),
+            ("! [[ x ]]", []),
+            ("time -px " + PE, None),
+            ("time --x " + PE, None),
+            ("time while " + PE + "; do :; done", [(PE, []), (":", [])]),
+            ("time until " + PE + "; do :; done", [(PE, []), (":", [])]),
+        ],
+    )
+    def test_prefixed_commands(self, command, expected):
+        assert _parsed(command) == expected
 
 
 class TestExtractFrontmatter:

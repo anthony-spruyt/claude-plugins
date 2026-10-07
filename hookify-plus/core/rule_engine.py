@@ -266,7 +266,7 @@ class RuleEngine:
         patterns = matcher.split("|")
         return tool_name in patterns
 
-    def _check_condition(  # noqa: PLR0913, PLR0917 - per-call match context
+    def _check_condition(  # noqa: PLR0913, PLR0917  # per-call match context
         self,
         condition: Condition,
         tool_name: str,
@@ -311,7 +311,7 @@ class RuleEngine:
         test = STRING_OPERATORS.get(condition.operator)
         return test is not None and test(field_value, condition.pattern)
 
-    def _command_match(  # noqa: PLR0913, PLR0917 - per-call match context
+    def _command_match(  # noqa: PLR0913, PLR0917  # per-call match context
         self,
         condition: Condition,
         tool_name: str,

@@ -36,7 +36,7 @@ class Spec:
         return kind, 0
 
 
-def _spec(message, stdin, value="", boolean="", positionals=0, short_cluster=""):  # noqa: PLR0913, PLR0917 - mirrors Spec, keeps the SPECS table terse
+def _spec(message, stdin, value="", boolean="", positionals=0, short_cluster=""):  # noqa: PLR0913, PLR0917  # mirrors Spec, keeps the SPECS table terse
     return Spec(
         frozenset(message.split()),
         frozenset(stdin.split()),
