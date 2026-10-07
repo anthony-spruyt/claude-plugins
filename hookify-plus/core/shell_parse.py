@@ -7,6 +7,7 @@ so callers fall back to matching the raw command string.
 
 import re
 import shlex
+import sys
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -49,6 +50,7 @@ ANSI_SIMPLE = {
     '"': '"',
     "?": "?",
 }
+SURROGATES = range(0xD800, 0xE000)
 REDIRECT = re.compile(r"(\d*)(<<<|<<-|<<|<>|<&|>&|>>|>\||<|>)|&>>|&>", re.ASCII)
 PROC_SUB = re.compile(r"[<>]\(")
 DELIM = re.compile(r"(?=[ \t\n;&|()<>]|$)")
@@ -524,10 +526,10 @@ def _option_text(word: Tuple[str, int]) -> str:
 
 
 def _is_option(text: str) -> bool:
-    return len(text) >= 2 and text[0] == "-"
+    return len(text) > 1 and text[0] == "-"
 
 
-def _long_option(words, i, text, long, flags, opts) -> int:
+def _long_option(words, i, text, long, flags, opts) -> int:  # noqa: PLR0913, PLR0917 - _options state
     """Records `--key[=value]` (text) in opts; returns the index after any separate value."""
     key, eq, value = text[2:].partition("=")
     if flags is not None and not eq and key not in long and key not in flags[1]:
@@ -538,7 +540,7 @@ def _long_option(words, i, text, long, flags, opts) -> int:
     return i
 
 
-def _short_options(words, i, text, short, attached, known_short, opts) -> int:
+def _short_options(words, i, text, short, attached, known_short, opts) -> int:  # noqa: PLR0913, PLR0917 - _options state
     """Records a `-abc` bundle (text) in opts; returns the index after any separate value."""
     for j in range(1, len(text)):
         letter = text[j]
@@ -560,7 +562,7 @@ def _known_short(short, attached, flags) -> Optional[str]:
     return None if flags is None else short + attached + flags[0]
 
 
-def _options(words, i, short, long, attached="", permute=False, stop=frozenset(), flags=None):
+def _options(words, i, short, long, attached="", permute=False, stop=frozenset(), flags=None):  # noqa: PLR0913, PLR0917 - one getopt spec per caller
     opts = {}
     known_short = _known_short(short, attached, flags)
     while i < len(words):
@@ -644,6 +646,7 @@ def _split(text):
 
 
 ENV_CLEAN = ("ignore-environment", "help", "version")
+ENV_MIN_PREFIX = 3
 
 
 def _env_parts(words):
@@ -658,7 +661,11 @@ def _env_parts(words):
             stop=frozenset(["S", "split-string"]),
         )
         # GNU env accepts any unique prefix of a long option
-        clean = clean or "i" in opts or any(len(k) >= 3 and any(full.startswith(k) for full in ENV_CLEAN) for k in opts)
+        clean = (
+            clean
+            or "i" in opts
+            or any(len(k) >= ENV_MIN_PREFIX and any(full.startswith(k) for full in ENV_CLEAN) for k in opts)
+        )
         text = opts.get("S", opts.get("split-string"))
         if text is None:
             break
@@ -772,7 +779,7 @@ def _inner(words):
     return None
 
 
-def _wrapper(name, words):
+def _wrapper(name, words):  # noqa: PLR0911 - one return per wrapper command
     short, long, attached, operands = WRAPPERS[name]
     i, opts = _options(words, 1, short, long, attached, name in PERMUTE)
     if name in PERMUTE:
@@ -818,13 +825,13 @@ def _ansi_escape(m) -> str:
     else:
         raise _UnsureError
     # NUL truncates the word in bash; surrogates and > U+10FFFF are not text
-    if value == 0 or 0xD800 <= value < 0xE000 or value > 0x10FFFF:
+    if value == 0 or value in SURROGATES or value > sys.maxunicode:
         raise _UnsureError
     return chr(value)
 
 
 class _Parser:
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - mirrors _run
         self,
         s: str,
         out: list,
@@ -871,7 +878,7 @@ class _Parser:
         self.depth -= 1
         self.subst -= subst
 
-    def word(self) -> Tuple[str, int]:
+    def word(self) -> Tuple[str, int]:  # noqa: PLR0912 - one branch per bash word token
         s, buf, flags = self.s, [], 0
         # Glob pattern for the word: quoted text escaped, unquoted glob and brace characters live
         pattern = []
@@ -1045,7 +1052,7 @@ class _Parser:
         buf.append(_Expansion(m.group()))
         return EXPANDED
 
-    def simple_command(self) -> Optional[SimpleCommand]:
+    def simple_command(self) -> Optional[SimpleCommand]:  # noqa: PLR0912 - one branch per bash grammar case
         slot = len(self.out)
         self.out.append(None)
         s, words, redirects, assigned = self.s, [], [], False
@@ -1249,7 +1256,7 @@ class _Parser:
             for reader, feed in entry[2]:
                 self.feed(entry, reader, feed)
 
-    def command(self) -> Optional[SimpleCommand]:
+    def command(self) -> Optional[SimpleCommand]:  # noqa: PLR0911, PLR0912 - one branch per bash compound command
         self.blank()
         if self.at("(("):
             raise _UnsureError
@@ -1450,7 +1457,7 @@ class _Parser:
                 raise _UnsureError
 
 
-def _run(
+def _run(  # noqa: PLR0913, PLR0917 - parser state passed down each nested parse
     text: str,
     out: list,
     depth: int,

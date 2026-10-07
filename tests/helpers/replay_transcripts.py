@@ -115,7 +115,7 @@ def _dict(value) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def parse_transcript(path: str):
+def parse_transcript(path: str):  # noqa: PLR0912 - one branch per transcript entry type
     """Return (tool calls, {tool_use_id: rule names that fired})."""
     calls = []
     fired = defaultdict(set)

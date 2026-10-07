@@ -73,7 +73,7 @@ class TestOptions:
             (_w("x", "--zz", "y"), 1, "u", ("user",), {"flags": ("l", ("login",))}, UNSURE),
         ],
     )
-    def test_options(self, words, start, short, long, kwargs, expected):
+    def test_options(self, words, start, short, long, kwargs, expected):  # noqa: PLR0913, PLR0917 - parametrized
         try:
             result = _options(words, start, short, long, **kwargs)
         except _UnsureError:
