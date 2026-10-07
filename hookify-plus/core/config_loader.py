@@ -125,84 +125,88 @@ def extract_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     if end < 0:
         return {}, content
 
-    frontmatter_text = content[3:end]
-    message = content[end + 4 :].strip()
+    parser = _FrontmatterParser()
+    for line in content[3:end].split("\n"):
+        parser.feed(line)
+    return parser.finish(), content[end + 4 :].strip()
 
-    frontmatter = {}
-    lines = frontmatter_text.split("\n")
 
-    current_key = None
-    current_list = []
-    current_dict = {}
-    in_list = False
-    in_dict_item = False
+def _scalar(value: str) -> str | bool:
+    value = _unquote(value)
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+    return value
 
-    for line in lines:
+
+def _inline_dict(item_text: str) -> dict[str, str] | None:
+    """`k: v, k2: v2` as a dict, or None when the item isn't one (a lone quoted value may hold commas)."""
+    if ":" not in item_text or "," not in item_text or _QUOTED.fullmatch(item_text.split(":", 1)[1].strip()):
+        return None
+    pairs = (part.split(":", 1) for part in item_text.split(",") if ":" in part)
+    return {k.strip(): _unquote(v) for k, v in pairs}
+
+
+class _FrontmatterParser:
+    """Line-at-a-time parser for the frontmatter subset rules use: scalars, and lists of scalars or dicts."""
+
+    def __init__(self):
+        self.frontmatter: dict[str, Any] = {}
+        self.key: str | None = None
+        self.items: list[Any] = []
+        self.item: dict[str, str] = {}
+        self.in_list = False
+        self.in_item = False
+
+    def feed(self, line: str) -> None:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
-            continue
-
+            return
         indent = len(line) - len(line.lstrip())
-
-        if indent == 0 and ":" in line and not line.strip().startswith("-"):
-            if in_list and current_key:
-                if in_dict_item and current_dict:
-                    current_list.append(current_dict)
-                    current_dict = {}
-                frontmatter[current_key] = current_list
-                in_list = False
-                in_dict_item = False
-                current_list = []
-
-            key, value = line.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-
-            if not value:
-                current_key = key
-                in_list = True
-                current_list = []
-            else:
-                value = _unquote(value)
-                if value.lower() == "true":
-                    value = True
-                elif value.lower() == "false":
-                    value = False
-                frontmatter[key] = value
-
-        elif stripped.startswith("-") and in_list:
-            if in_dict_item and current_dict:
-                current_list.append(current_dict)
-                current_dict = {}
-
-            item_text = stripped[1:].strip()
-
-            if ":" in item_text and "," in item_text and not _QUOTED.fullmatch(item_text.split(":", 1)[1].strip()):
-                item_dict = {}
-                for part in item_text.split(","):
-                    if ":" in part:
-                        k, v = part.split(":", 1)
-                        item_dict[k.strip()] = _unquote(v)
-                current_list.append(item_dict)
-                in_dict_item = False
-            elif ":" in item_text:
-                in_dict_item = True
-                k, v = item_text.split(":", 1)
-                current_dict = {k.strip(): _unquote(v)}
-            else:
-                current_list.append(_unquote(item_text))
-                in_dict_item = False
-
-        elif indent > 2 and in_dict_item and ":" in line:
+        if indent == 0 and ":" in line and not stripped.startswith("-"):
+            self._top_level_key(line)
+        elif stripped.startswith("-") and self.in_list:
+            self._list_item(stripped[1:].strip())
+        elif indent > 2 and self.in_item and ":" in line:
             k, v = stripped.split(":", 1)
-            current_dict[k.strip()] = _unquote(v)
+            self.item[k.strip()] = _unquote(v)
 
-    if in_list and current_key:
-        if in_dict_item and current_dict:
-            current_list.append(current_dict)
-        frontmatter[current_key] = current_list
+    def finish(self) -> dict[str, Any]:
+        if self.in_list and self.key:
+            self._close_item()
+            self.frontmatter[self.key] = self.items
+        return self.frontmatter
 
-    return frontmatter, message
+    def _top_level_key(self, line: str) -> None:
+        if self.in_list and self.key:
+            self._close_item()
+            self.frontmatter[self.key] = self.items
+            self.in_list = self.in_item = False
+            self.items = []
+        key, value = (part.strip() for part in line.split(":", 1))
+        if value:
+            self.frontmatter[key] = _scalar(value)
+        else:
+            self.key, self.in_list, self.items = key, True, []
+
+    def _list_item(self, item_text: str) -> None:
+        self._close_item()
+        inline = _inline_dict(item_text)
+        if inline is not None:
+            self.items.append(inline)
+            self.in_item = False
+        elif ":" in item_text:
+            k, v = item_text.split(":", 1)
+            self.item, self.in_item = {k.strip(): _unquote(v)}, True
+        else:
+            self.items.append(_unquote(item_text))
+            self.in_item = False
+
+    def _close_item(self) -> None:
+        if self.in_item and self.item:
+            self.items.append(self.item)
+            self.item = {}
 
 
 RULE_DIR_NAME = "hookify-plus"
@@ -309,32 +313,40 @@ def _get_plugin_rules() -> list[str]:
 
     plugin_dir = os.path.dirname(plugin_root)
     marketplace_dir = os.path.dirname(plugin_dir)
-    self_plugin_name = os.path.basename(plugin_dir)
-    rule_files = []
 
     holders = _session_holders()
     if not _held_by(plugin_root, holders):
         holders = None
 
+    rule_files = []
     try:
-        for sibling in os.listdir(marketplace_dir):
-            if sibling == self_plugin_name:
-                continue
-            sibling_path = os.path.join(marketplace_dir, sibling)
-            if not os.path.isdir(sibling_path) or os.path.islink(sibling_path):
-                continue
+        for sibling_path in _sibling_plugins(marketplace_dir, os.path.basename(plugin_dir)):
             for version_dir in _active_version_dirs(sibling_path, holders):
-                try:
-                    hookify_dir = os.path.join(version_dir, RULE_DIR_NAME)
-                    if os.path.isdir(hookify_dir):
-                        rule_files.extend(glob.glob(os.path.join(hookify_dir, RULE_GLOB)))
-                except OSError as e:  # noqa: PERF203
-                    print(f"Warning: Skipping {version_dir}: {e}", file=sys.stderr)
-                    continue
+                rule_files.extend(_version_rules(version_dir))
     except OSError:
         pass
 
     return rule_files
+
+
+def _sibling_plugins(marketplace_dir: str, self_plugin_name: str) -> list[str]:
+    """Real (non-symlink) plugin dirs beside this one; symlinks could point outside the marketplace."""
+    siblings = []
+    for sibling in os.listdir(marketplace_dir):
+        sibling_path = os.path.join(marketplace_dir, sibling)
+        if sibling != self_plugin_name and os.path.isdir(sibling_path) and not os.path.islink(sibling_path):
+            siblings.append(sibling_path)
+    return siblings
+
+
+def _version_rules(version_dir: str) -> list[str]:
+    try:
+        hookify_dir = os.path.join(version_dir, RULE_DIR_NAME)
+        if os.path.isdir(hookify_dir):
+            return glob.glob(os.path.join(hookify_dir, RULE_GLOB))
+    except OSError as e:
+        print(f"Warning: Skipping {version_dir}: {e}", file=sys.stderr)
+    return []
 
 
 def discover_rule_files() -> list[str]:

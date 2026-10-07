@@ -518,41 +518,65 @@ def _plain(word: Tuple[str, int]) -> str:
     return text
 
 
+def _option_text(word: Tuple[str, int]) -> str:
+    # Only an option-looking word must be literal: an expanded one could become any option
+    return _plain(word) if word[0].startswith("-") else word[0]
+
+
+def _is_option(text: str) -> bool:
+    return len(text) >= 2 and text[0] == "-"
+
+
+def _long_option(words, i, text, long, flags, opts) -> int:
+    """Records `--key[=value]` (text) in opts; returns the index after any separate value."""
+    key, eq, value = text[2:].partition("=")
+    if flags is not None and not eq and key not in long and key not in flags[1]:
+        raise _UnsureError
+    if not eq and key in long and i < len(words):
+        value, i = _plain(words[i]), i + 1
+    opts[key] = value
+    return i
+
+
+def _short_options(words, i, text, short, attached, known_short, opts) -> int:
+    """Records a `-abc` bundle (text) in opts; returns the index after any separate value."""
+    for j in range(1, len(text)):
+        letter = text[j]
+        if known_short is not None and letter not in known_short:
+            raise _UnsureError
+        if letter in attached or (letter in short and j + 1 < len(text)):
+            opts[letter] = text[j + 1 :]
+            return i
+        if letter in short:
+            if i < len(words):
+                opts[letter], i = _plain(words[i]), i + 1
+            return i
+        opts[letter] = ""
+    return i
+
+
+def _known_short(short, attached, flags) -> Optional[str]:
+    """Every short option letter, when `flags` is given; any other letter then fails closed."""
+    return None if flags is None else short + attached + flags[0]
+
+
 def _options(words, i, short, long, attached="", permute=False, stop=frozenset(), flags=None):
     opts = {}
-    known_short = None if flags is None else short + attached + flags[0]
+    known_short = _known_short(short, attached, flags)
     while i < len(words):
-        w = _plain(words[i]) if words[i][0].startswith("-") else words[i][0]
-        if w == "--":
+        text = _option_text(words[i])
+        if text == "--":
             return i + 1, opts
-        if len(w) < 2 or w[0] != "-":
+        if not _is_option(text):
             if not permute:
                 break
             _plain(words[i])
             i += 1
             continue
-        i += 1
-        if w.startswith("--"):
-            key, eq, value = w[2:].partition("=")
-            if flags is not None and not eq and key not in long and key not in flags[1]:
-                raise _UnsureError
-            if not eq and key in long and i < len(words):
-                value, i = _plain(words[i]), i + 1
-            opts[key] = value
-            if key in stop:
-                break
-            continue
-        for j in range(1, len(w)):
-            if known_short is not None and w[j] not in known_short:
-                raise _UnsureError
-            if w[j] in attached or (w[j] in short and j + 1 < len(w)):
-                opts[w[j]] = w[j + 1 :]
-                break
-            if w[j] in short:
-                if i < len(words):
-                    opts[w[j]], i = _plain(words[i]), i + 1
-                break
-            opts[w[j]] = ""
+        if text.startswith("--"):
+            i = _long_option(words, i + 1, text, long, flags, opts)
+        else:
+            i = _short_options(words, i + 1, text, short, attached, known_short, opts)
         if stop & opts.keys():
             break
     return i, opts
@@ -1490,54 +1514,66 @@ def normalise(command: str, cwd: str = "") -> Optional[List[str]]:
     return None if commands is None else render(commands, cwd)
 
 
-def render(
-    commands: List[SimpleCommand], cwd: str = "", overflow: Optional[list] = None, entries: Optional[List[int]] = None
-) -> Optional[List[str]]:
-    """Clean lines. A word that expands past the globbing limits stays as written and lands in `overflow`."""
-    rendered, inherited, budget = {}, {}, [OUTPUT_LIMIT]
-    entries, globbed = [MAX_ENTRIES] if entries is None else entries, {}
-    overflow = [] if overflow is None else overflow
+class _Renderer:
+    """One render pass: the output budget, glob results and inherited suffixes are shared by every line."""
 
-    def glob(pattern):
-        if pattern not in globbed:
-            globbed[pattern] = expand(pattern, entries, cwd)
-            if globbed[pattern] is None:
-                overflow.append(pattern)
-        return globbed[pattern]
+    def __init__(self, cwd: str, overflow: list, entries: List[int]):
+        self.cwd, self.overflow, self.entries = cwd, overflow, entries
+        self.rendered, self.inherited, self.globbed = {}, {}, {}
+        self.budget = OUTPUT_LIMIT
 
-    def spend(text):
-        budget[0] -= len(text)
-        if budget[0] < 0:
+    def glob(self, pattern):
+        if pattern not in self.globbed:
+            self.globbed[pattern] = expand(pattern, self.entries, self.cwd)
+            if self.globbed[pattern] is None:
+                self.overflow.append(pattern)
+        return self.globbed[pattern]
+
+    def spend(self, text):
+        self.budget -= len(text)
+        if self.budget < 0:
             raise _UnsureError
         return text
 
-    def pipeline(cmd):
+    def stage(self, stage):
+        text = " ".join([_base(stage.name) or stage.name] + [_word(a, self.glob) for a in stage.args])
+        text += _redirects(stage.redirects, glob=self.glob)
+        if stage.pipe_to is not None:
+            text = self.spend(text + " | " + self.rendered[id(stage.pipe_to)])
+        self.rendered[id(stage)] = text
+
+    def pipeline(self, cmd):
         chain = []
-        while cmd is not None and id(cmd) not in rendered:
+        while cmd is not None and id(cmd) not in self.rendered:
             chain.append(cmd)
             cmd = cmd.pipe_to
         # Tail-first so a long pipeline costs a loop, not a recursion per stage.
         for stage in reversed(chain):
-            text = " ".join([_base(stage.name) or stage.name] + [_word(a, glob) for a in stage.args])
-            text += _redirects(stage.redirects, glob=glob)
-            if stage.pipe_to is not None:
-                text = spend(text + " | " + rendered[id(stage.pipe_to)])
-            rendered[id(stage)] = text
-        return rendered[id(chain[0] if chain else cmd)]
+            self.stage(stage)
+        return self.rendered[id(chain[0] if chain else cmd)]
 
-    def suffix(cmd):
+    def suffix(self, cmd):
         key = (id(cmd.parent), cmd.feed)
-        if key not in inherited:
+        if key not in self.inherited:
             parent = cmd.parent
-            text = _redirects(parent.redirects, cmd.feed, glob)
+            text = _redirects(parent.redirects, cmd.feed, self.glob)
             if parent.pipe_to is not None:
-                text += " | " + pipeline(parent.pipe_to)
+                text += " | " + self.pipeline(parent.pipe_to)
             if parent.parent is not None:
-                text += suffix(parent)
-            inherited[key] = spend(text)
-        return inherited[key]
+                text += self.suffix(parent)
+            self.inherited[key] = self.spend(text)
+        return self.inherited[key]
 
+    def line(self, cmd):
+        return self.spend(self.pipeline(cmd) + (self.suffix(cmd) if cmd.parent is not None else ""))
+
+
+def render(
+    commands: List[SimpleCommand], cwd: str = "", overflow: Optional[list] = None, entries: Optional[List[int]] = None
+) -> Optional[List[str]]:
+    """Clean lines. A word that expands past the globbing limits stays as written and lands in `overflow`."""
+    renderer = _Renderer(cwd, [] if overflow is None else overflow, [MAX_ENTRIES] if entries is None else entries)
     try:
-        return [spend(pipeline(c) + (suffix(c) if c.parent is not None else "")) for c in commands]
+        return [renderer.line(c) for c in commands]
     except (_UnsureError, RecursionError):
         return None
