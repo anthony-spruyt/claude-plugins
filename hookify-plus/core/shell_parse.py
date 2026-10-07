@@ -7,6 +7,7 @@ so callers fall back to matching the raw command string.
 
 import re
 import shlex
+import sys
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -49,6 +50,7 @@ ANSI_SIMPLE = {
     '"': '"',
     "?": "?",
 }
+SURROGATES = range(0xD800, 0xE000)
 REDIRECT = re.compile(r"(\d*)(<<<|<<-|<<|<>|<&|>&|>>|>\||<|>)|&>>|&>", re.ASCII)
 PROC_SUB = re.compile(r"[<>]\(")
 DELIM = re.compile(r"(?=[ \t\n;&|()<>]|$)")
@@ -524,10 +526,10 @@ def _option_text(word: Tuple[str, int]) -> str:
 
 
 def _is_option(text: str) -> bool:
-    return len(text) >= 2 and text[0] == "-"
+    return len(text) > 1 and text[0] == "-"
 
 
-def _long_option(words, i, text, long, flags, opts) -> int:
+def _long_option(words, i, text, long, flags, opts) -> int:  # noqa: PLR0913, PLR0917  # _options state
     """Records `--key[=value]` (text) in opts; returns the index after any separate value."""
     key, eq, value = text[2:].partition("=")
     if flags is not None and not eq and key not in long and key not in flags[1]:
@@ -538,7 +540,7 @@ def _long_option(words, i, text, long, flags, opts) -> int:
     return i
 
 
-def _short_options(words, i, text, short, attached, known_short, opts) -> int:
+def _short_options(words, i, text, short, attached, known_short, opts) -> int:  # noqa: PLR0913, PLR0917  # _options state
     """Records a `-abc` bundle (text) in opts; returns the index after any separate value."""
     for j in range(1, len(text)):
         letter = text[j]
@@ -560,7 +562,7 @@ def _known_short(short, attached, flags) -> Optional[str]:
     return None if flags is None else short + attached + flags[0]
 
 
-def _options(words, i, short, long, attached="", permute=False, stop=frozenset(), flags=None):
+def _options(words, i, short, long, attached="", permute=False, stop=frozenset(), flags=None):  # noqa: PLR0913, PLR0917  # one getopt spec per caller
     opts = {}
     known_short = _known_short(short, attached, flags)
     while i < len(words):
@@ -644,6 +646,7 @@ def _split(text):
 
 
 ENV_CLEAN = ("ignore-environment", "help", "version")
+ENV_MIN_PREFIX = 3
 
 
 def _env_parts(words):
@@ -658,7 +661,11 @@ def _env_parts(words):
             stop=frozenset(["S", "split-string"]),
         )
         # GNU env accepts any unique prefix of a long option
-        clean = clean or "i" in opts or any(len(k) >= 3 and any(full.startswith(k) for full in ENV_CLEAN) for k in opts)
+        clean = (
+            clean
+            or "i" in opts
+            or any(len(k) >= ENV_MIN_PREFIX and any(full.startswith(k) for full in ENV_CLEAN) for k in opts)
+        )
         text = opts.get("S", opts.get("split-string"))
         if text is None:
             break
@@ -772,36 +779,81 @@ def _inner(words):
     return None
 
 
+def _permuted(name, opts):
+    code = opts.get("c", opts.get("command", opts.get("session-command")))
+    if code is None:
+        return STDIN if name == "su" else None
+    return "code", code
+
+
+def _check_xargs_placeholder(words, i, opts) -> None:
+    placeholder = opts.get("I", opts.get("replace", "{}" if "i" in opts else None))
+    if placeholder and i < len(words) and placeholder in words[i][0]:
+        raise _UnsureError
+
+
+def _skip_assignments(words, i) -> int:
+    while i < len(words) and ASSIGN.match(words[i][0]):
+        _plain(words[i])
+        i += 1
+    return i
+
+
+def _ssh_command(words, i, _opts):
+    short, long = WRAPPERS["ssh"][:2]
+    return _code(words, _options(words, i, short, long)[0])
+
+
+def _watch_command(words, i, opts):
+    if "x" in opts or "exec" in opts:
+        return _wrapped(words, i)
+    return _code(words, i)
+
+
+def _flock_command(words, i, _opts):
+    if i + 1 < len(words) and words[i][0] in ("-c", "--command"):
+        return "code", _plain(words[i + 1])
+    return _wrapped(words, i)
+
+
+def _chroot_command(words, i, _opts):
+    return STDIN if i >= len(words) else _wrapped(words, i)
+
+
+def _sudo_command(words, i, opts):
+    if i >= len(words) and SHELL_OPTS & opts.keys():
+        return STDIN
+    return _wrapped(words, i)
+
+
+def _plain_command(words, i, _opts):
+    return _wrapped(words, i)
+
+
+WRAPPED_COMMANDS = {
+    "ssh": _ssh_command,
+    "watch": _watch_command,
+    "flock": _flock_command,
+    "chroot": _chroot_command,
+    "sudo": _sudo_command,
+    "doas": _sudo_command,
+}
+
+
 def _wrapper(name, words):
     short, long, attached, operands = WRAPPERS[name]
     i, opts = _options(words, 1, short, long, attached, name in PERMUTE)
     if name in PERMUTE:
-        code = opts.get("c", opts.get("command", opts.get("session-command")))
-        if code is None:
-            return STDIN if name == "su" else None
-        return "code", code
+        return _permuted(name, opts)
     if name == "command" and ("v" in opts or "V" in opts):
         return None
     if name == "xargs":
-        placeholder = opts.get("I", opts.get("replace", "{}" if "i" in opts else None))
-        if placeholder and i < len(words) and placeholder in words[i][0]:
-            raise _UnsureError
+        _check_xargs_placeholder(words, i, opts)
     if name == "sudo":
-        while i < len(words) and ASSIGN.match(words[i][0]):
-            _plain(words[i])
-            i += 1
+        i = _skip_assignments(words, i)
     for word in words[i : i + operands]:
         _plain(word)
-    i += operands
-    if name == "ssh":
-        return _code(words, _options(words, i, short, long)[0])
-    if name == "watch" and "x" not in opts and "exec" not in opts:
-        return _code(words, i)
-    if name == "flock" and i + 1 < len(words) and words[i][0] in ("-c", "--command"):
-        return "code", _plain(words[i + 1])
-    if i >= len(words) and (name == "chroot" or (SHELL_OPTS & opts.keys() and name in ("sudo", "doas"))):
-        return STDIN
-    return _wrapped(words, i)
+    return WRAPPED_COMMANDS.get(name, _plain_command)(words, i + operands, opts)
 
 
 HANDLERS = dict(dict.fromkeys(SHELLS, _shell), eval=_eval, env=_env, runuser=_runuser, sg=_sg)
@@ -818,13 +870,13 @@ def _ansi_escape(m) -> str:
     else:
         raise _UnsureError
     # NUL truncates the word in bash; surrogates and > U+10FFFF are not text
-    if value == 0 or 0xD800 <= value < 0xE000 or value > 0x10FFFF:
+    if value == 0 or value in SURROGATES or value > sys.maxunicode:
         raise _UnsureError
     return chr(value)
 
 
 class _Parser:
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917  # mirrors _run
         self,
         s: str,
         out: list,
@@ -883,43 +935,60 @@ class _Parser:
                 self.i = m.end()
                 continue
             c, start = s[self.i], len(buf)
-            if c in "<>" and s.startswith("(", self.i + 1):
-                flags |= self.nested(buf, 2)
-            elif c in " \t\n;&|()<>":
+            if c in " \t\n;&|()<>" and not (c in "<>" and s.startswith("(", self.i + 1)):
                 break
-            elif c == "'":
-                end = s.find("'", self.i + 1)
-                if end < 0:
-                    raise _UnsureError
-                buf.append(s[self.i + 1 : end])
-                self.i, flags = end + 1, flags | QUOTED
-            elif c == '"' or self.at('$"'):
-                self.i += 1 if c == '"' else 2
-                flags |= QUOTED | self.double_quoted(buf)
-            elif self.at("$'"):
-                buf.append(self.ansi_c())
-                flags |= QUOTED
-            elif c == "$":
-                flags |= self.dollar(buf, False)
-            elif c == "`":
-                flags |= self.backtick(buf, False)
-            elif c == "\\":
-                nxt = s[self.i + 1 : self.i + 2]
-                if not nxt:
-                    raise _UnsureError
-                if nxt != "\n":
-                    buf.append(nxt)
-                self.i, flags = self.i + 2, flags | QUOTED
-            else:
+            piece = self.word_piece(c, buf)
+            if piece is None:
                 buf.append(c)
                 pattern.append(c)
                 self.i, flags = self.i + 1, flags | GLOB
                 continue
+            flags |= piece
             pattern.append(GLOB_SPECIAL.sub(BACKSLASH_MATCH, "".join(buf[start:])))
         text = _word_text(buf)
         if flags & GLOB and not flags & EXPANDED:
             text = _glob_word(text, "".join(pattern))
         return text, flags
+
+    def word_piece(self, c: str, buf: List[str]) -> Optional[int]:
+        """Appends the quoted or expanded piece starting with c and returns its flags; None for a glob character."""
+        if c in "<>":
+            return self.nested(buf, 2)
+        if c == "'":
+            return self.single_quoted(buf)
+        if c in '"$':
+            return self.dollar_word(c, buf)
+        if c == "`":
+            return self.backtick(buf, False)
+        if c == "\\":
+            return self.escaped(buf)
+        return None
+
+    def single_quoted(self, buf: List[str]) -> int:
+        end = self.s.find("'", self.i + 1)
+        if end < 0:
+            raise _UnsureError
+        buf.append(self.s[self.i + 1 : end])
+        self.i = end + 1
+        return QUOTED
+
+    def dollar_word(self, c: str, buf: List[str]) -> int:
+        if c == '"' or self.at('$"'):
+            self.i += 1 if c == '"' else 2
+            return QUOTED | self.double_quoted(buf)
+        if self.at("$'"):
+            buf.append(self.ansi_c())
+            return QUOTED
+        return self.dollar(buf, False)
+
+    def escaped(self, buf: List[str]) -> int:
+        nxt = self.s[self.i + 1 : self.i + 2]
+        if not nxt:
+            raise _UnsureError
+        if nxt != "\n":
+            buf.append(nxt)
+        self.i += 2
+        return QUOTED
 
     def double_quoted(self, buf: List[str], closing: bool = True) -> int:
         s, flags = self.s, 0
@@ -1048,29 +1117,10 @@ class _Parser:
     def simple_command(self) -> Optional[SimpleCommand]:
         slot = len(self.out)
         self.out.append(None)
-        s, words, redirects, assigned = self.s, [], [], False
-        while True:
-            self.blank()
-            if self.i >= len(s):
-                break
-            proc = PROC_SUB.match(s, self.i)
-            if not proc and self.redirect(redirects):
-                continue
-            if s[self.i] in "\n;&|()" or (s[self.i] in "<>" and not proc):
-                break
-            m = ASSIGN.match(s, self.i) if not words else None
-            if m:
-                self.i, assigned = m.end(), True
-                self.array() if self.at("(") else self.word()
-            else:
-                words.append(self.word())
+        words, redirects, assigned = self.command_words()
         if not words:
-            if not (assigned or redirects):
-                raise _UnsureError
-            # bash runs `$(< file)` as `cat file`
-            if self.subst and not assigned and any(r[0] in ("<", "0<") for r in redirects):
-                words = [("cat", 0)]
-            else:
+            words = self.wordless(assigned, redirects)
+            if words is None:
                 return None
         name, flags = words[0]
         if flags & EXPANDED or (flags & GLOB and name != "[" and _globbing(name)):
@@ -1081,15 +1131,53 @@ class _Parser:
             cmd.parent, cmd.feed = self.parent, self.fed_by
         self.words[id(cmd)] = words
         self.find_actions(cmd, words, self.depth)
-        reader = self.analyse(cmd, words, self.depth) if _base(name) in INNER else None
-        if reader:
-            redirect = _stdin_redirect(cmd)
-            if redirect is None:
-                self.readers[id(cmd)] = reader
-                self.registered += 1
-            elif id(redirect) in self.heredocs:
-                self.feed(self.heredocs[id(redirect)], reader, redirect)
+        if _base(name) in INNER:
+            self.register_reader(cmd, words)
         return cmd
+
+    def command_words(self) -> Tuple[list, List[Tuple[str, str]], bool]:
+        """(words, redirects, whether any assignment came first) up to the end of the simple command."""
+        s, words, redirects, assigned = self.s, [], [], False
+        while True:
+            self.blank()
+            if self.i >= len(s):
+                break
+            proc = PROC_SUB.match(s, self.i)
+            if not proc and self.redirect(redirects):
+                continue
+            if s[self.i] in "\n;&|()" or (s[self.i] in "<>" and not proc):
+                break
+            assigned = self.command_word(words) or assigned
+        return words, redirects, assigned
+
+    def command_word(self, words: list) -> bool:
+        """Reads the next word into words, or skips an assignment before the first; True for an assignment."""
+        m = None if words else ASSIGN.match(self.s, self.i)
+        if not m:
+            words.append(self.word())
+            return False
+        self.i = m.end()
+        self.array() if self.at("(") else self.word()
+        return True
+
+    def wordless(self, assigned: bool, redirects: List[Tuple[str, str]]) -> Optional[list]:
+        if not (assigned or redirects):
+            raise _UnsureError
+        # bash runs `$(< file)` as `cat file`
+        if self.subst and not assigned and any(r[0] in ("<", "0<") for r in redirects):
+            return [("cat", 0)]
+        return None
+
+    def register_reader(self, cmd: SimpleCommand, words) -> None:
+        reader = self.analyse(cmd, words, self.depth)
+        if not reader:
+            return
+        redirect = _stdin_redirect(cmd)
+        if redirect is None:
+            self.readers[id(cmd)] = reader
+            self.registered += 1
+        elif id(redirect) in self.heredocs:
+            self.feed(self.heredocs[id(redirect)], reader, redirect)
 
     def analyse(self, cmd: SimpleCommand, words, depth: int) -> Optional[SimpleCommand]:
         result = _inner(words)
@@ -1256,28 +1344,32 @@ class _Parser:
         if self.at("("):
             self.i += 1
             return self.group(self.compound, frozenset(")"))
+        word = self.keyword()
+        while word in ("!", "time"):
+            self.blank()
+            if word == "time":
+                self.time_options()
+            word = self.keyword()
+            if not word and self.at("("):
+                return self.command()
+        return self.keyword_command(word)
+
+    def keyword(self) -> Optional[str]:
         m = RESERVED.match(self.s, self.i)
         word = m.group() if m and m.group() in KEYWORDS else None
         if word in UNSUPPORTED or word in TERMINATORS:
             raise _UnsureError
         if word:
             self.i = m.end()
-        while word in ("!", "time"):
-            self.blank()
-            if word == "time" and self.at("-p") and DELIM.match(self.s, self.i + 2):
+        return word
+
+    def time_options(self) -> None:
+        for option in ("-p", "--"):
+            if self.at(option) and DELIM.match(self.s, self.i + 2):
                 self.i += 2
                 self.blank()
-            if word == "time" and self.at("--") and DELIM.match(self.s, self.i + 2):
-                self.i += 2
-                self.blank()
-            m = RESERVED.match(self.s, self.i)
-            word = m.group() if m and m.group() in KEYWORDS else None
-            if word in UNSUPPORTED or word in TERMINATORS:
-                raise _UnsureError
-            if word:
-                self.i = m.end()
-            elif self.at("("):
-                return self.command()
+
+    def keyword_command(self, word: Optional[str]) -> Optional[SimpleCommand]:
         if word == "{":
             return self.group(self.compound, frozenset("}"))
         if word == "if":
@@ -1450,7 +1542,7 @@ class _Parser:
                 raise _UnsureError
 
 
-def _run(
+def _run(  # noqa: PLR0913, PLR0917  # parser state passed down each nested parse
     text: str,
     out: list,
     depth: int,

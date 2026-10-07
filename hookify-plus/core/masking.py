@@ -36,7 +36,7 @@ class Spec:
         return kind, 0
 
 
-def _spec(message, stdin, value="", boolean="", positionals=0, short_cluster=""):
+def _spec(message, stdin, value="", boolean="", positionals=0, short_cluster=""):  # noqa: PLR0913, PLR0917  # mirrors Spec, keeps the SPECS table terse
     return Spec(
         frozenset(message.split()),
         frozenset(stdin.split()),
@@ -47,6 +47,7 @@ def _spec(message, stdin, value="", boolean="", positionals=0, short_cluster="")
     )
 
 
+GH_COMMAND_WORDS = 3
 GH_REPO = "-R --repo "
 TITLE_BODY = "-t --title -b --body"
 BODY = "-b --body"
@@ -286,8 +287,8 @@ def _message_spec(words: List[str]) -> Tuple[Optional[Spec], int]:
         k = 3 if words[1:2] == ["-C"] else 1
         if len(words) > k:
             return SPECS.get(("git", words[k])), k + 1
-    if words[:1] == ["gh"] and len(words) > 2:
-        return SPECS.get(("gh", words[1], words[2])), 3
+    if words[:1] == ["gh"] and len(words) >= GH_COMMAND_WORDS:
+        return SPECS.get(("gh", words[1], words[2])), GH_COMMAND_WORDS
     return None, 0
 
 

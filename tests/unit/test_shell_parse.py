@@ -24,6 +24,18 @@ def names(command):
     return [name for name, _ in pairs(command)]
 
 
+class TestAnsiEscapeRange:
+    @pytest.mark.parametrize("code", ["\\ud800", "\\udfff", "\\U00110000"])
+    def test_non_text_code_point_is_unsure(self, code):
+        assert normalise(f"echo $'{code}'") is None
+
+    @pytest.mark.parametrize(
+        ("code", "char"), [("\\ud7ff", "\ud7ff"), ("\\ue000", "\ue000"), ("\\U0010FFFF", "\U0010ffff")]
+    )
+    def test_edge_of_text_range_decodes(self, code, char):
+        assert normalise(f"echo $'{code}'") == [f"echo {char}"]
+
+
 class TestQuoteRemoval:
     @pytest.mark.parametrize(
         "command",
