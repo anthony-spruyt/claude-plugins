@@ -96,7 +96,7 @@ def _stdin_op(op: str) -> str:
     return op.lstrip("0123456789")
 
 
-def _runs_hidden_code(cmd: SimpleCommand) -> bool:
+def _runs_hidden_code(cmd: SimpleCommand) -> bool:  # noqa: PLR0911  # one early return per independent check
     name = _name(cmd)
     if name in CODE_BUILTINS or name in RUNNERS or "{}" in cmd.name:
         return True
@@ -156,7 +156,7 @@ def _saves(cmd: SimpleCommand) -> bool:
     return False
 
 
-def opaque(command: str, commands: List[SimpleCommand], functions=()) -> bool:
+def opaque(command: str, commands: List[SimpleCommand], functions=()) -> bool:  # noqa: PLR0911  # one early return per independent check
     if functions or CODE_VAR.search(command):
         return True
     # Heredoc text can be saved and run later; the parser only reads it when a shell runs it now

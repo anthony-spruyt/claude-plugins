@@ -2,10 +2,13 @@
 extend = "ruff-base.toml"
 target-version = "py38"
 
+[tool.ruff.lint]
+extend-select = ["PLR"]
+
 [tool.ruff.lint.per-file-ignores]
 # E402: imports follow the sys.path bootstrap; BLE001: a hook must exit cleanly whatever fails
 "hookify-plus/hooks/*.py" = ["BLE001", "E402"]
-"tests/**/*.py" = ["E402"]
+"tests/**/*.py" = ["E402", "PLR2004"] # PLR2004: expected values in assertions read better inline
 
 [tool.ruff.lint.isort]
 known-first-party = ["core", "hooks", "tests"]

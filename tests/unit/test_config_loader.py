@@ -10,7 +10,13 @@ import pytest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
-from core.config_loader import _get_global_rules, _get_plugin_rules, _get_project_rules, discover_rule_files
+from core.config_loader import (
+    _get_global_rules,
+    _get_plugin_rules,
+    _get_project_rules,
+    discover_rule_files,
+    load_rules,
+)
 
 DEAD_PID = 2**31 - 1
 
@@ -254,3 +260,24 @@ class TestDiscoverRuleFiles:
 
         result = discover_rule_files()
         assert len(result) == 3
+
+
+class TestLoadRulesEventFilter:
+    @pytest.mark.parametrize(
+        ("event", "expected"),
+        [
+            ("bash", ["all-rule", "bash-rule"]),
+            ("file", ["all-rule", "file-rule"]),
+            (None, ["all-rule", "bash-rule", "file-rule"]),
+        ],
+    )
+    def test_keeps_rules_for_the_event_and_for_all(self, tmp_path, monkeypatch, event, expected):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+        rule_dir = tmp_path / ".claude" / "hookify-plus"
+        rule_dir.mkdir(parents=True)
+        for name in ("all", "bash", "file"):
+            (rule_dir / f"{name}.md").write_text(f"---\nname: {name}-rule\nenabled: true\nevent: {name}\n---\nmsg")
+
+        assert sorted(r.name for r in load_rules(event)) == expected

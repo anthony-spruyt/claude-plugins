@@ -148,6 +148,9 @@ def _inline_dict(item_text: str) -> dict[str, str] | None:
     return {k.strip(): _unquote(v) for k, v in pairs}
 
 
+LIST_ITEM_INDENT = 2
+
+
 class _FrontmatterParser:
     """Line-at-a-time parser for the frontmatter subset rules use: scalars, and lists of scalars or dicts."""
 
@@ -168,7 +171,7 @@ class _FrontmatterParser:
             self._top_level_key(line)
         elif stripped.startswith("-") and self.in_list:
             self._list_item(stripped[1:].strip())
-        elif indent > 2 and self.in_item and ":" in line:
+        elif indent > LIST_ITEM_INDENT and self.in_item and ":" in line:
             k, v = stripped.split(":", 1)
             self.item[k.strip()] = _unquote(v)
 
@@ -376,7 +379,7 @@ def load_rules(event: str | None = None) -> list[Rule]:
             rule = load_rule_file(file_path)
             if not rule:
                 continue
-            if event and rule.event != "all" and rule.event != event:
+            if event and rule.event not in ("all", event):
                 continue
             if rule.enabled:
                 rules.append(rule)
