@@ -16,34 +16,20 @@ jobs:
       actions: "read"
       contents: "read"
       security-events: "write"
-    uses: "anthony-spruyt/repo-operator/.github/workflows/_lint.yaml@7bf816527b748801f0ac22002211ecdd00c2f64c" # main
-  test:
-    runs-on: "ubuntu-latest"
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_lint.yaml@b5ea71d349323dc58c83a432fff57f2d2bf1b39f"
+  repo:
+    needs:
+      - "lint"
     permissions:
       contents: "read"
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        with:
-          egress-policy: audit
-      - uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7
-      - uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" # v7
-        with:
-          python-version: "3.14"
-      - name: "Install Python dependencies"
-        run: "pip install pytest pyyaml"
-      - name: "Run unit tests"
-        run: "python -m pytest tests/unit/ -v"
-      - name: "Install bats"
-        run: "sudo apt-get update -qq && sudo apt-get install -y -qq bats bats-support bats-assert"
-      - name: "Run integration tests"
-        run: "bats tests/hooks/ -t"
+    uses: "./.github/workflows/ci-repo.yaml"
+    secrets: "inherit"
   summary:
     needs:
       - "lint"
-      - "test"
+      - "repo"
     if: "always()"
     permissions:
       actions: "read"
       contents: "read"
-    uses: "anthony-spruyt/repo-operator/.github/workflows/_summary.yaml@7bf816527b748801f0ac22002211ecdd00c2f64c" # main
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_summary.yaml@b5ea71d349323dc58c83a432fff57f2d2bf1b39f"
