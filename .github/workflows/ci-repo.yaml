@@ -6,9 +6,24 @@ on:
   workflow_call: {}
 permissions: {}
 jobs:
-  no-repo-jobs:
-    name: "No repo jobs yet"
-    if: "github.event_name == 'never'"
+  test:
     runs-on: "ubuntu-latest"
+    permissions:
+      contents: "read"
     steps:
-      - run: "true"
+      - name: "Harden Runner"
+        uses: "step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25" # v2.22.1
+        with:
+          egress-policy: "audit"
+      - uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7
+      - uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" # v7
+        with:
+          python-version: "3.14"
+      - name: "Install Python dependencies"
+        run: "pip install --require-hashes --only-binary :all: -r .github/ci-requirements.txt"
+      - name: "Run unit tests"
+        run: "python -m pytest tests/unit/ -v"
+      - name: "Install bats"
+        run: "sudo apt-get update -qq && sudo apt-get install -y -qq bats bats-support bats-assert"
+      - name: "Run integration tests"
+        run: "bats tests/hooks/ -t"
