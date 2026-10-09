@@ -16,7 +16,7 @@ jobs:
       actions: "read"
       contents: "read"
       security-events: "write"
-    uses: "anthony-spruyt/repo-operator/.github/workflows/_lint.yaml@c2d153bb417df2c6e65602b595e2204a0704b2a5"
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_lint.yaml@f08d5279c60ec8f1ab8d611aedc2dca995a99ab6"
   repo:
     needs:
       - "lint"
@@ -31,7 +31,7 @@ jobs:
     if: "!cancelled() && needs.lint.result == 'success' && (needs.repo.result == 'success' || needs.repo.result == 'skipped')"
     permissions:
       contents: "read"
-    uses: "anthony-spruyt/repo-operator/.github/workflows/_images.yaml@c2d153bb417df2c6e65602b595e2204a0704b2a5"
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_images.yaml@f08d5279c60ec8f1ab8d611aedc2dca995a99ab6"
   summary:
     needs:
       - "lint"
@@ -41,4 +41,4 @@ jobs:
     permissions:
       actions: "read"
       contents: "read"
-    uses: "anthony-spruyt/repo-operator/.github/workflows/_summary.yaml@c2d153bb417df2c6e65602b595e2204a0704b2a5"
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_summary.yaml@f08d5279c60ec8f1ab8d611aedc2dca995a99ab6"
