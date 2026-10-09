@@ -24,10 +24,18 @@ jobs:
       contents: "read"
     uses: "./.github/workflows/ci-repo.yaml"
     secrets: "inherit"
+  image:
+    needs:
+      - "lint"
+      - "repo"
+    permissions:
+      contents: "read"
+    uses: "anthony-spruyt/repo-operator/.github/workflows/_images.yaml@3db5809188b3d53d9e5d06d02f69a440fb370271"
   summary:
     needs:
       - "lint"
       - "repo"
+      - "image"
     if: "always()"
     permissions:
       actions: "read"
