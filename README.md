@@ -9,6 +9,7 @@ Plugin monorepo for Claude Code by [@anthony-spruyt](https://github.com/anthony-
 | [hookify-plus](./hookify-plus/)     | Rule engine with convention-based discovery  |
 | [security-hooks](./security-hooks/) | 32 blocking rules preventing secret exposure |
 | [best-practices](./best-practices/) | 4 warning rules for better tool usage        |
+| [agent-kit](./agent-kit/)           | Progress notes, agent helper scripts, skills |
 
 ## Installation
 

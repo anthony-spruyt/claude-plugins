@@ -1,0 +1,10 @@
+{
+  "name": "agent-kit",
+  "version": "1.0.0",
+  "description": "Progress notes that survive compaction for the main session and builder subagents, workspace/push/CI helper scripts on PATH, and the writing-agents skill",
+  "author": {
+    "name": "anthony-spruyt"
+  },
+  "repository": "https://github.com/anthony-spruyt/claude-plugins",
+  "license": "MIT"
+}
