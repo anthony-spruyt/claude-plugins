@@ -3,7 +3,8 @@
 Progress notes that survive compaction for the main session and builder subagents, helper scripts on the Bash `PATH`, and the `writing-agents` skill.
 
 ```bash
-/plugin install agent-kit --marketplace anthony-spruyt/claude-plugins
+/plugin marketplace add anthony-spruyt/claude-plugins
+/plugin install agent-kit@aspruyt-plugins
 ```
 
 ## Progress notes

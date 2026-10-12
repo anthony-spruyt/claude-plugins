@@ -28,15 +28,14 @@ MARKETPLACE="${REPO_ROOT}/.claude-plugin/marketplace.json"
   done
 }
 
-@test "SessionStart is not fired for compact" {
-  matcher=$(jq -r '.hooks.SessionStart[0].matcher' "${PLUGIN}/hooks/hooks.json")
-  [[ "${matcher}" != *compact* ]]
+@test "SessionStart fires only for startup, resume, clear and fork" {
+  [ "$(jq -r '.hooks.SessionStart[0].matcher' "${PLUGIN}/hooks/hooks.json")" = "startup|resume|clear|fork" ]
 }
 
-@test "the shipped scripts are executable and resolve by bare name from the plugin bin" {
+@test "the shipped scripts are executable and resolve by bare name with the plugin bin after the user's PATH" {
   for s in workspace.sh push-reviewed.sh ci-status.sh; do
     [ -x "${PLUGIN}/bin/${s}" ]
-    [ "$(PATH="${PLUGIN}/bin:${PATH}" bash -c "command -v ${s}")" = "${PLUGIN}/bin/${s}" ]
+    [ "$(PATH="${PATH}:${PLUGIN}/bin" bash -c "command -v ${s}")" = "${PLUGIN}/bin/${s}" ]
   done
   [ -x "${PLUGIN}/scripts/progress.sh" ]
 }
@@ -44,7 +43,7 @@ MARKETPLACE="${REPO_ROOT}/.claude-plugin/marketplace.json"
 @test "the writing-agents skill ships and names nothing from one repo" {
   [ -f "${PLUGIN}/skills/writing-agents/SKILL.md" ]
   [ "$(sed -n 's/^name: //p' "${PLUGIN}/skills/writing-agents/SKILL.md")" = "writing-agents" ]
-  ! grep -rn "builders use \`workspace.sh\`" "${PLUGIN}/skills"
-  ! grep -rn "qa-validator, etcd-maintenance" "${PLUGIN}/skills"
+  run grep -rniE "for this project|this project|this harness|auto memory|n8n|spruyt|cluster|flux|renovate|talos|etcd|qa-validator|cluster-validator|chore-runner|renovate-pr-analyzer|workspace\.sh|\.claude/scripts" "${PLUGIN}/skills"
+  [ "${status}" -eq 1 ]
   grep -q "Plugin agents" "${PLUGIN}/skills/writing-agents/references/agent-frontmatter.md"
 }

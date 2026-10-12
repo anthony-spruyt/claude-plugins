@@ -15,18 +15,18 @@ project=${CLAUDE_PROJECT_DIR:-}
 [[ -n "$project" ]] || exit 0
 plugin_root=${BASH_SOURCE[0]%/*}/..
 
-field() {
-  local key=$1
-  jq -r --arg k "$key" 'if type == "object" then (.[$k] // empty | tostring) else empty end' <<<"$input"
-  return 0
-}
-
-session_id=$(field session_id)
-agent_id=$(field agent_id)
-agent_type=$(field agent_type)
-transcript=$(field transcript_path)
-cwd=$(field cwd)
-source_=$(field source)
+# The x prefix keeps read from collapsing empty fields; fields holding a tab or newline are dropped
+fields=$(jq -r 'if type == "object" then . as $o
+  | ["session_id", "agent_id", "agent_type", "transcript_path", "cwd", "source"]
+  | map(($o[.] // "") | if type == "string" and test("[\t\n\r]") then "" else tostring end | "x" + .)
+  | join("\t") else empty end' <<<"$input")
+IFS=$'\t' read -r session_id agent_id agent_type transcript cwd source_ <<<"$fields"
+session_id=${session_id#x}
+agent_id=${agent_id#x}
+agent_type=${agent_type#x}
+transcript=${transcript#x}
+cwd=${cwd#x}
+source_=${source_#x}
 
 case "$event" in
 SessionStart | SessionEnd) scope=main ;;
@@ -64,6 +64,7 @@ fi
 dir="$project/.agent-progress"
 state="$dir/$key.state"
 [[ ! -L "$dir" && ! -L "$state" ]] || exit 0
+[[ ! -e "$state" || -f "$state" ]] || exit 0
 
 drop_claims() {
   local f
@@ -130,10 +131,10 @@ resolve_main() {
   [[ ! -L "$rdir" && ! -L "$file" ]] || return 1
   notes=$file
   # Notes written in the project checkout before cwd moved to another checkout
-  if [[ ! -s "$file" ]]; then
+  if ! usable_notes "$file"; then
     top=$(git -C "$project" rev-parse --show-toplevel || true)
     alt="$top/.agent-progress/$session_id.md"
-    if [[ -n "$top" && "$top" != "$root" && ! -L "$top/.agent-progress" && ! -L "$alt" && -s "$alt" ]]; then
+    if [[ -n "$top" && "$top" != "$root" && ! -L "$top/.agent-progress" && ! -L "$alt" ]] && usable_notes "$alt"; then
       notes=$alt
     fi
   fi
@@ -147,18 +148,21 @@ load_main_paths() {
 }
 
 save_state() {
-  local seen=$1
+  local seen=$1 tmp
+  tmp=$(mktemp "$dir/$key.state.XXXXXX") || return 1
   if [[ "$scope" == main ]]; then
-    printf '%s\n%s\n%s\n' "$seen" "$notes" "$file" >"$state"
+    printf '%s\n%s\n%s\n' "$seen" "$notes" "$file" >"$tmp"
   else
-    printf '%s\n' "$seen" >"$state"
-  fi
-  return $?
+    printf '%s\n' "$seen" >"$tmp"
+  fi || { rm -f -- "$tmp"; return 1; }
+  mv -f -- "$tmp" "$state" || { rm -f -- "$tmp"; return 1; }
+  return 0
 }
 
 # Parallel calls race: one claims each count by exclusive create (mkdir is not atomic on virtiofs)
 claim() {
   local n=$1
+  [[ ! -e "$dir/$key.claim-$n" && ! -L "$dir/$key.claim-$n" ]] || return 1
   (
     set -C
     : >"$dir/$key.claim-$n"
@@ -166,13 +170,19 @@ claim() {
   return $?
 }
 
+usable_notes() {
+  local f=$1
+  [[ -f "$f" && ! -L "$f" && -s "$f" ]] || return 1
+  [[ "$(stat -c %h -- "$f")" == 1 ]] || return 1
+  return 0
+}
+
 # shellcheck disable=SC2016
 RULE='Progress notes rule: keep notes for any task with more than one step; skip one-shot edits and questions. Keep the file under 100 lines. Put the goal and issue on the first line, then what is done with commit SHAs, the exact next step, decisions and why, dead ends, and commands and gotchas that matter. Update it after each commit and before you stop. Delete the file when the task is done; keep it when you are blocked or unfinished. If your brief or the owner names an earlier notes file, read it first and delete it when you finish. To find earlier notes, run `ls -t` on the notes folder and pick the file whose goal matches your task; ignore any file git tracks there. The notes are working memory; git log is the source of truth.'
 
-# header, then the rule, then the notes cut so the whole stays under CAP
 emit() {
   local ev=$1 ctx="$2"$'\n\n'"$RULE" body="" marker size room
-  if [[ -f "$notes" && -s "$notes" ]]; then
+  if usable_notes "$notes"; then
     marker=$'\n\n'"[truncated - read the rest of $notes]"
     size=$(wc -c <"$notes")
     room=$((CAP - ${#ctx} - 2))
@@ -200,27 +210,27 @@ where() {
 
 start_message() {
   if [[ "$scope" == main ]]; then
-    if [[ -s "$notes" ]]; then
+    if usable_notes "$notes"; then
       printf 'Progress notes for this session are in %s. Check them against git log before acting on them.' "$(where)"
     else
       printf 'Keep progress notes for this session in %s (none written yet).' "$file"
     fi
-  elif [[ -s "$notes" ]]; then
+  elif usable_notes "$notes"; then
     printf 'Your progress notes already exist in %s. Read them, check them against git log before acting, and keep them current after each commit.' "$notes"
   else
-    printf 'Your progress notes file is %s (none written yet). Notes are required: write it as soon as workspace.sh prints your path (goal and issue, workspace path), then update it after each commit.' "$notes"
+    printf 'Your progress notes file is %s (none written yet). Start it as soon as you start (goal and issue), unless the task is a one-step job the rule lets you skip, and update it after each commit.' "$notes"
   fi
   return 0
 }
 
 compact_message() {
   if [[ "$scope" == main ]]; then
-    if [[ -s "$notes" ]]; then
+    if usable_notes "$notes"; then
       printf 'Your context was compacted. Your progress notes for this session are in %s. Check them against git log before acting on them.' "$(where)"
     else
       printf 'Your context was compacted. Keep progress notes for this session in %s (none written yet).' "$file"
     fi
-  elif [[ -s "$notes" ]]; then
+  elif usable_notes "$notes"; then
     printf 'Your context was compacted. Your progress notes are in %s. Check them against git log before acting on them.' "$notes"
   else
     printf 'Your context was compacted. Your progress notes file is %s (none written yet).' "$notes"
@@ -237,7 +247,6 @@ fi
 
 count=$(count_boundaries "$(transcript_file)")
 
-# First sight of a conversation: session start, subagent start, or a tool call with no saved state
 begin() {
   local ev=$1
   make_dir || exit 0

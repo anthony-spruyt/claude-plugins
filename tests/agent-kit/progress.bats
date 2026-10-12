@@ -393,8 +393,16 @@ no_files() {
   assert_injected "${SUB_NOTES}"
   [[ "$(context)" == *"none written yet"* ]]
   [[ "$(context)" == *"more than one step"* ]]
-  [[ "$(context)" == *"workspace.sh"* ]]
+  [[ "$(context)" == *"as soon as you start"* ]]
   [[ "$(context)" == *"after each commit"* ]]
+}
+
+@test "the subagent start text names no tool and leaves the one-step skip to the rule" {
+  sub_start
+  text=$(context)
+  [[ "${text}" != *"workspace.sh"* ]]
+  [[ "${text}" != *"Notes are required"* ]]
+  [[ "${text}" == *"one-step"* ]]
 }
 
 @test "agents that are not listed get nothing and write nothing" {
@@ -817,6 +825,68 @@ no_files() {
   compact_main
   main_pre
   [[ "$(context)" != *"SECRET"* ]]
+}
+
+@test "the hook payload is parsed with one jq call" {
+  mkdir -p "${TMP}/spy"
+  printf '#!/bin/bash\necho call >>"%s/jq.log"\nexec %s "$@"\n' "${TMP}" "$(command -v jq)" >"${TMP}/spy/jq"
+  chmod +x "${TMP}/spy/jq"
+  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" SessionStart <<<"$(main_in SessionStart startup)"
+  [ "${status}" -eq 0 ]
+  [ "$(wc -l <"${TMP}/jq.log")" -le 2 ]
+  [ "$(context)" != "" ]
+}
+
+@test "payload fields stay in place when earlier ones are empty" {
+  mkdir -p "${TMP}/wt-parent"
+  git -C "${CLAUDE_PROJECT_DIR}" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+  git -C "${CLAUDE_PROJECT_DIR}" worktree add -q "${TMP}/wt-parent/wt"
+  CWD="${TMP}/wt-parent/wt"
+  start startup
+  assert_injected "${TMP}/wt-parent/wt/.agent-progress/${SID}.md"
+}
+
+@test "a state file that is not a regular file is silent and never read" {
+  mkdir -p "${DIR}"
+  mkfifo "${DIR}/${SID}.state"
+  run --separate-stderr timeout 5 bash "${SCRIPT}" PreToolUse <<<"$(main_in PreToolUse)"
+  assert_silent
+  mkfifo "${DIR}/agent-${AGENT}.state"
+  run --separate-stderr timeout 5 bash "${SCRIPT}" PreToolUse <<<"$(sub_in PreToolUse "${AGENT}")"
+  assert_silent
+}
+
+@test "a claim file that is not a regular file does not stall the hook" {
+  mkdir -p "${DIR}"
+  mkfifo "${DIR}/${SID}.claim-0"
+  run --separate-stderr timeout 5 bash "${SCRIPT}" PreToolUse <<<"$(main_in PreToolUse)"
+  assert_silent
+}
+
+@test "saving state leaves only the state file and no temporary files" {
+  start startup
+  sub_start
+  names=$(ls -A "${DIR}" | sort | tr '\n' ' ')
+  [ "${names}" = ".gitignore agent-${AGENT}.state ${SID}.state " ]
+}
+
+@test "notes that are not a plain regular file are not read" {
+  mkdir -p "${DIR}"
+  printf 'SECRET\n' >"${TMP}/target.md"
+  ln "${TMP}/target.md" "${MAIN_NOTES}"
+  start startup
+  [[ "$(context)" != *"SECRET"* ]]
+  [[ "$(context)" == *"none written yet"* ]]
+  ln "${TMP}/target.md" "${SUB_NOTES}"
+  sub_start
+  [[ "$(context)" != *"SECRET"* ]]
+  [[ "$(context)" == *"none written yet"* ]]
+  rm -f "${MAIN_NOTES}" "${SUB_NOTES}"
+  mkdir "${MAIN_NOTES}" "${SUB_NOTES}"
+  start startup
+  [[ "$(context)" == *"none written yet"* ]]
+  sub_start
+  [[ "$(context)" == *"none written yet"* ]]
 }
 
 @test "creates the notes folder when it is missing" {

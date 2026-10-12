@@ -70,7 +70,7 @@ Sources: https://claude.com/blog/building-agents-with-the-claude-agent-sdk, http
 
 ## 9. Tool Scoping
 
-Least privilege. Restrict to essential tools. Read-only agents should not have Write/Edit. Operational agents need Bash. Analysis agents need Read, plus Bash for search: this harness has no Grep or Glob tool, so list only tools that exist here. Tools are prominent in Claude's context window, making them the primary actions Claude considers — be conscious about which tools you expose.
+Least privilege. Restrict to essential tools. Read-only agents should not have Write/Edit. Operational agents need Bash. Analysis agents need Read, plus Bash for search: list only tools that exist in your setup (some have no Grep or Glob tool). Tools are prominent in Claude's context window, making them the primary actions Claude considers — be conscious about which tools you expose.
 
 Source: https://claude.com/blog/building-agents-with-the-claude-agent-sdk
 

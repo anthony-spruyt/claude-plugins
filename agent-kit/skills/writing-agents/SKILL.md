@@ -44,7 +44,7 @@ See `references/project-patterns.md` Section 6 for the template.
 
 ## System Prompt Structure
 
-Canonical section order for this project:
+Canonical section order:
 
 1. **Persona/Role** — Expert identity with domain expertise, 1-2 sentences
 2. **Core Responsibilities** — Numbered, 3-5 items
@@ -54,7 +54,7 @@ Canonical section order for this project:
 6. **Output Format** — Structured template (verdict header, evidence, next steps)
 7. **Handoff Protocol** — How results return to caller
 8. **Rules** — Constraints the model would otherwise get wrong, each with its reason
-9. **Agent Definition Feedback** — The agent ends its final reply to the caller with an `### Agent Definition Feedback` section: each problem as `- [definition] <what happened> → <change to its own file>`, `- [rules] <what happened> → <change to CLAUDE.md, .claude/rules/<file> or the hook>` or `- [brief] <what happened> → <what the caller's brief should have said>`. Tag `[definition]` if it would recur under any reasonable brief and comes from the agent file; `[rules]` if it comes from `CLAUDE.md`, `.claude/rules/` or a hook; otherwise `[brief]`. Suggest only; never self-edit. Copy the wording from an existing agent. Don't use `memory`: settings disable auto memory. Skip it when a machine parses the output (renovate-pr-analyzer feeds n8n)
+9. **Agent Definition Feedback** — The agent ends its final reply to the caller with an `### Agent Definition Feedback` section: each problem as `- [definition] <what happened> → <change to its own file>`, `- [rules] <what happened> → <change to CLAUDE.md, .claude/rules/<file> or the hook>` or `- [brief] <what happened> → <what the caller's brief should have said>`. Tag `[definition]` if it would recur under any reasonable brief and comes from the agent file; `[rules]` if it comes from `CLAUDE.md`, `.claude/rules/` or a hook; otherwise `[brief]`. Suggest only; never self-edit. Copy the wording from an existing agent. Skip it when a machine parses the output
 
 Not every agent needs all sections. Small focused agents may only need Persona, Workflow, Rules, and Output Format.
 
