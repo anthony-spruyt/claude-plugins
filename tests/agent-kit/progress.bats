@@ -341,64 +341,6 @@ no_files() {
   [ "$(cat "${TMP}/target.state")" = "x" ]
 }
 
-# --- handover guards ---------------------------------------------------------
-
-@test "while .claude/session-progress.sh exists no main-session event produces output or files" {
-  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude"
-  : >"${CLAUDE_PROJECT_DIR}/.claude/session-progress.sh"
-  start startup
-  assert_silent
-  main_pre
-  assert_silent
-  compact_main
-  main_pre
-  assert_silent
-  main_end
-  assert_silent
-  no_files
-}
-
-@test "while .claude/session-progress.sh exists subagents still get their notes" {
-  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude"
-  : >"${CLAUDE_PROJECT_DIR}/.claude/session-progress.sh"
-  sub_start
-  assert_injected "${SUB_NOTES}"
-}
-
-@test "while .claude/scripts/builder-progress.sh exists no subagent event produces output or files" {
-  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude/scripts"
-  : >"${CLAUDE_PROJECT_DIR}/.claude/scripts/builder-progress.sh"
-  sub_start
-  assert_silent
-  sub_pre
-  assert_silent
-  compact_sub
-  sub_pre
-  assert_silent
-  sub_stop
-  assert_silent
-  no_files
-}
-
-@test "while .claude/scripts/builder-progress.sh exists the main session still gets its notes" {
-  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude/scripts"
-  : >"${CLAUDE_PROJECT_DIR}/.claude/scripts/builder-progress.sh"
-  start startup
-  assert_injected "${MAIN_NOTES}"
-}
-
-@test "removing the old files switches over on the next tool call" {
-  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude"
-  : >"${CLAUDE_PROJECT_DIR}/.claude/session-progress.sh"
-  start startup
-  assert_silent
-  rm "${CLAUDE_PROJECT_DIR}/.claude/session-progress.sh"
-  main_pre
-  assert_injected "${MAIN_NOTES}"
-  main_pre
-  assert_silent
-}
-
 # --- subagents: opt-in and ids ----------------------------------------------
 
 @test "SubagentStart for builder gives the notes path, the rule and says none are written" {

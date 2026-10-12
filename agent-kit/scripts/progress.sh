@@ -47,14 +47,11 @@ in_notes_agents() {
   return 1
 }
 
-# The old scripts own a scope until their file is gone
 if [[ "$scope" == main ]]; then
-  [[ ! -f "$project/.claude/session-progress.sh" ]] || exit 0
   # The id becomes a file name, so accept only a plain identifier
   [[ "$session_id" =~ ^[A-Za-z0-9_-]+$ ]] || exit 0
   key=$session_id
 else
-  [[ ! -f "$project/.claude/scripts/builder-progress.sh" ]] || exit 0
   in_notes_agents "$agent_type" || exit 0
   id=${agent_id#agent-}
   [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || exit 0
