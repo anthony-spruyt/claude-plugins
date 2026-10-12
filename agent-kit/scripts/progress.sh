@@ -153,6 +153,7 @@ save_state() {
   else
     printf '%s\n' "$seen" >"$state"
   fi
+  return $?
 }
 
 # Parallel calls race: one claims each count by exclusive create (mkdir is not atomic on virtiofs)
