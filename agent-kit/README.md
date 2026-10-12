@@ -57,10 +57,6 @@ It can't say who to answer, so it stays silent. Every conversation that keeps no
 
 The script never blocks a tool call or session start: a missing `jq`, bad input, a symlinked folder or file, or any error means no output and exit 0. Total injected text is capped at 9,500 characters, under Claude Code's 10,000-character hook output cap; longer notes are cut with a marker naming the file.
 
-### Handover from the old scripts
-
-While `$CLAUDE_PROJECT_DIR/.claude/session-progress.sh` exists the plugin leaves the main session to it. While `$CLAUDE_PROJECT_DIR/.claude/scripts/builder-progress.sh` exists it leaves subagents to it. Delete those files and the plugin takes over on the next tool call.
-
 ## Scripts on PATH
 
 The plugin's `bin/` is on the Bash tool's `PATH` in the main session and in subagents, after the user's own `PATH`. Call them by bare name.
