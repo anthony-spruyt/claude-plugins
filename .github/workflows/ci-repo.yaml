@@ -27,3 +27,5 @@ jobs:
         run: "sudo apt-get update -qq && sudo apt-get install -y -qq bats bats-support bats-assert"
       - name: "Run integration tests"
         run: "bats tests/hooks/ -t"
+      - name: "Run agent-kit tests"
+        run: "bats tests/agent-kit/ -t"
