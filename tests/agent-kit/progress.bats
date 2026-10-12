@@ -114,6 +114,20 @@ no_files() {
   [[ "$(context)" != *"none written yet"* ]]
 }
 
+@test "existing notes are delivered when stat rejects -c, as BSD stat does" {
+  mkdir -p "${DIR}" "${TMP}/bsdbin"
+  printf '#!/bin/sh\nexit 1\n' >"${TMP}/bsdbin/stat"
+  chmod +x "${TMP}/bsdbin/stat"
+  printf 'GOAL: portable\n' >"${MAIN_NOTES}"
+  PATH="${TMP}/bsdbin:${PATH}" start resume
+  assert_injected "GOAL: portable"
+  rm -f "${MAIN_NOTES}"
+  printf 'SECRET\n' >"${TMP}/target.md"
+  ln "${TMP}/target.md" "${MAIN_NOTES}"
+  PATH="${TMP}/bsdbin:${PATH}" start resume
+  [[ "$(context)" != *"SECRET"* ]]
+}
+
 @test "SessionStart with an empty notes file says none are written" {
   mkdir -p "${DIR}"
   : >"${MAIN_NOTES}"

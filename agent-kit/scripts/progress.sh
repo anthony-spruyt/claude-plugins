@@ -173,7 +173,7 @@ claim() {
 usable_notes() {
   local f=$1
   [[ -f "$f" && ! -L "$f" && -s "$f" ]] || return 1
-  [[ "$(stat -c %h -- "$f")" == 1 ]] || return 1
+  [[ -n "$(find "$f" -prune -links 1)" ]] || return 1
   return 0
 }
 

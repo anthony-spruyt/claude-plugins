@@ -26,7 +26,7 @@ Field names are camelCase and must match exactly: Claude Code silently ignores a
 
 ## Overriding built-in agents
 
-- A project agent file whose `name` matches a built-in (`Explore`, `Plan`) replaces it entirely: prompt, model, tools and description. To change only the model, copy the built-in's prompt and settings and change `model`. `.claude/agents/Explore.md` is the example.
+- A project agent file whose `name` matches a built-in (`Explore`, `Plan`) replaces it entirely: prompt, model, tools and description. To change only the model, copy the built-in's prompt and settings and change `model`.
 - Built-in Explore and Plan use `model: inherit` and `omitClaudeMd: true`; on the Anthropic API, Explore's inherit is capped at opus.
 - `CLAUDE_CODE_SUBAGENT_MODEL` doesn't change Explore. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` does, but it forces every subagent, including any pinned to a specific model.
 - Built-in prompts live in the Claude Code binary (`readlink -f "$(which claude)"`), about 250 MB: don't `cat` or `strings` it. Search its bytes with `python3 -I`; the second hit of the prompt's first sentence holds the JS template with its `${...}` placeholders, and `agentType:"<Name>"` gives the definition.
