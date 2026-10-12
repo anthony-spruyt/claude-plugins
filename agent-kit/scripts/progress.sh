@@ -16,7 +16,9 @@ project=${CLAUDE_PROJECT_DIR:-}
 plugin_root=${BASH_SOURCE[0]%/*}/..
 
 field() {
-  jq -r --arg k "$1" 'if type == "object" then (.[$k] // empty | tostring) else empty end' <<<"$input"
+  local key=$1
+  jq -r --arg k "$key" 'if type == "object" then (.[$k] // empty | tostring) else empty end' <<<"$input"
+  return 0
 }
 
 session_id=$(field session_id)
@@ -91,12 +93,13 @@ make_dir() {
 }
 
 count_boundaries() {
-  local n=0
-  if [[ -n "$1" && -r "$1" ]]; then
-    n=$(grep -cF '"subtype":"compact_boundary"' "$1" || true)
+  local file=$1 n=0
+  if [[ -n "$file" && -r "$file" ]]; then
+    n=$(grep -cF '"subtype":"compact_boundary"' "$file" || true)
   fi
   [[ "$n" =~ ^[0-9]+$ ]] || n=0
   printf '%s' "$n"
+  return 0
 }
 
 # The hook may carry the session transcript or the subagent's own
@@ -108,10 +111,13 @@ transcript_file() {
   elif [[ "$transcript" == *.jsonl ]]; then
     printf '%s' "${transcript%.jsonl}/subagents/agent-$id.jsonl"
   fi
+  return 0
 }
 
 common_dir() {
-  git -C "$1" rev-parse --path-format=absolute --git-common-dir || true
+  local where=$1
+  git -C "$where" rev-parse --path-format=absolute --git-common-dir || true
+  return 0
 }
 
 # cwd follows Claude into a worktree, but also into any other repo it cd's to
@@ -141,18 +147,23 @@ load_main_paths() {
 }
 
 save_state() {
+  local seen=$1
   if [[ "$scope" == main ]]; then
-    printf '%s\n%s\n%s\n' "$1" "$notes" "$file" >"$state"
+    printf '%s\n%s\n%s\n' "$seen" "$notes" "$file" >"$state"
   else
-    printf '%s\n' "$1" >"$state"
+    printf '%s\n' "$seen" >"$state"
   fi
 }
 
 # Parallel calls race: one claims each count by exclusive create (mkdir is not atomic on virtiofs)
-claim() { (
-  set -C
-  : >"$dir/$key.claim-$1"
-) 2>/dev/null; }
+claim() {
+  local n=$1
+  (
+    set -C
+    : >"$dir/$key.claim-$n"
+  ) 2>/dev/null
+  return $?
+}
 
 # shellcheck disable=SC2016
 RULE='Progress notes rule: keep notes for any task with more than one step; skip one-shot edits and questions. Keep the file under 100 lines. Put the goal and issue on the first line, then what is done with commit SHAs, the exact next step, decisions and why, dead ends, and commands and gotchas that matter. Update it after each commit and before you stop. Delete the file when the task is done; keep it when you are blocked or unfinished. If your brief or the owner names an earlier notes file, read it first and delete it when you finish. To find earlier notes, run `ls -t` on the notes folder and pick the file whose goal matches your task; ignore any file git tracks there. The notes are working memory; git log is the source of truth.'
@@ -174,6 +185,7 @@ emit() {
     ctx="$ctx"$'\n\n'"$body"
   fi
   jq -nc --arg ev "$ev" --arg c "$ctx" '{hookSpecificOutput: {hookEventName: $ev, additionalContext: $c}}'
+  return 0
 }
 
 where() {
@@ -182,6 +194,7 @@ where() {
   else
     printf '%s (this checkout would use %s)' "$notes" "$file"
   fi
+  return 0
 }
 
 start_message() {
@@ -196,6 +209,7 @@ start_message() {
   else
     printf 'Your progress notes file is %s (none written yet). Notes are required: write it as soon as workspace.sh prints your path (goal and issue, workspace path), then update it after each commit.' "$notes"
   fi
+  return 0
 }
 
 compact_message() {
@@ -210,6 +224,7 @@ compact_message() {
   else
     printf 'Your context was compacted. Your progress notes file is %s (none written yet).' "$notes"
   fi
+  return 0
 }
 
 notes="" file=""
@@ -223,11 +238,13 @@ count=$(count_boundaries "$(transcript_file)")
 
 # First sight of a conversation: session start, subagent start, or a tool call with no saved state
 begin() {
+  local ev=$1
   make_dir || exit 0
   [[ "$scope" == sub ]] || resolve_main || exit 0
   drop_claims
   save_state "$count" || exit 0
-  emit "$1" "$(start_message)"
+  emit "$ev" "$(start_message)"
+  return 0
 }
 
 case "$event" in
@@ -251,5 +268,6 @@ PreToolUse)
   save_state "$count" || exit 0
   emit PreToolUse "$(compact_message)"
   ;;
+*) ;;
 esac
 exit 0
