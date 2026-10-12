@@ -9,6 +9,7 @@ Plugin monorepo for Claude Code. Contains the hookify-plus engine and rule plugi
 - `hookify-plus/` — Rule engine plugin (convention-based discovery)
 - `security-hooks/` — 32 blocking rules (requires hookify-plus)
 - `best-practices/` — 4 warning rules (requires hookify-plus)
+- `agent-kit/` — Progress notes hooks, `bin/` helper scripts, `writing-agents` skill (standalone)
 - `tests/` — Integration tests for all rules
 
 ## Commands
@@ -19,6 +20,9 @@ python3 tests/helpers/run_hookify_tests.py tests/hooks/hookify_test_cases.yaml -
 
 # Run bats integration tests
 bats tests/hooks/
+
+# Run agent-kit tests
+bats tests/agent-kit/
 
 # Run unit tests
 pytest tests/unit/ -v
