@@ -379,30 +379,248 @@ no_files() {
   no_files
 }
 
-@test "the shipped notes-agents list holds exactly builder" {
-  [ "$(grep -v '^[[:space:]]*\(#\|$\)' "${PLUGIN}/config/notes-agents")" = "builder" ]
-}
-
-@test "listing another agent type in config/notes-agents opts it in; comments and blank lines are ignored" {
+# Config: the plugin default is config/progress.json; a repo overrides keys under "progress" in .claude/agent-kit.json.
+with_plugin_copy() {
   mkdir -p "${TMP}/plugin"
   cp -r "${PLUGIN}/scripts" "${PLUGIN}/config" "${TMP}/plugin/"
-  printf '# who keeps notes\n\nbuilder\nagent-kit:reviewer\n' >"${TMP}/plugin/config/notes-agents"
   SCRIPT_TO_RUN="${TMP}/plugin/scripts/progress.sh"
-  sub_start "${AGENT}" agent-kit:reviewer
+}
+
+with_plugin_config() {
+  with_plugin_copy
+  printf '%b' "$1" >"${TMP}/plugin/config/progress.json"
+}
+
+with_repo_config() {
+  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude"
+  printf '%b' "$1" >"${CLAUDE_PROJECT_DIR}/.claude/agent-kit.json"
+}
+
+@test "the shipped progress.json default holds builder and 10" {
+  [ "$(jq -c . "${PLUGIN}/config/progress.json")" = '{"notesAgents":["builder"],"nudgeAfterToolCalls":10}' ]
+}
+
+@test "the old plain-text config files are gone" {
+  [ ! -e "${PLUGIN}/config/notes-agents" ]
+  [ ! -e "${PLUGIN}/config/notes-nudge-calls" ]
+}
+
+@test "the default opts builder in and nobody else" {
+  sub_start
   assert_injected "${SUB_NOTES}"
-  sub_start "${AGENT}" "# who keeps notes"
-  assert_silent
   sub_start "${AGENT}" general-purpose
+  assert_silent
+  sub_start "${AGENT}" agent-kit:reviewer
   assert_silent
 }
 
-@test "a missing config/notes-agents opts nobody in" {
-  mkdir -p "${TMP}/plugin"
-  cp -r "${PLUGIN}/scripts" "${TMP}/plugin/"
-  SCRIPT_TO_RUN="${TMP}/plugin/scripts/progress.sh"
+@test "a repo notesAgents replaces the default list" {
+  with_repo_config '{"progress":{"notesAgents":["agent-kit:reviewer","other"]}}'
+  sub_start "${AGENT}" agent-kit:reviewer
+  assert_injected "${SUB_NOTES}"
+  rm -rf "${DIR}"
+  sub_start "${AGENT}" builder
+  assert_silent
+  no_files
+}
+
+@test "a repo notesAgents of an empty array opts nobody in" {
+  with_repo_config '{"progress":{"notesAgents":[]}}'
   sub_start
   assert_silent
   no_files
+}
+
+@test "a plugin default with another list opts those in" {
+  with_plugin_config '{"notesAgents":["agent-kit:reviewer"],"nudgeAfterToolCalls":10}'
+  sub_start "${AGENT}" agent-kit:reviewer
+  assert_injected "${SUB_NOTES}"
+  rm -rf "${DIR}"
+  sub_start
+  assert_silent
+}
+
+@test "a repo nudgeAfterToolCalls override keeps the default notesAgents" {
+  with_repo_config '{"progress":{"nudgeAfterToolCalls":15}}'
+  sub_start
+  assert_injected "${SUB_NOTES}"
+  tool_calls 14
+  sub_pre
+  assert_silent
+  tool_calls 1
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"15 tool calls"* ]]
+}
+
+@test "a repo notesAgents override keeps the default threshold" {
+  with_repo_config '{"progress":{"notesAgents":["builder","x"]}}'
+  sub_start
+  tool_calls 9
+  sub_pre
+  assert_silent
+  tool_calls 1
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"10 tool calls"* ]]
+}
+
+@test "a repo override beats a plugin default; the plugin default beats the built-in" {
+  with_plugin_config '{"notesAgents":["a"],"nudgeAfterToolCalls":4}'
+  with_repo_config '{"progress":{"nudgeAfterToolCalls":6}}'
+  sub_start "${AGENT}" a
+  assert_injected "${SUB_NOTES}"
+  tool_calls 5
+  sub_pre "${AGENT}" a
+  assert_silent
+  tool_calls 1
+  sub_pre "${AGENT}" a
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"6 tool calls"* ]]
+}
+
+@test "a repo notesAgents of the wrong type falls back to the default list" {
+  for bad in '"builder"' '{"a":1}' '[1]' '[""]' '["ok",""]' '[["builder"]]' 'null' '5'; do
+    rm -rf "${DIR}"
+    with_repo_config "{\"progress\":{\"notesAgents\":${bad}}}"
+    sub_start "${AGENT}" other
+    assert_silent
+    sub_start
+    assert_injected "${SUB_NOTES}"
+  done
+}
+
+@test "a repo nudgeAfterToolCalls of the wrong type or range falls back to the default 10" {
+  for bad in '"3"' '0' '-4' '3.5' '1000000' '99999999999999999999' 'null' 'true' '[3]' '{}'; do
+    rm -rf "${DIR}"
+    : >"${SUB_FILE}"
+    with_repo_config "{\"progress\":{\"nudgeAfterToolCalls\":${bad}}}"
+    sub_start
+    tool_calls 9
+    sub_pre
+    assert_silent
+    tool_calls 1
+    sub_pre
+    assert_injected "${SUB_NOTES}"
+    [[ "$(context)" == *"10 tool calls"* ]]
+  done
+}
+
+@test "a bad repo key does not spoil the other repo key" {
+  with_repo_config '{"progress":{"notesAgents":"x","nudgeAfterToolCalls":3}}'
+  sub_start
+  assert_injected "${SUB_NOTES}"
+  tool_calls 3
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"3 tool calls"* ]]
+}
+
+@test "the upper bound 999999 is accepted" {
+  with_repo_config '{"progress":{"nudgeAfterToolCalls":999999}}'
+  sub_start
+  tool_calls 50
+  sub_pre
+  assert_silent
+}
+
+@test "an unparseable or non-object repo file means the defaults" {
+  for bad in '' 'not json' '{"progress":' '[1,2]' '"progress"' 'null' '{"progress":[1]}' '{"progress":null}' '{"other":{}}'; do
+    rm -rf "${DIR}"
+    : >"${SUB_FILE}"
+    with_repo_config "${bad}"
+    sub_start "${AGENT}" other
+    assert_silent
+    sub_start
+    assert_injected "${SUB_NOTES}"
+    tool_calls 10
+    sub_pre
+    assert_injected "${SUB_NOTES}"
+    [[ "$(context)" == *"10 tool calls"* ]]
+  done
+}
+
+@test "a missing repo file means the defaults" {
+  [ ! -e "${CLAUDE_PROJECT_DIR}/.claude/agent-kit.json" ]
+  sub_start
+  assert_injected "${SUB_NOTES}"
+}
+
+@test "a symlinked repo override is ignored" {
+  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude"
+  printf '{"progress":{"notesAgents":["other"],"nudgeAfterToolCalls":3}}' >"${TMP}/elsewhere.json"
+  ln -s "${TMP}/elsewhere.json" "${CLAUDE_PROJECT_DIR}/.claude/agent-kit.json"
+  sub_start "${AGENT}" other
+  assert_silent
+  sub_start
+  assert_injected "${SUB_NOTES}"
+  tool_calls 3
+  sub_pre
+  assert_silent
+}
+
+@test "a repo override under a symlinked .claude folder is ignored" {
+  mkdir -p "${TMP}/realclaude"
+  printf '{"progress":{"notesAgents":["other"]}}' >"${TMP}/realclaude/agent-kit.json"
+  ln -s "${TMP}/realclaude" "${CLAUDE_PROJECT_DIR}/.claude"
+  sub_start "${AGENT}" other
+  assert_silent
+}
+
+@test "a repo override that is not a regular file is ignored" {
+  mkdir -p "${CLAUDE_PROJECT_DIR}/.claude/agent-kit.json"
+  sub_start "${AGENT}" other
+  assert_silent
+  sub_start
+  assert_injected "${SUB_NOTES}"
+}
+
+@test "a missing plugin default falls back to builder and 10" {
+  with_plugin_copy
+  rm -f "${TMP}/plugin/config/progress.json"
+  sub_start "${AGENT}" other
+  assert_silent
+  sub_start
+  assert_injected "${SUB_NOTES}"
+  tool_calls 9
+  sub_pre
+  assert_silent
+  tool_calls 1
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+}
+
+@test "a broken plugin default falls back to builder and 10; a repo override still applies" {
+  with_plugin_config 'not json'
+  sub_start "${AGENT}" other
+  assert_silent
+  sub_start
+  assert_injected "${SUB_NOTES}"
+  with_repo_config '{"progress":{"notesAgents":["other"]}}'
+  rm -rf "${DIR}"
+  sub_start "${AGENT}" other
+  assert_injected "${SUB_NOTES}"
+}
+
+@test "a plugin default with bad values falls back per key" {
+  with_plugin_config '{"notesAgents":"builder","nudgeAfterToolCalls":0}'
+  sub_start
+  assert_injected "${SUB_NOTES}"
+  tool_calls 9
+  sub_pre
+  assert_silent
+  tool_calls 1
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+}
+
+@test "an agent_type that looks like a comment or has spaces matches only exactly" {
+  with_repo_config '{"progress":{"notesAgents":["# who","two words"]}}'
+  sub_start "${AGENT}" "two words"
+  assert_injected "${SUB_NOTES}"
+  rm -rf "${DIR}"
+  sub_start "${AGENT}" "two"
+  assert_silent
 }
 
 @test "a leading agent- on the agent_id is stripped; both forms share one notes file and state" {
@@ -550,17 +768,6 @@ tool_calls() {
   done
 }
 
-with_nudge_config() {
-  mkdir -p "${TMP}/plugin"
-  cp -r "${PLUGIN}/scripts" "${PLUGIN}/config" "${TMP}/plugin/"
-  printf '%b' "$1" >"${TMP}/plugin/config/notes-nudge-calls"
-  SCRIPT_TO_RUN="${TMP}/plugin/scripts/progress.sh"
-}
-
-@test "the shipped notes-nudge-calls config holds exactly one integer" {
-  [ "$(grep -v '^[[:space:]]*\(#\|$\)' "${PLUGIN}/config/notes-nudge-calls")" = "10" ]
-}
-
 @test "a subagent with no notes is reminded at the default threshold of 10 tool calls" {
   sub_start
   tool_calls 10
@@ -630,8 +837,8 @@ with_nudge_config() {
   [ "$(cat "${TMP}"/out.* | grep -c additionalContext)" -eq 1 ]
 }
 
-@test "the threshold comes from config/notes-nudge-calls; comments and blank lines are ignored" {
-  with_nudge_config '# calls before the reminder\n\n3\n'
+@test "the threshold comes from the plugin default progress.json" {
+  with_plugin_config '{"notesAgents":["builder"],"nudgeAfterToolCalls":3}'
   sub_start
   tool_calls 2
   sub_pre
@@ -640,27 +847,6 @@ with_nudge_config() {
   sub_pre
   assert_injected "${SUB_NOTES}"
   [[ "$(context)" == *"3 tool calls"* ]]
-}
-
-@test "a bad or missing threshold falls back to 10" {
-  for bad in 'abc\n' '0\n' '-4\n' '3.5\n' '99999999999999999999\n' '' '# only a comment\n'; do
-    rm -rf "${DIR}"
-    : >"${SUB_FILE}"
-    with_nudge_config "${bad}"
-    sub_start
-    tool_calls 9
-    sub_pre
-    assert_silent
-    tool_calls 1
-    sub_pre
-    assert_injected "${SUB_NOTES}"
-  done
-  rm -rf "${DIR}" "${TMP}/plugin/config/notes-nudge-calls"
-  : >"${SUB_FILE}"
-  sub_start
-  tool_calls 10
-  sub_pre
-  assert_injected "${SUB_NOTES}"
 }
 
 @test "a subagent that is not opted in is never reminded" {
@@ -1028,6 +1214,36 @@ with_nudge_config() {
   [ "${status}" -eq 0 ]
   [ "$(wc -l <"${TMP}/jq.log")" -le 2 ]
   [ "$(context)" != "" ]
+}
+
+config_jq_calls() {
+  mkdir -p "${TMP}/spy"
+  printf '#!/bin/bash\necho "$*" >>"%s/jq.log"\nexec %s "$@"\n' "${TMP}" "$(command -v jq)" >"${TMP}/spy/jq"
+  chmod +x "${TMP}/spy/jq"
+  : >"${TMP}/jq.log"
+}
+
+config_reads() {
+  grep -c -e "--arg want" "${TMP}/jq.log" || true
+}
+
+@test "the config is loaded once per subagent invocation, in one jq call" {
+  config_jq_calls
+  tool_calls 12
+  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" SubagentStart <<<"$(sub_in SubagentStart "${AGENT}")"
+  [ "$(config_reads)" -eq 1 ]
+  : >"${TMP}/jq.log"
+  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" PreToolUse <<<"$(sub_in PreToolUse "${AGENT}")"
+  assert_injected "${SUB_NOTES}"
+  [ "$(config_reads)" -eq 1 ]
+}
+
+@test "the main session never reads the config" {
+  config_jq_calls
+  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" SessionStart <<<"$(main_in SessionStart startup)"
+  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" PreToolUse <<<"$(main_in PreToolUse)"
+  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" SessionEnd <<<"$(main_in SessionEnd)"
+  [ "$(config_reads)" -eq 0 ]
 }
 
 @test "payload fields stay in place when earlier ones are empty" {

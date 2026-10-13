@@ -35,16 +35,39 @@ PreToolUse) if [[ -n "$agent_id" ]]; then scope=sub; else scope=main; fi ;;
 *) exit 0 ;;
 esac
 
-in_notes_agents() {
-  local want=$1 line
-  [[ -n "$want" && -r "$plugin_root/config/notes-agents" ]] || return 1
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    line=${line%%#*}
-    line=${line#"${line%%[![:space:]]*}"}
-    line=${line%"${line##*[![:space:]]}"}
-    [[ -n "$line" && "$line" == "$want" ]] && return 0
-  done <"$plugin_root/config/notes-agents"
-  return 1
+NUDGE_DEFAULT=10
+CONFIG_CAP=65536
+
+# Reads a config file only if it is a regular file, not a symlink (nor under a symlinked folder), and caps its size
+read_config() {
+  local f=$1
+  [[ -f "$f" && ! -L "$f" && ! -L "${f%/*}" ]] || return 0
+  head -c "$CONFIG_CAP" "$f" || true
+  return 0
+}
+
+# Sets cfg_opted (true/false) and cfg_calls from one jq call over the plugin default and the repo override.
+# Each key the repo sets that validates replaces the default; any other key keeps the default, then the built-in.
+load_config() {
+  local want=$1 def rep out
+  cfg_opted=false cfg_calls=$NUDGE_DEFAULT
+  [[ -n "$want" ]] || return 0
+  def=$(read_config "$plugin_root/config/progress.json")
+  rep=$(read_config "$project/.claude/agent-kit.json")
+  out=$(jq -nr --arg want "$want" --arg def "$def" --arg rep "$rep" --argjson dn "$NUDGE_DEFAULT" '
+    def obj: if type == "object" then . else {} end;
+    def agents: type == "array" and all(.[]; type == "string" and length > 0);
+    def calls: type == "number" and . == floor and . >= 1 and . <= 999999;
+    ($def | try fromjson catch null | obj) as $d
+    | ($rep | try fromjson catch null | obj | .progress | obj) as $r
+    | def pick(k; ok; fallback): ([$r[k], $d[k]] | map(select(ok)) | first) // fallback;
+    [pick("notesAgents"; agents; ["builder"]) | any(.[]; . == $want),
+     pick("nudgeAfterToolCalls"; calls; $dn)]
+    | @tsv') || return 0
+  IFS=$'\t' read -r cfg_opted cfg_calls <<<"$out"
+  [[ "$cfg_opted" == true ]] || cfg_opted=false
+  [[ "$cfg_calls" =~ ^[1-9][0-9]{0,5}$ ]] || cfg_calls=$NUDGE_DEFAULT
+  return 0
 }
 
 if [[ "$scope" == main ]]; then
@@ -52,7 +75,8 @@ if [[ "$scope" == main ]]; then
   [[ "$session_id" =~ ^[A-Za-z0-9_-]+$ ]] || exit 0
   key=$session_id
 else
-  in_notes_agents "$agent_type" || exit 0
+  load_config "$agent_type"
+  [[ "$cfg_opted" == true ]] || exit 0
   id=${agent_id#agent-}
   [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || exit 0
   key=agent-$id
@@ -180,24 +204,6 @@ claim() {
   return 0
 }
 
-NUDGE_DEFAULT=10
-
-nudge_threshold() {
-  local line n=$NUDGE_DEFAULT
-  if [[ -r "$plugin_root/config/notes-nudge-calls" ]]; then
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      line=${line%%#*}
-      line=${line#"${line%%[![:space:]]*}"}
-      line=${line%"${line##*[![:space:]]}"}
-      [[ -n "$line" ]] || continue
-      [[ "$line" =~ ^[1-9][0-9]{0,5}$ ]] && n=$line
-      break
-    done <"$plugin_root/config/notes-nudge-calls"
-  fi
-  printf '%s' "$n"
-  return 0
-}
-
 count_tool_calls() {
   local file=$1 n=0
   if [[ -n "$file" && -r "$file" ]]; then
@@ -294,7 +300,7 @@ notes_nudge() {
   fi
   [[ ! -e "$dir/$key.claim-nudge" ]] || return 0
   calls=$(count_tool_calls "$(transcript_file)")
-  ((calls >= $(nudge_threshold))) || return 0
+  ((calls >= cfg_calls)) || return 0
   claim nudge || return 0
   emit PreToolUse "You are $calls tool calls in and have no progress notes yet. Your notes file is $notes. Start it now (goal and issue) unless the task is a one-step job the rule lets you skip."
   return 0

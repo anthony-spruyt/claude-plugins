@@ -33,9 +33,29 @@ Bookkeeping always lives in `$CLAUDE_PROJECT_DIR/.agent-progress/`, which the sc
 
 The main session's notes path is resolved once at session start (the worktree root when cwd is in a worktree of the project, otherwise the project; notes already written in the project checkout win when cwd's checkout has none) and saved in the `.state` file. A leading `agent-` on `agent_id` is stripped. Ids must match `^[A-Za-z0-9_-]+$`.
 
-### Opt-in
+### Config
 
-A subagent keeps notes only if its `agent_type` is a line in `config/notes-agents` (exact match, `#` comments and blank lines ignored). It ships with `builder`. Every other subagent is ignored.
+The plugin default is `config/progress.json`:
+
+```json
+{ "notesAgents": ["builder"], "nudgeAfterToolCalls": 10 }
+```
+
+A repo overrides it in `$CLAUDE_PROJECT_DIR/.claude/agent-kit.json`, with the same keys nested under `progress`:
+
+```json
+{ "progress": { "notesAgents": ["builder", "agent-kit:reviewer"], "nudgeAfterToolCalls": 15 } }
+```
+
+| Key                   | Meaning                                                                            | Valid values               |
+| --------------------- | ---------------------------------------------------------------------------------- | -------------------------- |
+| `notesAgents`         | `agent_type` values that keep notes (exact match); every other subagent is ignored | Array of non-empty strings |
+| `nudgeAfterToolCalls` | Tool calls an opted-in subagent may make before it is reminded to start notes      | Integer from 1 to 999999   |
+
+- **Merge:** shallow, per key. A key the repo sets replaces the default key; arrays replace, they do not merge. Keys the repo leaves out keep the default.
+- **Fallback:** a key of the wrong type or out of range falls back to the default for that key. A missing or unparseable repo file means the defaults. A missing or broken plugin default means the built-in `["builder"]` and 10.
+- **Safety:** the repo file is untrusted input. It is read only if it is a regular file, not a symlink and not under a symlinked `.claude` folder, and only its first 64 KiB. Any error means no output and exit 0.
+- **Cost:** the main session never reads the config. A subagent hook reads both files once per invocation, in one `jq` call.
 
 ### Events
 
@@ -45,7 +65,7 @@ A subagent keeps notes only if its `agent_type` is a line in `config/notes-agent
 | SessionStart compact                   | anyone                  | Nothing (not even wired), see below                                                                                           |
 | SubagentStart (also on resume)         | opted-in subagent       | Inject path, rule and existing notes; save its transcript's compaction count                                                  |
 | PreToolUse                             | main, opted-in subagent | If the `compact_boundary` count is above the saved one: claim it, inject path, rule and notes. No saved state: start as above |
-| PreToolUse (no compaction to report)   | opted-in subagent       | If its notes are missing and it has made `config/notes-nudge-calls` tool calls: claim `.claim-nudge`, inject the reminder     |
+| PreToolUse (no compaction to report)   | opted-in subagent       | If its notes are missing and it has made `nudgeAfterToolCalls` tool calls: claim `.claim-nudge`, inject the reminder          |
 | SubagentStop                           | opted-in subagent       | Delete its `.state` and `.claim-*`, never its notes                                                                           |
 | SessionEnd                             | main                    | Delete the session's `.state` and `.claim-*`, never its notes                                                                 |
 
@@ -67,7 +87,7 @@ The reminder says how many tool calls it is in, gives the exact notes path and r
 An exclusive-create claim file, `agent-<agent_id>.claim-nudge`, makes it fire once per subagent, even with parallel tool calls; `SubagentStop` and the next start drop the claim.
 The main session is unchanged.
 
-The threshold is the one integer in `config/notes-nudge-calls` (`#` comments and blank lines ignored). Anything but one integer from 1 to 999999 on the first non-comment line means 10.
+The threshold is `nudgeAfterToolCalls` (see Config); the default is 10.
 
 ### Safety
 
