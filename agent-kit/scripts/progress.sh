@@ -35,16 +35,38 @@ PreToolUse) if [[ -n "$agent_id" ]]; then scope=sub; else scope=main; fi ;;
 *) exit 0 ;;
 esac
 
-in_notes_agents() {
-  local want=$1 line
-  [[ -n "$want" && -r "$plugin_root/config/notes-agents" ]] || return 1
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    line=${line%%#*}
-    line=${line#"${line%%[![:space:]]*}"}
-    line=${line%"${line##*[![:space:]]}"}
-    [[ -n "$line" && "$line" == "$want" ]] && return 0
-  done <"$plugin_root/config/notes-agents"
-  return 1
+NUDGE_DEFAULT=10
+CONFIG_CAP=65536
+
+read_config() {
+  local f=$1 strict=${2:-}
+  [[ -f "$f" ]] || return 0
+  [[ -z "$strict" || (! -L "$f" && ! -L "${f%/*}") ]] || return 0
+  head -c "$CONFIG_CAP" "$f" || true
+  return 0
+}
+
+# Sets the globals cfg_opted and cfg_calls
+load_config() {
+  local want=$1 def rep out
+  cfg_opted=false cfg_calls=$NUDGE_DEFAULT
+  [[ -n "$want" ]] || return 0
+  def=$(read_config "$plugin_root/config/progress.json")
+  rep=$(read_config "$project/.claude/agent-kit.json" strict)
+  out=$(jq -nr --arg want "$want" --arg def "$def" --arg rep "$rep" --argjson dn "$NUDGE_DEFAULT" '
+    def obj: if type == "object" then . else {} end;
+    def agents: type == "array" and all(.[]; type == "string" and length > 0);
+    def calls: type == "number" and . == floor and . >= 1 and . <= 999999;
+    ($def | try fromjson catch null | obj) as $d
+    | ($rep | try fromjson catch null | obj | .progress | obj) as $r
+    | def pick(k; ok; fallback): ([$r[k], $d[k]] | map(select(ok)) | first) // fallback;
+    [pick("notesAgents"; agents; ["builder"]) | any(.[]; . == $want),
+     (pick("nudgeAfterToolCalls"; calls; $dn) | floor)]
+    | @tsv') || return 0
+  IFS=$'\t' read -r cfg_opted cfg_calls <<<"$out"
+  [[ "$cfg_opted" == true ]] || cfg_opted=false
+  [[ "$cfg_calls" =~ ^[1-9][0-9]{0,5}$ ]] || cfg_calls=$NUDGE_DEFAULT
+  return 0
 }
 
 if [[ "$scope" == main ]]; then
@@ -52,7 +74,8 @@ if [[ "$scope" == main ]]; then
   [[ "$session_id" =~ ^[A-Za-z0-9_-]+$ ]] || exit 0
   key=$session_id
 else
-  in_notes_agents "$agent_type" || exit 0
+  load_config "$agent_type"
+  [[ "$cfg_opted" == true ]] || exit 0
   id=${agent_id#agent-}
   [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || exit 0
   key=agent-$id
@@ -156,6 +179,18 @@ save_state() {
   return 0
 }
 
+# Keeps one numbered claim per key; claims for the same or a higher count may be racing
+sweep_older_claims() {
+  local n=$1 f c
+  for f in "$dir/$key".claim-*; do
+    c=${f##*.claim-}
+    [[ "$c" =~ ^[0-9]{1,9}$ ]] || continue
+    ((10#$c < 10#$n)) || continue
+    [[ -f "$f" && ! -L "$f" ]] && rm -f -- "$f"
+  done
+  return 0
+}
+
 # Parallel calls race: one claims each count by exclusive create (mkdir is not atomic on virtiofs)
 claim() {
   local n=$1
@@ -163,8 +198,19 @@ claim() {
   (
     set -C
     : >"$dir/$key.claim-$n"
-  ) 2>/dev/null
-  return $?
+  ) 2>/dev/null || return 1
+  [[ "$n" =~ ^[0-9]{1,9}$ ]] && sweep_older_claims "$n"
+  return 0
+}
+
+count_tool_calls() {
+  local file=$1 n=0
+  if [[ -n "$file" && -r "$file" ]]; then
+    n=$(grep -oF '"type":"tool_use"' "$file" | wc -l || true)
+  fi
+  n=${n//[^0-9]/}
+  printf '%s' "${n:-0}"
+  return 0
 }
 
 usable_notes() {
@@ -244,6 +290,21 @@ fi
 
 count=$(count_boundaries "$(transcript_file)")
 
+notes_nudge() {
+  local calls
+  [[ "$scope" == sub ]] || return 0
+  if usable_notes "$notes"; then
+    claim nudge || true
+    return 0
+  fi
+  [[ ! -e "$dir/$key.claim-nudge" ]] || return 0
+  calls=$(count_tool_calls "$(transcript_file)")
+  ((calls >= cfg_calls)) || return 0
+  claim nudge || return 0
+  emit PreToolUse "You are $calls tool calls in and have no progress notes yet. Your notes file is $notes. Start it now (goal and issue) unless the task is a one-step job the rule lets you skip."
+  return 0
+}
+
 begin() {
   local ev=$1
   make_dir || exit 0
@@ -269,11 +330,14 @@ PreToolUse)
   fi
   seen=$(head -c 20 "$state" | head -n 1)
   seen=${seen//[^0-9]/}
-  ((count > ${seen:-0})) || exit 0
-  [[ "$scope" == sub ]] || load_main_paths || exit 0
-  claim "$count" || exit 0
-  save_state "$count" || exit 0
-  emit PreToolUse "$(compact_message)"
+  if ((count > ${seen:-0})); then
+    [[ "$scope" == sub ]] || load_main_paths || exit 0
+    claim "$count" || exit 0
+    save_state "$count" || exit 0
+    emit PreToolUse "$(compact_message)"
+    exit 0
+  fi
+  notes_nudge
   ;;
 *) ;;
 esac
