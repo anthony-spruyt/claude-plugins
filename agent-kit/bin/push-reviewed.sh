@@ -25,12 +25,10 @@ git merge-base --is-ancestor "${base}" "${pre_push}" ||
 git merge-base --is-ancestor "${base}" "${sha}" || fail "base ${base} is not an ancestor of ${sha}"
 [[ -n "$(git rev-list "${base}..${sha}")" ]] || fail "no commits between ${base} and ${sha}"
 
-# Rebasing flattens merge commits and replays their conflicts, so only rebase when the remote moved.
-if ! git merge-base --is-ancestor "${pre_push}" HEAD; then
-  if ! git rebase --quiet "${pre_push}" >/dev/null 2>&1; then
-    git rebase --abort 2>/dev/null || true
-    fail "rebase onto origin/${branch} conflicts: nothing pushed"
-  fi
+# Rebasing flattens merge commits and replays their conflicts, so only rebase when the remote is not an ancestor of HEAD.
+if ! git merge-base --is-ancestor "${pre_push}" HEAD && ! git rebase --quiet "${pre_push}" >/dev/null 2>&1; then
+  git rebase --abort 2>/dev/null || true
+  fail "rebase onto origin/${branch} conflicts: nothing pushed"
 fi
 
 git push --quiet origin "HEAD:${branch}" || fail "push to origin ${branch} was rejected: nothing forced"
