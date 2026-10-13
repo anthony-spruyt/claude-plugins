@@ -1,1 +1,6 @@
-{ "notesAgents": ["builder"], "nudgeAfterToolCalls": 10 }
+{
+  "notesAgents": [
+    "builder"
+  ],
+  "nudgeAfterToolCalls": 10
+}

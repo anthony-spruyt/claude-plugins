@@ -53,8 +53,8 @@ A repo overrides it in `$CLAUDE_PROJECT_DIR/.claude/agent-kit.json`, with the sa
 | `nudgeAfterToolCalls` | Tool calls an opted-in subagent may make before it is reminded to start notes      | Integer from 1 to 999999   |
 
 - **Merge:** shallow, per key. A key the repo sets replaces the default key; arrays replace, they do not merge. Keys the repo leaves out keep the default.
-- **Fallback:** a key of the wrong type or out of range falls back to the default for that key. A missing or unparseable repo file means the defaults. A missing or broken plugin default means the built-in `["builder"]` and 10.
-- **Safety:** the repo file is untrusted input. It is read only if it is a regular file, not a symlink and not under a symlinked `.claude` folder, and only its first 64 KiB. Any error means no output and exit 0.
+- **Fallback:** each key resolves on its own: the repo value if valid, else the plugin default value if valid, else the built-in (`["builder"]` and 10). A value of the wrong type or out of range is not valid; `15.0` and `1e1` count as integers. A repo file that is missing, unparseable, or has a `"progress"` that is not an object means the defaults, as does a broken plugin default.
+- **Safety:** the repo file is untrusted input. It is read only if it is a regular file, not a symlink and not under a symlinked `.claude` folder, and only its first 64 KiB. The plugin default must be a regular file (a symlink to one is fine) and is also read up to 64 KiB. Any error means no output and exit 0.
 - **Cost:** the main session never reads the config. A subagent hook reads both files once per invocation, in one `jq` call.
 
 ### Events

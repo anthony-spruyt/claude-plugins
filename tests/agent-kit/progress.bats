@@ -379,7 +379,7 @@ no_files() {
   no_files
 }
 
-# Config: the plugin default is config/progress.json; a repo overrides keys under "progress" in .claude/agent-kit.json.
+# --- config -----------------------------------------------------------------
 with_plugin_copy() {
   mkdir -p "${TMP}/plugin"
   cp -r "${PLUGIN}/scripts" "${PLUGIN}/config" "${TMP}/plugin/"
@@ -477,6 +477,71 @@ with_repo_config() {
   sub_pre "${AGENT}" a
   assert_injected "${SUB_NOTES}"
   [[ "$(context)" == *"6 tool calls"* ]]
+}
+
+@test "a whole-number threshold written as 15.0 is accepted as 15" {
+  with_repo_config '{"progress":{"nudgeAfterToolCalls":15.0}}'
+  sub_start
+  tool_calls 14
+  sub_pre
+  assert_silent
+  tool_calls 1
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"15 tool calls"* ]]
+}
+
+@test "a whole-number threshold written as 1e1 or 6.00000000000000001 is accepted, not replaced by the plugin default" {
+  with_plugin_config '{"notesAgents":["builder"],"nudgeAfterToolCalls":4}'
+  with_repo_config '{"progress":{"nudgeAfterToolCalls":1e1}}'
+  sub_start
+  tool_calls 9
+  sub_pre
+  assert_silent
+  tool_calls 1
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"10 tool calls"* ]]
+  rm -rf "${DIR}"
+  : >"${SUB_FILE}"
+  with_repo_config '{"progress":{"nudgeAfterToolCalls":6.00000000000000001}}'
+  sub_start
+  tool_calls 5
+  sub_pre
+  assert_silent
+  tool_calls 1
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"6 tool calls"* ]]
+}
+
+@test "a fractional repo threshold of 6.5 falls back to the plugin default" {
+  with_plugin_config '{"notesAgents":["builder"],"nudgeAfterToolCalls":4}'
+  with_repo_config '{"progress":{"nudgeAfterToolCalls":6.5}}'
+  sub_start
+  tool_calls 3
+  sub_pre
+  assert_silent
+  tool_calls 1
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"4 tool calls"* ]]
+}
+
+@test "a symlinked plugin default is still used" {
+  with_plugin_copy
+  printf '{"notesAgents":["other"],"nudgeAfterToolCalls":4}' >"${TMP}/real-default.json"
+  rm -f "${TMP}/plugin/config/progress.json"
+  ln -s "${TMP}/real-default.json" "${TMP}/plugin/config/progress.json"
+  sub_start "${AGENT}" other
+  assert_injected "${SUB_NOTES}"
+  tool_calls 3
+  sub_pre "${AGENT}" other
+  assert_silent
+  tool_calls 1
+  sub_pre "${AGENT}" other
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"4 tool calls"* ]]
 }
 
 @test "a repo notesAgents of the wrong type falls back to the default list" {

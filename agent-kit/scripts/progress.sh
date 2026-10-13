@@ -38,22 +38,21 @@ esac
 NUDGE_DEFAULT=10
 CONFIG_CAP=65536
 
-# Reads a config file only if it is a regular file, not a symlink (nor under a symlinked folder), and caps its size
 read_config() {
-  local f=$1
-  [[ -f "$f" && ! -L "$f" && ! -L "${f%/*}" ]] || return 0
+  local f=$1 strict=${2:-}
+  [[ -f "$f" ]] || return 0
+  [[ -z "$strict" || (! -L "$f" && ! -L "${f%/*}") ]] || return 0
   head -c "$CONFIG_CAP" "$f" || true
   return 0
 }
 
-# Sets cfg_opted (true/false) and cfg_calls from one jq call over the plugin default and the repo override.
-# Each key the repo sets that validates replaces the default; any other key keeps the default, then the built-in.
+# Sets the globals cfg_opted and cfg_calls
 load_config() {
   local want=$1 def rep out
   cfg_opted=false cfg_calls=$NUDGE_DEFAULT
   [[ -n "$want" ]] || return 0
   def=$(read_config "$plugin_root/config/progress.json")
-  rep=$(read_config "$project/.claude/agent-kit.json")
+  rep=$(read_config "$project/.claude/agent-kit.json" strict)
   out=$(jq -nr --arg want "$want" --arg def "$def" --arg rep "$rep" --argjson dn "$NUDGE_DEFAULT" '
     def obj: if type == "object" then . else {} end;
     def agents: type == "array" and all(.[]; type == "string" and length > 0);
@@ -62,7 +61,7 @@ load_config() {
     | ($rep | try fromjson catch null | obj | .progress | obj) as $r
     | def pick(k; ok; fallback): ([$r[k], $d[k]] | map(select(ok)) | first) // fallback;
     [pick("notesAgents"; agents; ["builder"]) | any(.[]; . == $want),
-     pick("nudgeAfterToolCalls"; calls; $dn)]
+     (pick("nudgeAfterToolCalls"; calls; $dn) | floor)]
     | @tsv') || return 0
   IFS=$'\t' read -r cfg_opted cfg_calls <<<"$out"
   [[ "$cfg_opted" == true ]] || cfg_opted=false
