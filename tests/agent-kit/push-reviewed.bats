@@ -120,6 +120,24 @@ push_reviewed() {
   [[ "${output}" == *"${pre}..${pushed}"* ]]
 }
 
+@test "pushes a range with a conflict-resolving merge as a fast-forward when the remote is at the base" {
+  git -C "${TMP}/work" checkout -q -b side
+  commit "${TMP}/work" shared.txt "side" "side change"
+  git -C "${TMP}/work" checkout -q feature
+  commit "${TMP}/work" shared.txt "feature" "feature change"
+  git -C "${TMP}/work" merge -q side >/dev/null 2>&1 || true
+  printf 'resolved\n' >"${TMP}/work/shared.txt"
+  git -C "${TMP}/work" add shared.txt
+  git -C "${TMP}/work" commit -q -m "merge side"
+  commit "${TMP}/work" a.txt a "after merge"
+  reviewed="$(git rev-parse HEAD)"
+  [ "$(git rev-list --merges "${BASE}..${reviewed}" | wc -l)" -eq 1 ]
+  push_reviewed "${BASE}" "${reviewed}" main
+  [ "${status}" -eq 0 ]
+  [ "$(origin_head)" = "${reviewed}" ]
+  [[ "${output}" == *"${BASE}..${reviewed}"* ]]
+}
+
 @test "aborts a conflicting rebase, leaves the clone on the reviewed sha and pushes nothing" {
   commit "${TMP}/other" shared.txt "theirs" "conflicting upstream"
   git -C "${TMP}/other" push -q origin HEAD:main
