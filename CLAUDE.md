@@ -38,14 +38,12 @@ python3 tests/helpers/fuzz_rules.py speed|crash|bypass
 
 Plugin versions are read from `plugin.json` manifests. `claude plugins update` compares the installed version string against the manifest — same string means "already at latest" even if code changed.
 
-**When making changes in a PR**, bump the version in both files:
+**Do not bump versions in PRs.** [release-please](https://github.com/googleapis/release-please) owns them (`release-please-config.json`, `.release-please-manifest.json`):
 
-1. `<plugin>/.claude-plugin/plugin.json` — the plugin's own manifest
-2. `.claude-plugin/marketplace.json` — the marketplace registry
-
-Use semver: patch for bug fixes, minor for new rules/features, major for breaking changes.
-
-If you forget, users must uninstall/reinstall to pick up changes.
+- Each plugin directory is a package. A commit touching it counts toward its next release
+- The PR title sets the bump: `fix:` patch, `feat:` minor, `feat!:` or a `BREAKING CHANGE:` footer major. `docs:`, `chore:`, `ci:`, `test:` release nothing
+- release-please keeps one release PR open that writes `version` in each `<plugin>/.claude-plugin/plugin.json` and a `CHANGELOG.md`. Merging it ships
+- `.claude-plugin/marketplace.json` entries carry no `version`; `plugin.json` would override it anyway
 
 ## Plugin Discovery Convention
 

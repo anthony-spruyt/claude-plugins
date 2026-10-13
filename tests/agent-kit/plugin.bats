@@ -6,13 +6,6 @@ REPO_ROOT="${BATS_TEST_DIRNAME}/../.."
 PLUGIN="${REPO_ROOT}/agent-kit"
 MARKETPLACE="${REPO_ROOT}/.claude-plugin/marketplace.json"
 
-@test "plugin.json and the marketplace entry carry the same version" {
-  manifest=$(jq -r '.version' "${PLUGIN}/.claude-plugin/plugin.json")
-  listed=$(jq -r '.plugins[] | select(.name == "agent-kit") | .version' "${MARKETPLACE}")
-  [ -n "${manifest}" ]
-  [ "${manifest}" = "${listed}" ]
-}
-
 @test "the marketplace entry points at the plugin directory" {
   [ "$(jq -r '.plugins[] | select(.name == "agent-kit") | .source' "${MARKETPLACE}")" = "./agent-kit" ]
   [ "$(jq -r '.name' "${PLUGIN}/.claude-plugin/plugin.json")" = "agent-kit" ]
