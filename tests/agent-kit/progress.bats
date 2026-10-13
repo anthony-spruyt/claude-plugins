@@ -705,6 +705,65 @@ with_nudge_config() {
   [ ! -e "${DIR}/agent-${AGENT}.claim-nudge" ]
 }
 
+# --- Claim cleanup --------------------------------------------------------------
+
+@test "after compaction n only that key's claim-n remains" {
+  sub_start
+  for i in 1 2 3; do
+    compact_sub
+    sub_pre
+    [ -e "${DIR}/agent-${AGENT}.claim-${i}" ]
+  done
+  [ ! -e "${DIR}/agent-${AGENT}.claim-1" ]
+  [ ! -e "${DIR}/agent-${AGENT}.claim-2" ]
+  [ "$(ls "${DIR}" | grep -c "^agent-${AGENT}\.claim-")" -eq 1 ]
+}
+
+@test "main session compactions also keep only the latest numbered claim" {
+  start startup
+  for i in 1 2 3; do
+    compact_main
+    main_pre
+  done
+  [ "$(ls "${DIR}" | grep -c "^${SID}\.claim-")" -eq 1 ]
+  [ -e "${DIR}/${SID}.claim-3" ]
+}
+
+@test "the compaction sweep keeps an existing claim-nudge" {
+  sub_start
+  printf 'x\n' >"${SUB_NOTES}"
+  : >"${DIR}/agent-${AGENT}.claim-nudge"
+  compact_sub
+  sub_pre
+  compact_sub
+  sub_pre
+  [ -e "${DIR}/agent-${AGENT}.claim-nudge" ]
+  [ -e "${DIR}/agent-${AGENT}.claim-2" ]
+  [ ! -e "${DIR}/agent-${AGENT}.claim-1" ]
+}
+
+@test "the compaction sweep leaves other keys' claims alone" {
+  sub_start
+  sub_start other99
+  : >"${DIR}/agent-other99.claim-1"
+  : >"${DIR}/${SID}.claim-1"
+  compact_sub
+  sub_pre
+  compact_sub
+  sub_pre
+  [ ! -e "${DIR}/agent-${AGENT}.claim-1" ]
+  [ -e "${DIR}/agent-other99.claim-1" ]
+  [ -e "${DIR}/${SID}.claim-1" ]
+}
+
+@test "the compaction sweep leaves claims for higher counts alone" {
+  sub_start
+  : >"${DIR}/agent-${AGENT}.claim-5"
+  compact_sub
+  sub_pre
+  [ -e "${DIR}/agent-${AGENT}.claim-5" ]
+}
+
 # --- SubagentStop ------------------------------------------------------------
 
 @test "SubagentStop removes that agent's state and claims and keeps its notes" {

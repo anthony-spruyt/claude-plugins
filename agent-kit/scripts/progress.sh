@@ -156,6 +156,18 @@ save_state() {
   return 0
 }
 
+# Keeps one numbered claim per key; claims for the same or a higher count may be racing
+sweep_older_claims() {
+  local n=$1 f c
+  for f in "$dir/$key".claim-*; do
+    c=${f##*.claim-}
+    [[ "$c" =~ ^[0-9]{1,9}$ ]] || continue
+    ((10#$c < 10#$n)) || continue
+    [[ -f "$f" && ! -L "$f" ]] && rm -f -- "$f"
+  done
+  return 0
+}
+
 # Parallel calls race: one claims each count by exclusive create (mkdir is not atomic on virtiofs)
 claim() {
   local n=$1
@@ -163,8 +175,9 @@ claim() {
   (
     set -C
     : >"$dir/$key.claim-$n"
-  ) 2>/dev/null
-  return $?
+  ) 2>/dev/null || return 1
+  [[ "$n" =~ ^[0-9]{1,9}$ ]] && sweep_older_claims "$n"
+  return 0
 }
 
 NUDGE_DEFAULT=10

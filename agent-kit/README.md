@@ -52,7 +52,7 @@ A subagent keeps notes only if its `agent_type` is a line in `config/notes-agent
 ### Compaction
 
 Claude Code fires `SessionStart(compact)` with the main session's payload even when a subagent compacted ([anthropics/claude-code#91910](https://github.com/anthropics/claude-code/issues/91910)).
-It can't say who to answer, so it stays silent. Every conversation that keeps notes gets them on its first tool call after compaction, through `PreToolUse`. A reply with no tool call in between runs without them. Parallel tool calls race for the injection with an exclusive-create claim file, so it happens once.
+It can't say who to answer, so it stays silent. Every conversation that keeps notes gets them on its first tool call after compaction, through `PreToolUse`. A reply with no tool call in between runs without them. Parallel tool calls race for the injection with an exclusive-create claim file, so it happens once. Winning a claim deletes that key's older numbered claims, so at most one `.claim-<n>` stays per key (`.claim-nudge` is never swept).
 
 ### Notes reminder
 
