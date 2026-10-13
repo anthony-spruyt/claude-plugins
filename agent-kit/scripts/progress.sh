@@ -288,7 +288,10 @@ count=$(count_boundaries "$(transcript_file)")
 notes_nudge() {
   local calls
   [[ "$scope" == sub ]] || return 0
-  usable_notes "$notes" && return 0
+  if usable_notes "$notes"; then
+    claim nudge || true
+    return 0
+  fi
   [[ ! -e "$dir/$key.claim-nudge" ]] || return 0
   calls=$(count_tool_calls "$(transcript_file)")
   ((calls >= $(nudge_threshold))) || return 0

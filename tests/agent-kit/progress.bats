@@ -587,6 +587,19 @@ with_nudge_config() {
   assert_silent
 }
 
+@test "notes written then deleted stay silent" {
+  sub_start
+  tool_calls 3
+  printf 'GOAL: ship the thing\n' >"${SUB_NOTES}"
+  sub_pre
+  assert_silent
+  rm -f "${SUB_NOTES}"
+  tool_calls 20
+  sub_pre
+  assert_silent
+  [ ! -e "${SUB_NOTES}" ]
+}
+
 @test "empty notes still count as missing" {
   sub_start
   : >"${SUB_NOTES}"

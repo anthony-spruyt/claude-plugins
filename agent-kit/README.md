@@ -29,7 +29,7 @@ Bookkeeping always lives in `$CLAUDE_PROJECT_DIR/.agent-progress/`, which the sc
 | Who               | Notes                                                   | Bookkeeping                                            |
 | ----------------- | ------------------------------------------------------- | ------------------------------------------------------ |
 | Main session      | `<session_id>.md` in the checkout cwd is in (see below) | `<session_id>.state`, `<session_id>.claim-<n>`         |
-| Opted-in subagent | `agent-<agent_id>.md`, always in the project folder     | `agent-<agent_id>.state`, `agent-<agent_id>.claim-<n>` |
+| Opted-in subagent | `agent-<agent_id>.md`, always in the project folder     | `agent-<agent_id>.state`, `agent-<agent_id>.claim-<n>`, `agent-<agent_id>.claim-nudge` |
 
 The main session's notes path is resolved once at session start (the worktree root when cwd is in a worktree of the project, otherwise the project; notes already written in the project checkout win when cwd's checkout has none) and saved in the `.state` file. A leading `agent-` on `agent_id` is stripped. Ids must match `^[A-Za-z0-9_-]+$`.
 
@@ -52,13 +52,13 @@ A subagent keeps notes only if its `agent_type` is a line in `config/notes-agent
 ### Compaction
 
 Claude Code fires `SessionStart(compact)` with the main session's payload even when a subagent compacted ([anthropics/claude-code#91910](https://github.com/anthropics/claude-code/issues/91910)).
-It can't say who to answer, so it stays silent. Every conversation that keeps notes gets them on its first tool call after compaction, through `PreToolUse`. A reply with no tool call in between runs without them. Parallel tool calls race for the injection with an exclusive-create claim file, so it happens once. Winning a claim deletes that key's older numbered claims, so at most one `.claim-<n>` stays per key (`.claim-nudge` is never swept).
+It can't say who to answer, so it stays silent. Every conversation that keeps notes gets them on its first tool call after compaction, through `PreToolUse`. A reply with no tool call in between runs without them. Parallel tool calls race for the injection with an exclusive-create claim file, so it happens once. Winning a claim deletes that key's older numbered claims, so at most one `.claim-<n>` stays per key (the sweep leaves `.claim-nudge` alone: it is dropped at start and at stop).
 
 ### Notes reminder
 
-The start message lands ahead of the agent's brief, and many subagents never write notes. On `PreToolUse`, an opted-in subagent whose notes file is missing (or empty) gets one reminder once its own transcript holds enough `tool_use` entries. The reminder says how many tool calls it is in, gives the exact notes path and repeats the rule. An exclusive-create claim file, `agent-<agent_id>.claim-nudge`, makes it fire once per subagent, even with parallel tool calls; `SubagentStop` and the next start drop the claim. The main session is unchanged.
+The start message lands ahead of the agent's brief, and many subagents never write notes. On `PreToolUse`, an opted-in subagent whose notes file is missing (or empty) gets one reminder once its own transcript holds enough `tool_use` entries. The first `PreToolUse` that finds usable notes takes the claim without a message, so deleting the notes later (as the rule says to when the task is done) never triggers the reminder. The reminder says how many tool calls it is in, gives the exact notes path and repeats the rule. An exclusive-create claim file, `agent-<agent_id>.claim-nudge`, makes it fire once per subagent, even with parallel tool calls; `SubagentStop` and the next start drop the claim. The main session is unchanged.
 
-The threshold is the one integer in `config/notes-nudge-calls` (`#` comments and blank lines ignored). A missing, non-numeric or zero value means 10.
+The threshold is the one integer in `config/notes-nudge-calls` (`#` comments and blank lines ignored). Anything but one integer from 1 to 999999 on the first non-comment line means 10.
 
 ### Safety
 
