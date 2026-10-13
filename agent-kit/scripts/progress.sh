@@ -167,6 +167,34 @@ claim() {
   return $?
 }
 
+NUDGE_DEFAULT=10
+
+nudge_threshold() {
+  local line n=$NUDGE_DEFAULT
+  if [[ -r "$plugin_root/config/notes-nudge-calls" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line=${line%%#*}
+      line=${line#"${line%%[![:space:]]*}"}
+      line=${line%"${line##*[![:space:]]}"}
+      [[ -n "$line" ]] || continue
+      [[ "$line" =~ ^[1-9][0-9]{0,5}$ ]] && n=$line
+      break
+    done <"$plugin_root/config/notes-nudge-calls"
+  fi
+  printf '%s' "$n"
+  return 0
+}
+
+count_tool_calls() {
+  local file=$1 n=0
+  if [[ -n "$file" && -r "$file" ]]; then
+    n=$(grep -oF '"type":"tool_use"' "$file" | wc -l || true)
+  fi
+  n=${n//[^0-9]/}
+  printf '%s' "${n:-0}"
+  return 0
+}
+
 usable_notes() {
   local f=$1
   [[ -f "$f" && ! -L "$f" && -s "$f" ]] || return 1
@@ -244,6 +272,18 @@ fi
 
 count=$(count_boundaries "$(transcript_file)")
 
+notes_nudge() {
+  local calls
+  [[ "$scope" == sub ]] || return 0
+  usable_notes "$notes" && return 0
+  [[ ! -e "$dir/$key.claim-nudge" ]] || return 0
+  calls=$(count_tool_calls "$(transcript_file)")
+  ((calls >= $(nudge_threshold))) || return 0
+  claim nudge || return 0
+  emit PreToolUse "You are $calls tool calls in and have no progress notes yet. Your notes file is $notes. Start it now (goal and issue) unless the task is a one-step job the rule lets you skip."
+  return 0
+}
+
 begin() {
   local ev=$1
   make_dir || exit 0
@@ -269,11 +309,14 @@ PreToolUse)
   fi
   seen=$(head -c 20 "$state" | head -n 1)
   seen=${seen//[^0-9]/}
-  ((count > ${seen:-0})) || exit 0
-  [[ "$scope" == sub ]] || load_main_paths || exit 0
-  claim "$count" || exit 0
-  save_state "$count" || exit 0
-  emit PreToolUse "$(compact_message)"
+  if ((count > ${seen:-0})); then
+    [[ "$scope" == sub ]] || load_main_paths || exit 0
+    claim "$count" || exit 0
+    save_state "$count" || exit 0
+    emit PreToolUse "$(compact_message)"
+    exit 0
+  fi
+  notes_nudge
   ;;
 *) ;;
 esac

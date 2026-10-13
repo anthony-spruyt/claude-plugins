@@ -45,6 +45,7 @@ A subagent keeps notes only if its `agent_type` is a line in `config/notes-agent
 | SessionStart compact                   | anyone                  | Nothing (not even wired), see below                                                                                           |
 | SubagentStart (also on resume)         | opted-in subagent       | Inject path, rule and existing notes; save its transcript's compaction count                                                  |
 | PreToolUse                             | main, opted-in subagent | If the `compact_boundary` count is above the saved one: claim it, inject path, rule and notes. No saved state: start as above |
+| PreToolUse (no compaction to report)   | opted-in subagent       | If its notes are missing and it has made `config/notes-nudge-calls` tool calls: claim `.claim-nudge`, inject the reminder     |
 | SubagentStop                           | opted-in subagent       | Delete its `.state` and `.claim-*`, never its notes                                                                           |
 | SessionEnd                             | main                    | Delete the session's `.state` and `.claim-*`, never its notes                                                                 |
 
@@ -52,6 +53,12 @@ A subagent keeps notes only if its `agent_type` is a line in `config/notes-agent
 
 Claude Code fires `SessionStart(compact)` with the main session's payload even when a subagent compacted ([anthropics/claude-code#91910](https://github.com/anthropics/claude-code/issues/91910)).
 It can't say who to answer, so it stays silent. Every conversation that keeps notes gets them on its first tool call after compaction, through `PreToolUse`. A reply with no tool call in between runs without them. Parallel tool calls race for the injection with an exclusive-create claim file, so it happens once.
+
+### Notes reminder
+
+The start message lands ahead of the agent's brief, and many subagents never write notes. On `PreToolUse`, an opted-in subagent whose notes file is missing (or empty) gets one reminder once its own transcript holds enough `tool_use` entries. The reminder says how many tool calls it is in, gives the exact notes path and repeats the rule. An exclusive-create claim file, `agent-<agent_id>.claim-nudge`, makes it fire once per subagent, even with parallel tool calls; `SubagentStop` and the next start drop the claim. The main session is unchanged.
+
+The threshold is the one integer in `config/notes-nudge-calls` (`#` comments and blank lines ignored). A missing, non-numeric or zero value means 10.
 
 ### Safety
 

@@ -540,6 +540,171 @@ no_files() {
   [ "$(cat "${TMP}"/out.* | grep -c additionalContext)" -eq 1 ]
 }
 
+# --- Notes reminder -----------------------------------------------------------
+
+tool_calls() {
+  local i
+  for ((i = 0; i < $1; i++)); do
+    printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"Bash","input":{"command":"ls"}}]},"type":"assistant"}' >>"${SUB_FILE}"
+    printf '%s\n' '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"ok"}]},"type":"user"}' >>"${SUB_FILE}"
+  done
+}
+
+with_nudge_config() {
+  mkdir -p "${TMP}/plugin"
+  cp -r "${PLUGIN}/scripts" "${PLUGIN}/config" "${TMP}/plugin/"
+  printf '%b' "$1" >"${TMP}/plugin/config/notes-nudge-calls"
+  SCRIPT_TO_RUN="${TMP}/plugin/scripts/progress.sh"
+}
+
+@test "the shipped notes-nudge-calls config holds exactly one integer" {
+  [ "$(grep -v '^[[:space:]]*\(#\|$\)' "${PLUGIN}/config/notes-nudge-calls")" = "10" ]
+}
+
+@test "a subagent with no notes is reminded at the default threshold of 10 tool calls" {
+  sub_start
+  tool_calls 10
+  sub_pre
+  [ "$(event_name)" = "PreToolUse" ]
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"10 tool calls"* ]]
+  [[ "$(context)" == *"no progress notes"* ]]
+  [[ "$(context)" == *"more than one step"* ]]
+}
+
+@test "no reminder below the threshold" {
+  sub_start
+  tool_calls 9
+  sub_pre
+  assert_silent
+}
+
+@test "no reminder when the notes already exist" {
+  sub_start
+  printf 'GOAL: ship the thing\n' >"${SUB_NOTES}"
+  tool_calls 25
+  sub_pre
+  assert_silent
+}
+
+@test "empty notes still count as missing" {
+  sub_start
+  : >"${SUB_NOTES}"
+  tool_calls 12
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+}
+
+@test "the reminder fires once per subagent" {
+  sub_start
+  tool_calls 10
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [ -e "${DIR}/agent-${AGENT}.claim-nudge" ]
+  tool_calls 5
+  sub_pre
+  assert_silent
+}
+
+@test "parallel calls past the threshold remind exactly once" {
+  sub_start
+  tool_calls 12
+  payload="$(sub_in PreToolUse "${AGENT}")"
+  for i in 1 2 3 4 5 6; do
+    bash "${SCRIPT}" PreToolUse <<<"${payload}" >"${TMP}/out.${i}" &
+  done
+  wait
+  [ "$(cat "${TMP}"/out.* | grep -c additionalContext)" -eq 1 ]
+}
+
+@test "the threshold comes from config/notes-nudge-calls; comments and blank lines are ignored" {
+  with_nudge_config '# calls before the reminder\n\n3\n'
+  sub_start
+  tool_calls 2
+  sub_pre
+  assert_silent
+  tool_calls 1
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"3 tool calls"* ]]
+}
+
+@test "a bad or missing threshold falls back to 10" {
+  for bad in 'abc\n' '0\n' '-4\n' '3.5\n' '99999999999999999999\n' '' '# only a comment\n'; do
+    rm -rf "${DIR}"
+    : >"${SUB_FILE}"
+    with_nudge_config "${bad}"
+    sub_start
+    tool_calls 9
+    sub_pre
+    assert_silent
+    tool_calls 1
+    sub_pre
+    assert_injected "${SUB_NOTES}"
+  done
+  rm -rf "${DIR}" "${TMP}/plugin/config/notes-nudge-calls"
+  : >"${SUB_FILE}"
+  sub_start
+  tool_calls 10
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+}
+
+@test "a subagent that is not opted in is never reminded" {
+  sub_pre 5 general-purpose
+  assert_silent
+  tool_calls 30
+  sub_pre "${AGENT}" general-purpose
+  assert_silent
+  no_files
+}
+
+@test "the main session is never reminded" {
+  start startup
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t","name":"Bash","input":{}}]}}' >>"${SESSION_FILE}"
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t","name":"Bash","input":{}}]}}' >>"${SESSION_FILE}"
+  done
+  main_pre
+  assert_silent
+}
+
+@test "tool_use text inside message content does not count as a tool call" {
+  sub_start
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    printf '%s\n' '{"type":"user","message":{"content":"grep \"type\":\"tool_use\" in the log"}}' >>"${SUB_FILE}"
+  done
+  sub_pre
+  assert_silent
+}
+
+@test "the compaction reminder still fires and the notes reminder waits for the next call" {
+  sub_start
+  tool_calls 12
+  compact_sub
+  sub_pre
+  assert_injected "context was compacted"
+  sub_pre
+  assert_injected "tool calls"
+  sub_pre
+  assert_silent
+}
+
+@test "the first call without saved state injects the start message, not the reminder" {
+  tool_calls 12
+  sub_pre
+  assert_injected "Your progress notes file is"
+  [[ "$(context)" != *"tool calls"* ]]
+}
+
+@test "SubagentStop drops the reminder claim so a resumed agent can be reminded again" {
+  sub_start
+  tool_calls 10
+  sub_pre
+  sub_stop
+  [ ! -e "${DIR}/agent-${AGENT}.claim-nudge" ]
+}
+
 # --- SubagentStop ------------------------------------------------------------
 
 @test "SubagentStop removes that agent's state and claims and keeps its notes" {
