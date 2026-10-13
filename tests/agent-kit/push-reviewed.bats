@@ -12,6 +12,9 @@ setup() {
   git init -q --bare -b main "${TMP}/origin.git"
   git clone -q "${TMP}/origin.git" "${TMP}/work" 2>/dev/null
   git clone -q "${TMP}/origin.git" "${TMP}/other" 2>/dev/null
+  ssh-keygen -q -t ed25519 -N '' -f "${TMP}/key"
+  enable_signing "${TMP}/work"
+  enable_signing "${TMP}/other"
   commit "${TMP}/work" shared.txt "one" "base"
   git -C "${TMP}/work" push -q origin HEAD:main
   git -C "${TMP}/other" pull -q origin main
@@ -23,6 +26,16 @@ setup() {
 teardown() {
   cd /
   rm -rf "${TMP}"
+}
+
+enable_signing() {
+  git -C "$1" config gpg.format ssh
+  git -C "$1" config user.signingkey "${TMP}/key.pub"
+  git -C "$1" config commit.gpgsign true
+}
+
+disable_signing() {
+  git -C "$1" config commit.gpgsign false
 }
 
 commit() {
@@ -155,6 +168,7 @@ push_reviewed() {
 @test "fetches the named branch in a single-branch clone that does not track it" {
   git -C "${TMP}/work" push -q origin "${BASE}:refs/heads/side"
   git clone -q --single-branch -b side "${TMP}/origin.git" "${TMP}/single" 2>/dev/null
+  enable_signing "${TMP}/single"
   cd "${TMP}/single"
   git checkout -q -b feature
   commit "${TMP}/single" a.txt a "reviewed"
@@ -186,6 +200,42 @@ push_reviewed() {
   push_reviewed "${BASE}" "${reviewed}" main
   [ "${status}" -ne 0 ]
   [ "$(origin_head)" = "$(git -C "${TMP}/other" rev-parse HEAD)" ]
+}
+
+@test "refuses an unsigned commit in the range, names it and pushes nothing" {
+  commit "${TMP}/work" a.txt a "signed"
+  disable_signing "${TMP}/work"
+  commit "${TMP}/work" b.txt b "unsigned"
+  reviewed="$(git rev-parse HEAD)"
+  ! git cat-file commit HEAD | grep -q '^gpgsig'
+  push_reviewed "${BASE}" "${reviewed}" main
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"unsigned"* ]]
+  [[ "${output}" == *"$(git rev-parse --short HEAD)"* ]]
+  [[ "${output}" != *"$(git rev-parse --short HEAD~1)"* ]]
+  [ "$(origin_head)" = "${BASE}" ]
+}
+
+@test "refuses an unsigned commit that a rebase carries onto the moved remote" {
+  commit "${TMP}/other" o.txt o "someone else"
+  git -C "${TMP}/other" push -q origin HEAD:main
+  upstream="$(git -C "${TMP}/other" rev-parse HEAD)"
+  disable_signing "${TMP}/work"
+  commit "${TMP}/work" a.txt a "unsigned"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" main
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"unsigned"* ]]
+  [ "$(origin_head)" = "${upstream}" ]
+}
+
+@test "pushes signed commits" {
+  commit "${TMP}/work" a.txt a "signed"
+  reviewed="$(git rev-parse HEAD)"
+  git cat-file commit HEAD | grep -q '^gpgsig'
+  push_reviewed "${BASE}" "${reviewed}" main
+  [ "${status}" -eq 0 ]
+  [ "$(origin_head)" = "${reviewed}" ]
 }
 
 @test "needs three arguments" {
