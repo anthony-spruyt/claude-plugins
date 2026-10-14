@@ -55,7 +55,10 @@ case "$*" in
 esac
 STUB
 
-  printf '#!/bin/bash\necho "$*" >>"$(dirname "$0")/sleep.log"\n' >"${BIN}/sleep"
+  cat >"${BIN}/sleep" <<'STUB'
+#!/bin/bash
+echo "$*" >>"$(dirname "$0")/sleep.log"
+STUB
   chmod +x "${BIN}/gh" "${BIN}/curl" "${BIN}/sleep"
   export PATH="${BIN}:${PATH}"
 }
