@@ -396,8 +396,8 @@ with_repo_config() {
   printf '%b' "$1" >"${CLAUDE_PROJECT_DIR}/.claude/agent-kit.json"
 }
 
-@test "the shipped progress.json default holds builder and 10" {
-  [ "$(jq -c . "${PLUGIN}/config/progress.json")" = '{"notesAgents":["builder"],"nudgeAfterToolCalls":10}' ]
+@test "the shipped progress.json default holds builder, 10, 200000 and 90/95" {
+  [ "$(jq -c . "${PLUGIN}/config/progress.json")" = '{"notesAgents":["builder"],"nudgeAfterToolCalls":10,"compactAtTokens":200000,"warnAtPercent":[90,95]}' ]
 }
 
 @test "the old plain-text config files are gone" {
@@ -969,6 +969,279 @@ tool_calls() {
   [ ! -e "${DIR}/agent-${AGENT}.claim-nudge" ]
 }
 
+# --- Context warning ------------------------------------------------------------
+
+# Appends an assistant entry whose three input counts sum to $2 tokens; $3 is its isSidechain
+usage_line() {
+  local file=$1 total=$2 side=$3
+  jq -nc --argjson t "${total}" --argjson side "${side}" \
+    '{type: "assistant", isSidechain: $side, message: {model: "claude-opus-5-5", role: "assistant",
+      content: [{type: "tool_use", id: "toolu_01", name: "Bash", input: {}}],
+      usage: {input_tokens: 2, cache_creation_input_tokens: 1000, cache_read_input_tokens: ($t - 1002), output_tokens: 50}}}' >>"${file}"
+}
+
+main_usage() { usage_line "${SESSION_FILE}" "$1" false; }
+# A subagent's own transcript marks every entry as side-chain
+sub_usage() { usage_line "${SUB_FILE}" "$1" true; }
+
+@test "the main session is warned at 90% of the default 200000 compaction point" {
+  start startup
+  main_usage 180000
+  main_pre
+  [ "$(event_name)" = "PreToolUse" ]
+  assert_injected "180000 tokens"
+  [[ "$(context)" == *"90%"* ]]
+  [[ "$(context)" == *"200000"* ]]
+  [[ "$(context)" == *"${MAIN_NOTES}"* ]]
+  [[ "$(context)" == *"before"*"compact"* ]]
+  [[ "$(context)" == *"more than one step"* ]]
+}
+
+@test "no context warning below 90%" {
+  start startup
+  main_usage 179999
+  main_pre
+  assert_silent
+}
+
+@test "each warning level fires once" {
+  start startup
+  main_usage 181000
+  main_pre
+  assert_injected "90%"
+  main_usage 185000
+  main_pre
+  assert_silent
+  main_usage 190000
+  main_pre
+  assert_injected "95%"
+  main_usage 195000
+  main_pre
+  assert_silent
+}
+
+@test "a jump past both levels warns once" {
+  start startup
+  main_usage 197000
+  main_pre
+  assert_injected "98%"
+  main_usage 198000
+  main_pre
+  assert_silent
+}
+
+@test "the size sums input, cache creation and cache read tokens" {
+  start startup
+  printf '%s\n' '{"type":"assistant","message":{"usage":{"input_tokens":100000,"cache_creation_input_tokens":40000,"cache_read_input_tokens":40000,"output_tokens":9}}}' >>"${SESSION_FILE}"
+  main_pre
+  assert_injected "180000 tokens"
+}
+
+@test "only the latest assistant entry counts" {
+  start startup
+  main_usage 199000
+  main_usage 50000
+  printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","content":"\"usage\": lots"}]}}' >>"${SESSION_FILE}"
+  main_pre
+  assert_silent
+}
+
+@test "entries that are not real assistant replies are ignored" {
+  start startup
+  main_usage 50000
+  printf '%s\n' '{"type":"progress","data":{"message":{"type":"assistant","message":{"usage":{"input_tokens":190000}}}}}' \
+    '{"type":"assistant","isSidechain":true,"message":{"usage":{"input_tokens":190000}}}' \
+    '{"type":"assistant","message":{"model":"<synthetic>","usage":{"input_tokens":0,"cache_read_input_tokens":0}}}' >>"${SESSION_FILE}"
+  main_pre
+  assert_silent
+  main_usage 185000
+  printf '%s\n' '{"type":"assistant","message":{"model":"<synthetic>","usage":{"input_tokens":0,"cache_read_input_tokens":0}}}' >>"${SESSION_FILE}"
+  main_pre
+  assert_injected "185000 tokens"
+}
+
+@test "missing or malformed usage stays silent" {
+  start startup
+  for bad in '{"type":"assistant","message":{"usage":{"input_tokens":"190000"}}}' \
+    '{"type":"assistant","message":{"usage":"190000"}}' \
+    '{"type":"assistant","message":{"usage":{"input_tokens":-5,"cache_read_input_tokens":190000}}}' \
+    '{"type":"assistant","message":{"content":"no usage here"}}' \
+    'not json "usage"'; do
+    printf '%s\n' "${bad}" >>"${SESSION_FILE}"
+    main_pre
+    assert_silent
+  done
+}
+
+@test "a high size from before a compaction does not warn after it" {
+  start startup
+  main_usage 199000
+  compact_main
+  main_pre
+  assert_injected "context was compacted"
+  main_pre
+  assert_silent
+}
+
+@test "a compaction resets the warning levels" {
+  start startup
+  main_usage 185000
+  main_pre
+  assert_injected "92%"
+  compact_main
+  main_usage 20000
+  main_pre
+  assert_injected "context was compacted"
+  main_usage 182000
+  main_pre
+  assert_injected "91%"
+}
+
+@test "the warning levels are reset even when the hook dies right after saving the compaction count" {
+  start startup
+  main_usage 185000
+  main_pre
+  assert_injected "92%"
+  compact_main
+  main_usage 20000
+  mkdir -p "${TMP}/killmv"
+  cat >"${TMP}/killmv/mv" <<'STUB'
+#!/bin/bash
+command -p mv "$@"
+case "$*" in *.state) kill -KILL "$PPID" ;; esac
+STUB
+  chmod +x "${TMP}/killmv/mv"
+  run --separate-stderr env PATH="${TMP}/killmv:${PATH}" bash "${SCRIPT}" PreToolUse <<<"$(main_in PreToolUse)"
+  main_usage 182000
+  main_pre
+  assert_injected "91%"
+}
+
+@test "SessionStart resume resets the warning levels" {
+  start startup
+  main_usage 185000
+  main_pre
+  assert_injected "92%"
+  start resume
+  main_pre
+  assert_injected "92%"
+}
+
+@test "an unsorted warnAtPercent with duplicates warns once per level" {
+  with_repo_config '{"progress":{"warnAtPercent":[95,90,90]}}'
+  start startup
+  main_usage 182000
+  main_pre
+  assert_injected "91%"
+  main_pre
+  assert_silent
+  main_usage 192000
+  main_pre
+  assert_injected "96%"
+  main_pre
+  assert_silent
+}
+
+@test "the warning names the notes path but leaves out the notes text" {
+  mkdir -p "${DIR}"
+  printf 'GOAL: keep me out\n' >"${MAIN_NOTES}"
+  start resume
+  main_usage 185000
+  main_pre
+  assert_injected "${MAIN_NOTES}"
+  [[ "$(context)" != *"GOAL: keep me out"* ]]
+}
+
+@test "an opted-in subagent is warned from its own transcript" {
+  sub_start
+  main_usage 199000
+  sub_pre
+  assert_silent
+  sub_usage 185000
+  sub_pre
+  assert_injected "${SUB_NOTES}"
+  [[ "$(context)" == *"92%"* ]]
+}
+
+@test "a subagent that is not opted in is never warned" {
+  sub_usage 199000
+  sub_pre "${AGENT}" general-purpose
+  assert_silent
+  no_files
+}
+
+@test "the context warning comes before the notes reminder" {
+  sub_start
+  tool_calls 12
+  sub_usage 185000
+  sub_pre
+  assert_injected "92%"
+  sub_pre
+  assert_injected "no progress notes"
+}
+
+@test "parallel calls past a level warn exactly once" {
+  start startup
+  main_usage 185000
+  payload="$(main_in PreToolUse)"
+  for i in 1 2 3 4 5 6; do
+    bash "${SCRIPT}" PreToolUse <<<"${payload}" >"${TMP}/out.${i}" &
+  done
+  wait
+  [ "$(cat "${TMP}"/out.* | grep -c additionalContext)" -eq 1 ]
+}
+
+@test "a repo compactAtTokens and warnAtPercent replace the defaults" {
+  with_repo_config '{"progress":{"compactAtTokens":100000,"warnAtPercent":[50]}}'
+  start startup
+  main_usage 49999
+  main_pre
+  assert_silent
+  main_usage 50000
+  main_pre
+  assert_injected "50% of the 100000"
+  main_usage 99000
+  main_pre
+  assert_silent
+}
+
+@test "an empty warnAtPercent turns the warning off" {
+  with_repo_config '{"progress":{"warnAtPercent":[]}}'
+  start startup
+  main_usage 199000
+  main_pre
+  assert_silent
+}
+
+@test "bad compactAtTokens or warnAtPercent values fall back to the defaults" {
+  for bad in '"compactAtTokens":"100000"' '"compactAtTokens":0' '"compactAtTokens":1.5' '"compactAtTokens":-1' \
+    '"warnAtPercent":90' '"warnAtPercent":[0]' '"warnAtPercent":[101]' '"warnAtPercent":["50"]' \
+    '"warnAtPercent":[50.5]' '"warnAtPercent":[[50]]' '"warnAtPercent":null'; do
+    rm -rf "${DIR}"
+    : >"${SESSION_FILE}"
+    with_repo_config "{\"progress\":{${bad}}}"
+    start startup
+    main_usage 120000
+    main_pre
+    assert_silent
+    main_usage 180000
+    main_pre
+    assert_injected "90% of the 200000"
+  done
+}
+
+@test "the plugin default supplies compactAtTokens and warnAtPercent" {
+  with_plugin_config '{"compactAtTokens":2000,"warnAtPercent":[80]}'
+  start startup
+  main_usage 1500
+  main_pre
+  assert_silent
+  main_usage 1700
+  main_pre
+  assert_injected "85% of the 2000"
+  [[ "$(context)" == *"1700 tokens"* ]]
+}
+
 # --- Claim cleanup --------------------------------------------------------------
 
 @test "after compaction n only that key's claim-n remains" {
@@ -1303,12 +1576,14 @@ config_reads() {
   [ "$(config_reads)" -eq 1 ]
 }
 
-@test "the main session never reads the config" {
+@test "the main session reads the config only on PreToolUse, once" {
   config_jq_calls
   run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" SessionStart <<<"$(main_in SessionStart startup)"
-  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" PreToolUse <<<"$(main_in PreToolUse)"
-  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" SessionEnd <<<"$(main_in SessionEnd)"
   [ "$(config_reads)" -eq 0 ]
+  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" PreToolUse <<<"$(main_in PreToolUse)"
+  [ "$(config_reads)" -eq 1 ]
+  run --separate-stderr env PATH="${TMP}/spy:${PATH}" bash "${SCRIPT}" SessionEnd <<<"$(main_in SessionEnd)"
+  [ "$(config_reads)" -eq 1 ]
 }
 
 @test "payload fields stay in place when earlier ones are empty" {
