@@ -2,7 +2,9 @@
 """Unit tests for the command_match operator and its fallback."""
 
 import os
+import shutil
 import sys
+import tempfile
 
 import pytest
 
@@ -222,6 +224,39 @@ class TestOpaqueAlsoUsesFallback:
     )
     def test_heredoc_saved_as_report_skips_fallback(self, cmd):
         assert not _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+
+    @pytest.fixture
+    def tmp_dir(self):
+        path = tempfile.mkdtemp(dir="/tmp")
+        yield path
+        shutil.rmtree(path)
+
+    def _report(self, path):
+        rule_engine.clean_lines.cache_clear()
+        return f"cat > {path} <<'EOF'\nprintenv\nEOF"
+
+    def test_regular_report_file_skips_fallback(self, tmp_dir):
+        path = os.path.join(tmp_dir, "r.md")
+        open(path, "w").close()
+        assert not _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), self._report(path))
+
+    def test_symlinked_report_file_checks_fallback(self, tmp_dir):
+        path = os.path.join(tmp_dir, "r.md")
+        os.symlink(os.path.join(tmp_dir, "rc"), path)
+        assert _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), self._report(path))
+
+    def test_report_in_symlinked_dir_checks_fallback(self, tmp_dir):
+        os.mkdir(os.path.join(tmp_dir, "real"))
+        os.symlink(os.path.join(tmp_dir, "real"), os.path.join(tmp_dir, "link"))
+        path = os.path.join(tmp_dir, "link", "r.md")
+        assert _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), self._report(path))
+
+    def test_hard_linked_report_file_checks_fallback(self, tmp_dir):
+        other = os.path.join(tmp_dir, "rc")
+        open(other, "w").close()
+        path = os.path.join(tmp_dir, "r.md")
+        os.link(other, path)
+        assert _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), self._report(path))
 
     @pytest.mark.parametrize("cmd", ["echo printenv", "mkdir -p printenv # x", "git log printenv"])
     def test_plain_commands_skip_fallback(self, cmd):

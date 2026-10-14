@@ -3,7 +3,9 @@
 When a command is opaque, command_match also checks the rule's raw-command fallback.
 """
 
+import os
 import re
+import stat
 from typing import List
 
 from core.masking import _message_spec
@@ -147,7 +149,20 @@ def _writes_report(cmd: SimpleCommand) -> bool:
         files += [a for a in cmd.args if a not in ("-a", "--append")]
     elif name != "cat":
         return False
-    return all(REPORT_FILE.match(f) for f in files)
+    return all(f == "/dev/null" or (REPORT_FILE.match(f) and _plain_file(f)) for f in files)
+
+
+def _plain_file(path: str) -> bool:
+    """A link would carry the text to a file that runs."""
+    if os.path.realpath(path) != os.path.realpath("/tmp") + path[len("/tmp") :]:
+        return False
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return stat.S_ISREG(info.st_mode) and info.st_nlink == 1
 
 
 def _report_only(commands: List[SimpleCommand]) -> bool:
