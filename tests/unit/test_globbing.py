@@ -59,6 +59,30 @@ class TestGlobs:
         assert expand("*/.e?v", cwd=str(tree)) == ["app/.env"]
 
 
+class TestRanges:
+    @pytest.fixture
+    def names(self, tmp_path, monkeypatch):
+        for name in ["xyv", "ab", "az", "a-", "a_"]:
+            (tmp_path / name).touch()
+        monkeypatch.chdir(tmp_path)
+
+    @pytest.mark.parametrize(
+        ("pattern", "expected"),
+        [
+            ("xy[c-v]", ["xyv"]),
+            ("xy[v-c]", ["xy[v-c]"]),
+            ("xy[v-cv]", ["xyv"]),
+            ("a[\\z-b]", ["a[z-b]"]),
+            ("a[b-\\z]", ["ab", "az"]),
+            ("a[!z-b]", ["a-", "a_", "ab", "az"]),
+            ("a[z-b-]", ["a-"]),
+            ("a[[:alpha:]-z]", ["a-", "ab", "az"]),
+        ],
+    )
+    def test_matches_like_bash(self, names, pattern, expected):
+        assert expand(pattern) == expected
+
+
 class TestBraces:
     @pytest.mark.parametrize(
         ("pattern", "expected"),
