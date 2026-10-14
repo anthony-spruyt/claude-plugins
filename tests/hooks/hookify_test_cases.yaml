@@ -1294,6 +1294,11 @@ test_cases:
     command: "cat <<EOF\nToken is $SECRET_TOKEN\nEOF"
     expect: block
 
+  - name: "block-message-secrets: variable after a heredoc that ends mid-line inside $("
+    tool: Bash
+    command: "git commit -F - $(cat <<'X'\nX)z .x${SECRET_TOKEN}"
+    expect: block
+
   - name: "block-heredoc-secrets: heredoc with AZURE_DEVOPS_EXT_PAT"
     tool: Bash
     command: "cat <<EOF\nPAT: $AZURE_DEVOPS_EXT_PAT\nEOF"

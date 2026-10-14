@@ -117,6 +117,11 @@ class TestUnparseableSegments:
         assert normalise(cmd) is None
         assert _matches(_rule(fallback=r"nomatch"), cmd)
 
+    def test_block_rule_reads_heredoc_ended_mid_line(self):
+        cmd = "git commit -F - $(cat <<'X'\nX)z .x${T}"
+        assert normalise(cmd) is None
+        assert _matches(_rule(pattern=r"^git .*\$\{T\}", fallback=r"nomatch"), cmd)
+
     def test_warn_rule_keeps_fallback_only(self):
         rule = _rule(fallback=r"nomatch")
         rule.action = "warn"

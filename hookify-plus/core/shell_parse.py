@@ -88,6 +88,10 @@ class _UnsureError(Exception):
     pass
 
 
+# Set by parse_commands(prefix_ends=True): read a heredoc inside $( the way bash 5.2+ does
+_PREFIX_ENDS = [False]
+
+
 # What _inner found: ('stdin', None) reads code from stdin, ('code', text) runs text, ('words', words) wraps a command
 STDIN = ("stdin", None)
 
@@ -1315,9 +1319,13 @@ class _Parser:
                     raise _UnsureError
                 if line == delim:
                     break
-                # Inside $( bash also ends the heredoc at a line like `EOF)`
+                # Inside $( bash 5.2+ ends the heredoc at a line starting with the delimiter and runs the rest of it
                 if self.subst and line.startswith(delim):
-                    raise _UnsureError
+                    if not _PREFIX_ENDS[0]:
+                        raise _UnsureError
+                    # self.i = nl + 1 below, so parsing resumes right after the delimiter
+                    nl = nl - len(line) + len(delim) - 1
+                    break
                 i = nl + 1
             body, flags = s[start:i], 0
             if strip:
@@ -1559,14 +1567,19 @@ def _run(  # noqa: PLR0913, PLR0917  # parser state passed down each nested pars
     return next(iter(parser.readers.values()), None)
 
 
-def parse_commands(command: str, functions: Optional[set] = None) -> Optional[List[SimpleCommand]]:
+def parse_commands(
+    command: str, functions: Optional[set] = None, prefix_ends: bool = False
+) -> Optional[List[SimpleCommand]]:
     if len(command) > MAX_LENGTH:
         return None
     out = []
+    _PREFIX_ENDS[0] = prefix_ends
     try:
         _run(command, out, 1, 0)
     except (_UnsureError, RecursionError):
         return None
+    finally:
+        _PREFIX_ENDS[0] = False
     if functions is not None:
         functions.update(c for c in out if isinstance(c, FunctionDef))
     commands = [c for c in out if c is not None and not isinstance(c, FunctionDef)]
