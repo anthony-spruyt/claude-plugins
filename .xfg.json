@@ -37,6 +37,7 @@
         ".github/workflows/ci-repo.yaml",
         ".github/workflows/ci.yaml",
         ".github/workflows/pr-title.yaml",
+        ".github/workflows/release-please.yaml",
         ".github/workflows/trivy-scan.yaml",
         ".gitignore",
         ".gitleaks.toml",
