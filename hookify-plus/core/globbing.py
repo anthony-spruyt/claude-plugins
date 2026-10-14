@@ -196,10 +196,12 @@ def _bracket(part: str, start: int):
     i = start + 1
     negate = i < len(part) and part[i] in "!^"
     i += negate
-    body, first = [], True
+    body, first, low = [], True, None
     while i < len(part):
         c = part[i]
         if c == "]" and not first:
+            if not body:
+                return ("." if negate else "(?!)"), i + 1
             return ("[^" if negate else "[") + "".join(body) + "]", i + 1
         first = False
         if c == "[" and part.startswith(":", i + 1):
@@ -207,15 +209,22 @@ def _bracket(part: str, start: int):
             name = part[i + 2 : end] if end > 0 else ""
             if name in CLASSES:
                 body.append(CLASSES[name])
-                i = end + 2
+                i, low = end + 2, None
                 continue
-        if c == "\\" and i + 1 < len(part):
-            body.append(re.escape(part[i + 1]))
-            i += 2
-        elif c == "-" and body and i + 1 < len(part) and part[i + 1] != "]":
-            body.append("-")
-            i += 1
-        else:
-            body.append(re.escape(c))
-            i += 1
+        if c == "-" and low is not None and i + 1 < len(part) and part[i + 1] != "]":
+            high, i = _bracket_char(part, i + 1)
+            body.pop()
+            # Bash matches nothing for a reversed range like [z-a]
+            if low <= high:
+                body.append(re.escape(low) + "-" + re.escape(high))
+            low = None
+            continue
+        low, i = _bracket_char(part, i)
+        body.append(re.escape(low))
     return re.escape("["), start + 1
+
+
+def _bracket_char(part: str, i: int):
+    if part[i] == "\\" and i + 1 < len(part):
+        return part[i + 1], i + 2
+    return part[i], i + 1
