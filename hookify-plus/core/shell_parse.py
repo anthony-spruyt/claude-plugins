@@ -1300,33 +1300,35 @@ class _Parser:
                 raise _UnsureError
             self.word()
 
+    def body_end(self, delim: str, strip: bool, quoted: bool) -> tuple[int, int]:
+        s, i = self.s, self.i
+        while True:
+            # Bash warns and ends the body at end of input, except inside an open $(
+            if i >= len(s):
+                if self.subst != self.top:
+                    raise _UnsureError
+                return i, len(s)
+            nl = s.find("\n", i)
+            nl = len(s) if nl < 0 else nl
+            line = s[i:nl].lstrip("\t") if strip else s[i:nl]
+            # Bash joins backslash-newline in an unquoted body before matching the delimiter
+            if not quoted and (len(line) - len(line.rstrip("\\"))) % 2:
+                raise _UnsureError
+            if line == delim:
+                return i, nl
+            # Inside $( bash 5.2+ ends the heredoc at a line starting with the delimiter and runs the rest of it
+            if self.subst and line.startswith(delim):
+                if not _PREFIX_ENDS[0]:
+                    raise _UnsureError
+                # bodies() resumes at the returned end + 1, right after the delimiter
+                return i, nl - len(line) + len(delim) - 1
+            i = nl + 1
+
     def bodies(self) -> None:
         s, pending, self.pending = self.s, self.pending, []
         for delim, strip, quoted, redirect in pending:
-            start = i = self.i
-            while True:
-                # Bash warns and ends the body at end of input, except inside an open $(
-                if i >= len(s):
-                    if self.subst != self.top:
-                        raise _UnsureError
-                    nl = len(s)
-                    break
-                nl = s.find("\n", i)
-                nl = len(s) if nl < 0 else nl
-                line = s[i:nl].lstrip("\t") if strip else s[i:nl]
-                # Bash joins backslash-newline in an unquoted body before matching the delimiter
-                if not quoted and (len(line) - len(line.rstrip("\\"))) % 2:
-                    raise _UnsureError
-                if line == delim:
-                    break
-                # Inside $( bash 5.2+ ends the heredoc at a line starting with the delimiter and runs the rest of it
-                if self.subst and line.startswith(delim):
-                    if not _PREFIX_ENDS[0]:
-                        raise _UnsureError
-                    # self.i = nl + 1 below, so parsing resumes right after the delimiter
-                    nl = nl - len(line) + len(delim) - 1
-                    break
-                i = nl + 1
+            start = self.i
+            i, nl = self.body_end(delim, strip, quoted)
             body, flags = s[start:i], 0
             if strip:
                 body = LEADING_TABS.sub("", body)
