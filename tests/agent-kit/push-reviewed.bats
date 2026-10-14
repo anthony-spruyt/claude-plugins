@@ -207,7 +207,7 @@ push_reviewed() {
   disable_signing "${TMP}/work"
   commit "${TMP}/work" b.txt b "unsigned"
   reviewed="$(git rev-parse HEAD)"
-  ! git cat-file commit HEAD | grep -q '^gpgsig'
+  [[ "$(git cat-file commit HEAD)" != *$'\ngpgsig'* ]]
   push_reviewed "${BASE}" "${reviewed}" main
   [ "${status}" -ne 0 ]
   [[ "${output}" == *"unsigned"* ]]

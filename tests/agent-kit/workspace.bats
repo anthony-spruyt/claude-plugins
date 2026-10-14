@@ -60,7 +60,7 @@ workspace() {
 }
 
 @test "rejects a task name that is not a plain slug" {
-  for bad in "Fix" "a b" "../x" "x/y" "-x" "x;y" 'x$y' ""; do
+  for bad in "Fix" "a b" "../x" "x/y" "-x" "x;y" "x\$y" ""; do
     workspace acme/widget "${bad}"
     [ "${status}" -ne 0 ]
     [[ "${output}" == *"task name"* ]]
