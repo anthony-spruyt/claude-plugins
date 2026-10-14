@@ -3,7 +3,7 @@
 set -eEuo pipefail
 trap 'printf "error\nunexpected failure near line %s\n" "${LINENO}"; exit 4' ERR
 
-readonly IGNORED_CHECK="Mergify Merge Protections"
+readonly IGNORED_CHECKS='["Mergify Merge Protections","Mergify Merge Queue"]'
 readonly INTERVAL=60
 
 usage() {
@@ -16,7 +16,7 @@ Exit codes: 0 green, 1 failed, 2 pending, 3 not-started, 4 error.
 --wait polls every 60s for --timeout minutes (default 8) and returns at once on green, failed,
 or a run that needs approval. A PR also needs its Sonar gate and CodeQL clean: --sonar-key sets
 the project key (default <owner>_<repo>), --no-sonar and --no-codeql skip one each. Mergify Merge
-Protections is ignored.
+Protections and Mergify Merge Queue are ignored.
 EOF
 }
 
@@ -131,7 +131,7 @@ check_pr() {
     jq -e . >/dev/null 2>&1 <<<"${out}" || die "gh pr checks gave no JSON: ${msg:-${out}}"
   fi
 
-  out=$(jq --arg ig "${IGNORED_CHECK}" '[.[] | select(.name != $ig)]' <<<"${out}")
+  out=$(jq --argjson ig "${IGNORED_CHECKS}" '[.[] | select(.name | IN($ig[]) | not)]' <<<"${out}")
   count=$(jq '[.[] | select(.name | startswith("Mergify") | not)] | length' <<<"${out}")
   [[ "${count}" -gt 0 ]] || not_started=1
   add failed "$(jq -r '.[] | select(.bucket | IN("pass", "skipping", "pending") | not) | "\(.name): \(.bucket)"' <<<"${out}")"
@@ -171,8 +171,8 @@ check_codeql() {
 
 check_sha() {
   local runs statuses count
-  runs=$(gh api --paginate "repos/${repo}/commits/${sha}/check-runs?per_page=100" | jq -s --arg ig "${IGNORED_CHECK}" \
-    '[.[].check_runs[] | select(.name != $ig)]') || die "check-runs query failed"
+  runs=$(gh api --paginate "repos/${repo}/commits/${sha}/check-runs?per_page=100" | jq -s --argjson ig "${IGNORED_CHECKS}" \
+    '[.[].check_runs[] | select(.name | IN($ig[]) | not)]') || die "check-runs query failed"
   count=$(jq 'length' <<<"${runs}")
   [[ "${count}" -gt 0 ]] || not_started=1
   add pending "$(jq -r '.[] | select(.status != "completed") | "\(.name): \(.status)"' <<<"${runs}")"
