@@ -301,6 +301,19 @@ class TestNestedCode:
     def test_heredoc_ambiguous_end_inside_substitution(self):
         assert parse_commands("x=$(cat <<'EOF'\nEOF)\nenv\nEOF\n)") is None
 
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            ("x $(cat <<'X'\nX)y $T", ["x", "cat"]),
+            ("x $(cat <<'X'\nXy)z", ["x", "cat", "y"]),
+            ("x $(cat <<-'X'\n\tX); env", ["x", "cat", "env"]),
+        ],
+    )
+    def test_heredoc_prefix_end_inside_substitution(self, command, expected):
+        assert parse_commands(command) is None
+        result = parse_commands(command, prefix_ends=True)
+        assert [c.name for c in result] == expected
+
     def test_single_quoted_dollar_is_literal(self):
         assert names("echo '$(env)'") == ["echo"]
 

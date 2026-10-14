@@ -28,10 +28,10 @@ def compile_regex(pattern: str) -> re.Pattern:
     return re.compile(pattern, re.IGNORECASE | re.DOTALL)
 
 
-def normalise(command: str, cwd: str = "", entries: Optional[List[int]] = None):
+def normalise(command: str, cwd: str = "", entries: Optional[List[int]] = None, prefix_ends: bool = False):
     functions, overflow = set(), []
     _BODIES.clear()
-    commands = parse_commands(command, functions)
+    commands = parse_commands(command, functions, prefix_ends)
     if commands is None:
         return None
     lines = render(commands, cwd, overflow, entries)
@@ -81,9 +81,12 @@ def _segments(command: str) -> List[str]:
 def segment_lines(command: str, cwd: str = "") -> tuple:
     """(clean lines, glob overflow) of each piece of a command that parses on its own."""
     lines, overflow, entries = [], [], [MAX_ENTRIES]
-    for segment in _segments(command):
+    pieces = [(segment, False) for segment in _segments(command)]
+    if "<<" in command:
+        pieces.append((command, True))
+    for piece, prefix_ends in pieces:
         try:
-            parsed = normalise(segment, cwd, entries)
+            parsed = normalise(piece, cwd, entries, prefix_ends)
         except Exception:  # noqa: BLE001
             continue
         if parsed is not None:

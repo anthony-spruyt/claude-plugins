@@ -88,6 +88,10 @@ class _UnsureError(Exception):
     pass
 
 
+# Set by parse_commands(prefix_ends=True): read a heredoc inside $( the way bash 5.2+ does
+_PREFIX_ENDS = [False]
+
+
 # What _inner found: ('stdin', None) reads code from stdin, ('code', text) runs text, ('words', words) wraps a command
 STDIN = ("stdin", None)
 
@@ -1296,29 +1300,41 @@ class _Parser:
                 raise _UnsureError
             self.word()
 
+    def body_end(self, delim: str, strip: bool, quoted: bool) -> tuple[int, int]:
+        s, i = self.s, self.i
+        while i < len(s):
+            nl = s.find("\n", i)
+            nl = len(s) if nl < 0 else nl
+            line = s[i:nl].lstrip("\t") if strip else s[i:nl]
+            back = self.delim_back(line, delim, quoted)
+            if back is not None:
+                return i, nl - back
+            i = nl + 1
+        # Bash warns and ends the body at end of input, except inside an open $(
+        if self.subst != self.top:
+            raise _UnsureError
+        return i, len(s)
+
+    def delim_back(self, line: str, delim: str, quoted: bool) -> Optional[int]:
+        """How far before its newline a body ending at this line stops, or None if it goes on."""
+        # Bash joins backslash-newline in an unquoted body before matching the delimiter
+        if not quoted and (len(line) - len(line.rstrip("\\"))) % 2:
+            raise _UnsureError
+        if line == delim:
+            return 0
+        # Inside $( bash 5.2+ ends the heredoc at a line starting with the delimiter and runs the rest of it
+        if not (self.subst and line.startswith(delim)):
+            return None
+        if not _PREFIX_ENDS[0]:
+            raise _UnsureError
+        # bodies() resumes at the returned end + 1, right after the delimiter
+        return len(line) - len(delim) + 1
+
     def bodies(self) -> None:
         s, pending, self.pending = self.s, self.pending, []
         for delim, strip, quoted, redirect in pending:
-            start = i = self.i
-            while True:
-                # Bash warns and ends the body at end of input, except inside an open $(
-                if i >= len(s):
-                    if self.subst != self.top:
-                        raise _UnsureError
-                    nl = len(s)
-                    break
-                nl = s.find("\n", i)
-                nl = len(s) if nl < 0 else nl
-                line = s[i:nl].lstrip("\t") if strip else s[i:nl]
-                # Bash joins backslash-newline in an unquoted body before matching the delimiter
-                if not quoted and (len(line) - len(line.rstrip("\\"))) % 2:
-                    raise _UnsureError
-                if line == delim:
-                    break
-                # Inside $( bash also ends the heredoc at a line like `EOF)`
-                if self.subst and line.startswith(delim):
-                    raise _UnsureError
-                i = nl + 1
+            start = self.i
+            i, nl = self.body_end(delim, strip, quoted)
             body, flags = s[start:i], 0
             if strip:
                 body = LEADING_TABS.sub("", body)
@@ -1559,14 +1575,19 @@ def _run(  # noqa: PLR0913, PLR0917  # parser state passed down each nested pars
     return next(iter(parser.readers.values()), None)
 
 
-def parse_commands(command: str, functions: Optional[set] = None) -> Optional[List[SimpleCommand]]:
+def parse_commands(
+    command: str, functions: Optional[set] = None, prefix_ends: bool = False
+) -> Optional[List[SimpleCommand]]:
     if len(command) > MAX_LENGTH:
         return None
     out = []
+    _PREFIX_ENDS[0] = prefix_ends
     try:
         _run(command, out, 1, 0)
     except (_UnsureError, RecursionError):
         return None
+    finally:
+        _PREFIX_ENDS[0] = False
     if functions is not None:
         functions.update(c for c in out if isinstance(c, FunctionDef))
     commands = [c for c in out if c is not None and not isinstance(c, FunctionDef)]
