@@ -2,5 +2,10 @@
   "notesAgents": [
     "builder"
   ],
-  "nudgeAfterToolCalls": 10
+  "nudgeAfterToolCalls": 10,
+  "compactAtTokens": 200000,
+  "warnAtPercent": [
+    90,
+    95
+  ]
 }
