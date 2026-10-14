@@ -980,7 +980,7 @@ tool_calls() {
   done
   [ ! -e "${DIR}/agent-${AGENT}.claim-1" ]
   [ ! -e "${DIR}/agent-${AGENT}.claim-2" ]
-  [ "$(ls "${DIR}" | grep -c "^agent-${AGENT}\.claim-")" -eq 1 ]
+  [ "$(find "${DIR}" -maxdepth 1 -name "agent-${AGENT}.claim-*" | wc -l)" -eq 1 ]
 }
 
 @test "main session compactions also keep only the latest numbered claim" {
@@ -989,7 +989,7 @@ tool_calls() {
     compact_main
     main_pre
   done
-  [ "$(ls "${DIR}" | grep -c "^${SID}\.claim-")" -eq 1 ]
+  [ "$(find "${DIR}" -maxdepth 1 -name "${SID}.claim-*" | wc -l)" -eq 1 ]
   [ -e "${DIR}/${SID}.claim-3" ]
 }
 
@@ -1149,23 +1149,24 @@ tool_calls() {
 
 # --- safety ------------------------------------------------------------------
 
+with_sid() {
+  jq -c --arg s "$1" '.session_id = $s'
+}
+
 @test "a session_id that is not a plain identifier is silent and writes nothing" {
-  for bad in "../x" "a/b" "a b" 'a$b' "a.b" ""; do
-    SID_SAVE=${SID}
-    SID=${bad}
-    start startup
+  for bad in "../x" "a/b" "a b" "a\$b" "a.b" ""; do
+    fire SessionStart "$(main_in SessionStart startup | with_sid "${bad}")"
     assert_silent
-    main_pre
+    fire PreToolUse "$(main_in PreToolUse | with_sid "${bad}")"
     assert_silent
-    main_end
+    fire SessionEnd "$(main_in SessionEnd | with_sid "${bad}")"
     assert_silent
-    SID=${SID_SAVE}
   done
   no_files
 }
 
 @test "an agent_id that is not a plain identifier is silent and writes nothing" {
-  for bad in "../x" "a/b" "a b" 'a$b' "a.b" "" "agent-" "*"; do
+  for bad in "../x" "a/b" "a b" "a\$b" "a.b" "" "agent-" "*"; do
     sub_start "${bad}"
     assert_silent
     if [[ -n "${bad}" ]]; then
@@ -1340,7 +1341,7 @@ config_reads() {
 @test "saving state leaves only the state file and no temporary files" {
   start startup
   sub_start
-  names=$(ls -A "${DIR}" | sort | tr '\n' ' ')
+  names=$(cd "${DIR}" && find . -mindepth 1 -maxdepth 1 | sed 's|^\./||' | sort | tr '\n' ' ')
   [ "${names}" = ".gitignore agent-${AGENT}.state ${SID}.state " ]
 }
 
