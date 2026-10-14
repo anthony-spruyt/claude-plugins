@@ -95,17 +95,22 @@ add() {
   done <<<"$2"
 }
 
+record_unfinished() {
+  local waiting
+  waiting=$(jq -r '.[] | select(.status == "waiting") | "\(.name): waiting, needs approval"' <<<"$1")
+  [[ -z "${waiting}" ]] || approval=1
+  add pending "${waiting}"
+  add pending "$(jq -r '.[] | select(.status != "completed" and .status != "waiting") | "\(.name): \(.status)"' <<<"$1")"
+}
+
 record_runs() {
-  local runs="$1" lines count
+  local runs="$1" count
   count=$(jq 'length' <<<"${runs}")
   if [[ "${count}" -eq 0 ]]; then
     not_started=1
     return
   fi
-  lines=$(jq -r '.[] | select(.status == "waiting") | "\(.name): waiting, needs approval"' <<<"${runs}")
-  [[ -z "${lines}" ]] || approval=1
-  add pending "${lines}"
-  add pending "$(jq -r '.[] | select(.status != "completed" and .status != "waiting") | "\(.name): \(.status)"' <<<"${runs}")"
+  record_unfinished "${runs}"
   add failed "$(jq -r '.[] | select(.status == "completed" and (.conclusion | IN("success", "skipped", "neutral") | not)) | "\(.name): \(.conclusion)"' <<<"${runs}")"
 }
 
@@ -116,7 +121,7 @@ fetch_runs() {
 }
 
 check_pr() {
-  local out rc=0 errfile msg head waiting count
+  local out rc=0 errfile msg head count
   errfile=$(mktemp)
   out=$(gh pr checks "${pr}" --repo "${repo}" --json name,bucket 2>"${errfile}") || rc=$?
   msg=$(<"${errfile}")
@@ -140,9 +145,7 @@ check_pr() {
   if [[ ${#failed[@]} -eq 0 ]]; then
     head=$(gh pr view "${pr}" --repo "${repo}" --json headRefOid | jq -r .headRefOid)
     fetch_runs "${head}"
-    waiting=$(jq -r '.[] | select(.status == "waiting") | "\(.name): waiting, needs approval"' <<<"${runs_json}")
-    [[ -z "${waiting}" ]] || approval=1
-    add pending "${waiting}"
+    record_unfinished "${runs_json}"
   fi
 }
 
