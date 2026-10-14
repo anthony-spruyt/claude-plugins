@@ -1302,27 +1302,33 @@ class _Parser:
 
     def body_end(self, delim: str, strip: bool, quoted: bool) -> tuple[int, int]:
         s, i = self.s, self.i
-        while True:
-            # Bash warns and ends the body at end of input, except inside an open $(
-            if i >= len(s):
-                if self.subst != self.top:
-                    raise _UnsureError
-                return i, len(s)
+        while i < len(s):
             nl = s.find("\n", i)
             nl = len(s) if nl < 0 else nl
             line = s[i:nl].lstrip("\t") if strip else s[i:nl]
-            # Bash joins backslash-newline in an unquoted body before matching the delimiter
-            if not quoted and (len(line) - len(line.rstrip("\\"))) % 2:
-                raise _UnsureError
-            if line == delim:
-                return i, nl
-            # Inside $( bash 5.2+ ends the heredoc at a line starting with the delimiter and runs the rest of it
-            if self.subst and line.startswith(delim):
-                if not _PREFIX_ENDS[0]:
-                    raise _UnsureError
-                # bodies() resumes at the returned end + 1, right after the delimiter
-                return i, nl - len(line) + len(delim) - 1
+            back = self.delim_back(line, delim, quoted)
+            if back is not None:
+                return i, nl - back
             i = nl + 1
+        # Bash warns and ends the body at end of input, except inside an open $(
+        if self.subst != self.top:
+            raise _UnsureError
+        return i, len(s)
+
+    def delim_back(self, line: str, delim: str, quoted: bool) -> Optional[int]:
+        """How far before its newline a body ending at this line stops, or None if it goes on."""
+        # Bash joins backslash-newline in an unquoted body before matching the delimiter
+        if not quoted and (len(line) - len(line.rstrip("\\"))) % 2:
+            raise _UnsureError
+        if line == delim:
+            return 0
+        # Inside $( bash 5.2+ ends the heredoc at a line starting with the delimiter and runs the rest of it
+        if not (self.subst and line.startswith(delim)):
+            return None
+        if not _PREFIX_ENDS[0]:
+            raise _UnsureError
+        # bodies() resumes at the returned end + 1, right after the delimiter
+        return len(line) - len(delim) + 1
 
     def bodies(self) -> None:
         s, pending, self.pending = self.s, self.pending, []
