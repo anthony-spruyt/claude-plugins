@@ -197,11 +197,31 @@ class TestOpaqueAlsoUsesFallback:
             "echo printenv | ssh host",
             "echo printenv | tee x | bash",
             "parallel ::: printenv",
+            "cat > /tmp/r.md <<'EOF'\nprintenv\nEOF\nbash /tmp/r.md",
+            "cat > notes.md <<'EOF'\nprintenv\nEOF",
+            "cat > /tmp/../etc/r.md <<'EOF'\nprintenv\nEOF",
+            "cat > /tmp/r.sh <<'EOF'\nprintenv\nEOF",
+            "cat <<'EOF' | tee /tmp/r.md | sh\nprintenv\nEOF",
+            "cat > /tmp/r.md <<'EOF'\nprintenv\nEOF\ncat /tmp/r.md > ~/.bashrc",
+            "python3 - <<'PY'\nprintenv\nPY",
         ],
     )
     def test_opaque_command_also_checks_fallback(self, cmd):
         assert normalise(cmd) is not None
         assert _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "cat > /tmp/r.md <<'EOF'\nran printenv;\nEOF",
+            "cat <<'EOF' > /tmp/r.txt\n(printenv)\nEOF",
+            "tee /tmp/r.md >/dev/null <<'EOF'\n(printenv)\nEOF",
+            "cat > /tmp/qa/r.md <<'EOF'\n(printenv)\nEOF\ngh issue comment 5 --body-file /tmp/qa/r.md",
+            "cd /repo && cat > /tmp/r.md <<'EOF'\n(printenv)\nEOF",
+        ],
+    )
+    def test_heredoc_saved_as_report_skips_fallback(self, cmd):
+        assert not _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
 
     @pytest.mark.parametrize("cmd", ["echo printenv", "mkdir -p printenv # x", "git log printenv"])
     def test_plain_commands_skip_fallback(self, cmd):

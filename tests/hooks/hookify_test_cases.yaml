@@ -269,6 +269,25 @@ test_cases:
     command: "set environment\n| Name | Default |"
     expect: allow
 
+  - name: "block-env-dump: allows env prose in a heredoc report posted with gh"
+    tool: Bash
+    command: |-
+      cat > /tmp/qa-report.md <<'EOF'
+      | Integration tests | SKIPPED (env) |
+      Synced to the release env; the retention env entry was removed.
+      EOF
+      gh issue comment 5 --body-file /tmp/qa-report.md
+    expect: allow
+
+  - name: "block-env-dump: heredoc report run as a script"
+    tool: Bash
+    command: |-
+      cat > /tmp/qa-report.md <<'EOF'
+      env
+      EOF
+      bash /tmp/qa-report.md
+    expect: block
+
   # =============================================================================
   # Printenv (block-printenv)
   # =============================================================================
