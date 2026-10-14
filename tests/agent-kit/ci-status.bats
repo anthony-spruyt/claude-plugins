@@ -106,6 +106,14 @@ ci() {
   [ "$(first_line)" = "green" ]
 }
 
+@test "a pending Mergify Merge Queue check is ignored" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"},{"name":"Mergify Merge Queue","bucket":"pending"}]'
+  fixture pr-checks.rc 8
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
 @test "a failing check makes the PR failed and names the check" {
   fixture pr-checks.json '[{"name":"build","bucket":"pass"},{"name":"unit tests","bucket":"fail"}]'
   fixture pr-checks.rc 1
@@ -345,6 +353,14 @@ sha_green() {
   fixture check-runs.json '{"check_runs":[{"name":"build","status":"completed","conclusion":"success"},{"name":"Mergify Merge Protections","status":"in_progress","conclusion":null}]}'
   ci --repo o/r --sha "${SHA}"
   [ "${status}" -eq 0 ]
+}
+
+@test "a Mergify Merge Queue check-run is ignored on a commit" {
+  sha_green
+  fixture check-runs.json '{"check_runs":[{"name":"build","status":"completed","conclusion":"success"},{"name":"Mergify Merge Queue","status":"in_progress","conclusion":null}]}'
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
 }
 
 @test "a commit with no workflow runs or no check-runs is not-started" {
