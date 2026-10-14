@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.2.0...agent-kit-v1.2.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **agent-kit:** keep ci-status.sh --pr pending while a workflow run is unfinished ([#179](https://github.com/anthony-spruyt/claude-plugins/issues/179)) ([9c3e53e](https://github.com/anthony-spruyt/claude-plugins/commit/9c3e53e88338c46e87ee264da0842d7bf83a8f98))
+
 ## [1.2.0](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.1.1...agent-kit-v1.2.0) (2026-10-14)
 
 
