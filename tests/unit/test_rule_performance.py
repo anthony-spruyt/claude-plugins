@@ -20,6 +20,9 @@ RULES = [
     for f in sorted(glob.glob(os.path.join(REPO_ROOT, plugin, "hookify-plus", "*.md")))
 ]
 
+# Quadratic patterns run for seconds here; 200ms leaves headroom for a loaded CI box
+LIMIT = 0.2
+
 INPUTS = {
     "many-heredocs-one-line": "cat <<A " * 5000,
     "many-heredocs-multiline": "cat <<A\n" * 5000,
@@ -106,14 +109,15 @@ def _fastest(engine, rule, data):
         start = time.perf_counter()
         engine._rule_matches(rule, data)
         timings.append(time.perf_counter() - start)
+        if timings[-1] < LIMIT:
+            break
     return min(timings)
 
 
-# Quadratic patterns run for seconds here; 200ms leaves headroom for a loaded CI box
 @pytest.mark.parametrize("name", INPUTS)
 def test_rules_finish_quickly(name):
     data = {"tool_name": "Bash", "tool_input": {"command": INPUTS[name]}}
     engine = RuleEngine()
     for rule in RULES:
         elapsed = _fastest(engine, rule, data)
-        assert elapsed < 0.2, f"{rule.name} took {elapsed * 1000:.0f}ms on {name}"
+        assert elapsed < LIMIT, f"{rule.name} took {elapsed * 1000:.0f}ms on {name}"

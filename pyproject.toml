@@ -12,3 +12,6 @@ extend-select = ["PLR"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["core", "hooks", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-n auto"
