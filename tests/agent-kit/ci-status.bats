@@ -192,6 +192,27 @@ ci() {
   [[ "${output}" == *"CI"*"needs approval"* ]]
 }
 
+@test "a workflow run that is queued or in progress keeps a PR with passing checks pending" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture runs.json '[{"name":"CI","status":"in_progress","conclusion":""},{"name":"Release","status":"queued","conclusion":""}]'
+  pr_ok
+  ci --repo o/r --pr 7
+  [ "${status}" -eq 2 ]
+  [ "$(first_line)" = "pending" ]
+  [[ "${output}" == *"CI: in_progress"* ]]
+  [[ "${output}" == *"Release: queued"* ]]
+  [ ! -s "${BIN}/curl.log" ]
+  [ -z "$(grep code-scanning "${BIN}/gh.log" || true)" ]
+}
+
+@test "a PR with passing checks and every workflow run completed is green" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture runs.json '[{"name":"CI","status":"completed","conclusion":"success"}]'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
 @test "green PR checks then Sonar gate OK, zero issues and zero CodeQL alerts is green" {
   fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
   pr_ok
