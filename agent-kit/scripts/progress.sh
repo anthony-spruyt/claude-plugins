@@ -36,6 +36,8 @@ PreToolUse) if [[ -n "$agent_id" ]]; then scope=sub; else scope=main; fi ;;
 esac
 
 NUDGE_DEFAULT=10
+COMPACT_DEFAULT=200000
+WARN_DEFAULT="90 95"
 CONFIG_CAP=65536
 
 read_config() {
@@ -46,26 +48,31 @@ read_config() {
   return 0
 }
 
-# Sets the globals cfg_opted and cfg_calls
+# Sets the globals cfg_opted, cfg_calls, cfg_compact and cfg_warn (levels, ascending, space separated)
 load_config() {
   local want=$1 def rep out
-  cfg_opted=false cfg_calls=$NUDGE_DEFAULT
-  [[ -n "$want" ]] || return 0
+  cfg_opted=false cfg_calls=$NUDGE_DEFAULT cfg_compact=$COMPACT_DEFAULT cfg_warn=$WARN_DEFAULT
   def=$(read_config "$plugin_root/config/progress.json")
   rep=$(read_config "$project/.claude/agent-kit.json" strict)
-  out=$(jq -nr --arg want "$want" --arg def "$def" --arg rep "$rep" --argjson dn "$NUDGE_DEFAULT" '
+  out=$(jq -nr --arg want "$want" --arg def "$def" --arg rep "$rep" --argjson dn "$NUDGE_DEFAULT" \
+    --argjson dc "$COMPACT_DEFAULT" --arg dw "$WARN_DEFAULT" '
     def obj: if type == "object" then . else {} end;
+    def int(lo; hi): type == "number" and . == floor and . >= lo and . <= hi;
     def agents: type == "array" and all(.[]; type == "string" and length > 0);
-    def calls: type == "number" and . == floor and . >= 1 and . <= 999999;
+    def levels: type == "array" and all(.[]; int(1; 100));
     ($def | try fromjson catch null | obj) as $d
     | ($rep | try fromjson catch null | obj | .progress | obj) as $r
     | def pick(k; ok; fallback): ([$r[k], $d[k]] | map(select(ok)) | first) // fallback;
     [pick("notesAgents"; agents; ["builder"]) | any(.[]; . == $want),
-     (pick("nudgeAfterToolCalls"; calls; $dn) | floor)]
+     (pick("nudgeAfterToolCalls"; int(1; 999999); $dn) | floor),
+     (pick("compactAtTokens"; int(1; 999999999); $dc) | floor),
+     (pick("warnAtPercent"; levels; $dw | split(" ") | map(tonumber)) | map(floor) | unique | map(tostring) | join(" "))]
     | @tsv') || return 0
-  IFS=$'\t' read -r cfg_opted cfg_calls <<<"$out"
-  [[ "$cfg_opted" == true ]] || cfg_opted=false
+  IFS=$'\t' read -r cfg_opted cfg_calls cfg_compact cfg_warn <<<"$out"
+  [[ "$cfg_opted" == true && -n "$want" ]] || cfg_opted=false
   [[ "$cfg_calls" =~ ^[1-9][0-9]{0,5}$ ]] || cfg_calls=$NUDGE_DEFAULT
+  [[ "$cfg_compact" =~ ^[1-9][0-9]{0,8}$ ]] || cfg_compact=$COMPACT_DEFAULT
+  [[ "$cfg_warn" =~ ^([1-9][0-9]{0,2}( |$))*$ ]] || cfg_warn=$WARN_DEFAULT
   return 0
 }
 
@@ -74,6 +81,7 @@ if [[ "$scope" == main ]]; then
   [[ "$session_id" =~ ^[A-Za-z0-9_-]+$ ]] || exit 0
   key=$session_id
 else
+  [[ -n "$agent_type" ]] || exit 0
   load_config "$agent_type"
   [[ "$cfg_opted" == true ]] || exit 0
   id=${agent_id#agent-}
@@ -88,7 +96,7 @@ state="$dir/$key.state"
 
 drop_claims() {
   local f
-  for f in "$dir/$key".claim-*; do
+  for f in "$dir/$key.claim-${1:-}"*; do
     [[ -f "$f" && ! -L "$f" ]] && rm -f -- "$f"
   done
   return 0
@@ -174,8 +182,14 @@ save_state() {
     printf '%s\n%s\n%s\n' "$seen" "$notes" "$file" >"$tmp"
   else
     printf '%s\n' "$seen" >"$tmp"
-  fi || { rm -f -- "$tmp"; return 1; }
-  mv -f -- "$tmp" "$state" || { rm -f -- "$tmp"; return 1; }
+  fi || {
+    rm -f -- "$tmp"
+    return 1
+  }
+  mv -f -- "$tmp" "$state" || {
+    rm -f -- "$tmp"
+    return 1
+  }
   return 0
 }
 
@@ -223,9 +237,10 @@ usable_notes() {
 # shellcheck disable=SC2016
 RULE='Progress notes rule: keep notes for any task with more than one step; skip one-shot edits and questions. Keep the file under 100 lines. Put the goal and issue on the first line, then what is done with commit SHAs, the exact next step, decisions and why, dead ends, and commands and gotchas that matter. Update it after each commit and before you stop. Delete the file when the task is done; keep it when you are blocked or unfinished. If your brief or the owner names an earlier notes file, read it first and delete it when you finish. To find earlier notes, run `ls -t` on the notes folder and pick the file whose goal matches your task; ignore any file git tracks there. The notes are working memory; git log is the source of truth.'
 
+# A third argument leaves the notes text out
 emit() {
   local ev=$1 ctx="$2"$'\n\n'"$RULE" body="" marker size room
-  if usable_notes "$notes"; then
+  if [[ -z "${3:-}" ]] && usable_notes "$notes"; then
     marker=$'\n\n'"[truncated - read the rest of $notes]"
     size=$(wc -c <"$notes")
     room=$((CAP - ${#ctx} - 2))
@@ -290,6 +305,45 @@ fi
 
 count=$(count_boundaries "$(transcript_file)")
 
+# Input tokens of the latest assistant reply since the last compaction; empty when unknown
+context_tokens() {
+  local file=$1
+  [[ -n "$file" && -r "$file" ]] || return 0
+  tail -n 200 "$file" | awk '
+    index($0, "\"subtype\":\"compact_boundary\"") { buf = ""; next }
+    index($0, "\"usage\"") { buf = buf $0 "\n" }
+    END { printf "%s", buf }' | jq -nrR --arg scope "$scope" '
+    def count: . == null or (type == "number" and . >= 0);
+    [inputs | try fromjson catch null
+      | select(type == "object" and .type == "assistant" and ($scope == "sub" or .isSidechain != true)
+          and (.message | type) == "object" and .message.model != "<synthetic>")
+      | .message.usage
+      | select(type == "object" and (.input_tokens | type) == "number"
+          and all(.input_tokens, .cache_creation_input_tokens, .cache_read_input_tokens; count))
+      | .input_tokens + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0) | floor]
+    | last // empty' || true
+  return 0
+}
+
+# Warns once per level per compaction cycle; a jump past several levels warns once, for the highest
+context_warning() {
+  local tokens level hit="" l
+  [[ -n "$cfg_warn" ]] || return 1
+  tokens=$(context_tokens "$(transcript_file)")
+  [[ "$tokens" =~ ^[0-9]{1,12}$ ]] || return 1
+  for level in $cfg_warn; do
+    ((tokens * 100 >= level * cfg_compact)) && hit=$level
+  done
+  [[ -n "$hit" ]] || return 1
+  [[ "$scope" == sub ]] || load_main_paths || return 1
+  claim "warn-$hit" || return 1
+  for l in $cfg_warn; do
+    ((l < hit)) && claim "warn-$l"
+  done
+  emit PreToolUse "Your context is at $tokens tokens, $((tokens * 100 / cfg_compact))% of the $cfg_compact where it compacts. Bring your progress notes in $notes up to date now, before it compacts, so the work since your last update is not lost." nonotes
+  return 0
+}
+
 notes_nudge() {
   local calls
   [[ "$scope" == sub ]] || return 0
@@ -333,10 +387,13 @@ PreToolUse)
   if ((count > ${seen:-0})); then
     [[ "$scope" == sub ]] || load_main_paths || exit 0
     claim "$count" || exit 0
+    drop_claims warn-
     save_state "$count" || exit 0
     emit PreToolUse "$(compact_message)"
     exit 0
   fi
+  [[ "$scope" == sub ]] || load_config ""
+  context_warning && exit 0
   notes_nudge
   ;;
 *) ;;
