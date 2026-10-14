@@ -6,12 +6,15 @@ When a command is opaque, command_match also checks the rule's raw-command fallb
 import re
 from typing import List
 
+from core.masking import _message_spec
 from core.shell_parse import SHELLS, SimpleCommand, _base, _Group
 
 STDIN_READERS = SHELLS | frozenset(["su", "xargs", "ssh", "source", "."])
 PRODUCERS = frozenset(["echo", "printf"])
 WRITE_OPS = (">", ">>", ">|", "&>", "&>>")
 RUNNABLE_FILE = re.compile(r"(?:rc|profile|login|\.(?:ba|da|k|z)?sh|/bin/[^/]+|crontab)$")
+# No segment starts with a dot, so no .. and no hidden config dirs
+REPORT_FILE = re.compile(r"/dev/null$|/tmp(?:/[\w+-][\w.+-]*)+\.(?:md|txt)$")
 PASS_THROUGH = frozenset(
     [
         "cat",
@@ -137,8 +140,27 @@ def _group_reads_stdin(cmd: SimpleCommand) -> bool:
     return False
 
 
+def _writes_report(cmd: SimpleCommand) -> bool:
+    name = _name(cmd)
+    files = [t for op, t in cmd.redirects if op.lstrip("0123456789") in WRITE_OPS]
+    if name == "tee":
+        files += [a for a in cmd.args if a not in ("-a", "--append")]
+    elif name != "cat":
+        return False
+    return all(REPORT_FILE.match(f) for f in files)
+
+
+def _report_only(commands: List[SimpleCommand]) -> bool:
+    """Text copied to a /tmp report and posted with gh or git never runs."""
+    return all(
+        _writes_report(c) or _name(c) == "cd" or _message_spec([c.name, *c.args])[0] is not None for c in commands
+    )
+
+
 def _unparsed_heredoc(commands: List[SimpleCommand]) -> bool:
     """Heredoc text saved to a file can run later; text a reader only prints can't."""
+    if _report_only(commands):
+        return False
     fed = {c.feed for c in commands if c.feed is not None}
     return any(
         _stdin_op(op) in ("<<", "<<-") and (op, target) not in fed and _saves(c)
