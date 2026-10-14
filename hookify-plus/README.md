@@ -212,9 +212,9 @@ ______________________________________________________________________
 
 Standard [semver](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
-- **patch** — `fix:` commits
-- **minor** — `feat:` commits (new rules / features)
-- **major** — breaking changes (`feat!:` or a `BREAKING CHANGE:` footer)
+- **patch** — `fix:`, `perf:`, `revert:` PR titles
+- **minor** — `feat:` PR titles (new rules / features)
+- **major** — breaking changes, marked with `!` in the PR title (`feat!:`)
 
 The version is read from `.claude-plugin/plugin.json`. `claude plugins update` compares the installed version string against the manifest, so users pick up changes only when it changes. [release-please](https://github.com/googleapis/release-please) bumps it from the conventional commit titles when its release PR merges.
 

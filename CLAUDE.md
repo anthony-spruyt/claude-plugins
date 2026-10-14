@@ -41,7 +41,7 @@ Plugin versions are read from `plugin.json` manifests. `claude plugins update` c
 **Do not bump versions in PRs.** [release-please](https://github.com/googleapis/release-please) owns them (`release-please-config.json`, `.release-please-manifest.json`):
 
 - Each plugin directory is a package. A commit touching it counts toward its next release
-- The PR title sets the bump: `fix:` patch, `feat:` minor, `feat!:` or a `BREAKING CHANGE:` footer major. `docs:`, `chore:`, `ci:`, `test:` release nothing
+- The PR title sets the bump: `fix:`, `perf:`, `revert:` patch, `feat:` minor, a `!` before the colon (`feat!:`) major. Every other type releases nothing. Put the `!` in the title: the squash merge drops `BREAKING CHANGE:` footers from the PR body
 - release-please keeps one release PR open that writes `version` in each `<plugin>/.claude-plugin/plugin.json` and a `CHANGELOG.md`. Merging it ships
 - `.claude-plugin/marketplace.json` entries carry no `version`; `plugin.json` would override it anyway
 

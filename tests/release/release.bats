@@ -7,8 +7,9 @@ MARKETPLACE="${REPO_ROOT}/.claude-plugin/marketplace.json"
 CONFIG="${REPO_ROOT}/release-please-config.json"
 MANIFEST="${REPO_ROOT}/.release-please-manifest.json"
 
-plugin_dirs() {
-  jq -r '.plugins[].source | ltrimstr("./")' "${MARKETPLACE}"
+setup() {
+  dirs=$(jq -er '.plugins[].source | ltrimstr("./")' "${MARKETPLACE}" | sort)
+  [ -n "${dirs}" ]
 }
 
 @test "marketplace entries carry no version, so plugin.json is the only one" {
@@ -16,21 +17,20 @@ plugin_dirs() {
 }
 
 @test "every marketplace plugin is a release-please package that writes its plugin.json version" {
-  [ "$(plugin_dirs | sort)" = "$(jq -r '.packages | keys[]' "${CONFIG}" | sort)" ]
-  for dir in $(plugin_dirs); do
-    [ "$(jq -r --arg d "${dir}" '.packages[$d]["release-type"]' "${CONFIG}")" = "simple" ]
-    [ "$(jq -c --arg d "${dir}" '.packages[$d]["extra-files"]' "${CONFIG}")" = '[{"type":"json","path":".claude-plugin/plugin.json","jsonpath":"$.version"}]' ]
-  done
+  [ "${dirs}" = "$(jq -r '.packages | keys[]' "${CONFIG}" | sort)" ]
+  [ "$(jq -r '.["release-type"]' "${CONFIG}")" = "simple" ]
+  [ "$(jq -c '.["extra-files"]' "${CONFIG}")" = '[{"type":"json","path":".claude-plugin/plugin.json","jsonpath":"$.version"}]' ]
+  [ "$(jq '[.packages[] | select(has("release-type") or has("extra-files"))] | length' "${CONFIG}")" -eq 0 ]
 }
 
-@test "the release manifest matches each plugin.json version" {
-  for dir in $(plugin_dirs); do
-    version=$(jq -r '.version' "${REPO_ROOT}/${dir}/.claude-plugin/plugin.json")
-    [ -n "${version}" ]
+@test "the release manifest lists every plugin at its plugin.json version" {
+  [ "${dirs}" = "$(jq -r 'keys[]' "${MANIFEST}" | sort)" ]
+  for dir in ${dirs}; do
+    version=$(jq -er '.version' "${REPO_ROOT}/${dir}/.claude-plugin/plugin.json")
     [ "$(jq -r --arg d "${dir}" '.[$d]' "${MANIFEST}")" = "${version}" ]
   done
 }
 
-@test "releases publish instead of waiting as drafts" {
-  [ "$(jq -r '.draft' "${CONFIG}")" = "false" ]
+@test "only feat, fix, perf and revert commits cut a release" {
+  [ "$(jq -r '[.["changelog-sections"][] | select(.hidden != true) | .type] | sort | join(" ")' "${CONFIG}")" = "feat fix perf revert" ]
 }
