@@ -212,11 +212,11 @@ ______________________________________________________________________
 
 Standard [semver](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
-- **patch** — bug fixes
-- **minor** — new rules / features
-- **major** — breaking changes
+- **patch** — `fix:`, `perf:`, `revert:` PR titles
+- **minor** — `feat:` PR titles (new rules / features)
+- **major** — breaking changes, marked with `!` in the PR title (`feat!:`)
 
-The version is read from `.claude-plugin/plugin.json`. `claude plugins update` compares the installed version string against the manifest, so a version bump is required for users to pick up changes.
+The version is read from `.claude-plugin/plugin.json`. `claude plugins update` compares the installed version string against the manifest, so users pick up changes only when it changes. [release-please](https://github.com/googleapis/release-please) bumps it from the conventional commit titles when its release PR merges.
 
 ______________________________________________________________________
 
@@ -233,8 +233,7 @@ ______________________________________________________________________
 
 1. Fork [anthony-spruyt/claude-plugins](https://github.com/anthony-spruyt/claude-plugins)
 2. Make your changes
-3. Bump the version in `hookify-plus/.claude-plugin/plugin.json` **and** `.claude-plugin/marketplace.json`
-4. Submit a PR
+3. Submit a PR with a [conventional commit](https://www.conventionalcommits.org/) title (`feat:`, `fix:`); leave versions alone
 
 ## License
 

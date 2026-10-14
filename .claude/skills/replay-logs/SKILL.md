@@ -91,4 +91,4 @@ For each agreed finding:
 
 ## 6. Ship
 
-Bump the version of every plugin you touched, in both `<plugin>/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` (see `CLAUDE.md`). Patch for false-positive fixes, minor when a rule now catches a new kind of leak.
+Do not bump versions; release-please does (see `CLAUDE.md`). Title the PR `fix:` for false-positive fixes and `feat:` when a rule now catches a new kind of leak.
