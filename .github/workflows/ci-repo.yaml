@@ -14,7 +14,17 @@ jobs:
       - name: "Harden Runner"
         uses: "step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25" # v2.22.1
         with:
-          egress-policy: "audit"
+          egress-policy: "block"
+          allowed-endpoints: >-
+            api.github.com:443
+            azure.archive.ubuntu.com:80
+            esm.ubuntu.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            packages.microsoft.com:443
+            pypi.org:443
+            results-receiver.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
       - uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7
       - uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" # v7
         with:
