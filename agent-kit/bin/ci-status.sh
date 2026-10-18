@@ -16,7 +16,8 @@ Exit codes: 0 green, 1 failed, 2 pending, 3 not-started, 4 error.
 --wait polls every 60s for --timeout minutes (default 8) and returns at once on green, failed,
 or a run that needs approval. A PR also needs its Sonar gate and CodeQL clean: --sonar-key sets
 the project key (default <owner>_<repo>), --no-sonar and --no-codeql skip one each. Mergify Merge
-Protections and Mergify Merge Queue are ignored.
+Protections and Mergify Merge Queue are ignored. A PR still waiting on a review ends with the
+line "approval: pending"; that is not CI and never changes the state or exit code.
 EOF
 }
 
@@ -226,7 +227,14 @@ while :; do
   slept=$((slept + INTERVAL))
 done
 
+review=""
+if [[ -n "${pr}" ]]; then
+  review=$(gh pr view "${pr}" --repo "${repo}" --json reviewDecision | jq -r '.reviewDecision // ""') ||
+    die "gh pr view failed for PR ${pr}"
+fi
+
 printf '%s\n' "${state}"
 [[ ${#failed[@]} -eq 0 ]] || printf '%s\n' "${failed[@]}"
 [[ ${#pending[@]} -eq 0 ]] || printf '%s\n' "${pending[@]}"
+[[ "${review}" != "REVIEW_REQUIRED" ]] || printf 'approval: pending\n'
 exit "${code}"

@@ -33,6 +33,7 @@ case "$*" in
     [ -f "${FIX}/pr-checks.nojson" ] || serve pr-checks
     [ -f "${FIX}/pr-checks.rc" ] && exit "$(cat "${FIX}/pr-checks.rc")"
     exit 0 ;;
+  "pr view"*reviewDecision*) serve review '{"reviewDecision":""}' ;;
   "pr view"*) echo '{"headRefOid":"0123456789abcdef0123456789abcdef01234567"}' ;;
   "run list"*)
     [ -f "${FIX}/runs.rc" ] && { echo "run list broke" >&2; exit "$(cat "${FIX}/runs.rc")"; }
@@ -496,11 +497,59 @@ sha_green() {
   [ "$(first_line)" = "error" ]
 }
 
+@test "a PR that needs review prints approval: pending after the checks" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+  [ "$(printf '%s\n' "${output}" | tail -n 1)" = "approval: pending" ]
+}
+
+@test "approval: pending follows the failed and pending lines" {
+  fixture pr-checks.json '[{"name":"lint","bucket":"fail"},{"name":"e2e","bucket":"pending"}]'
+  fixture pr-checks.rc 1
+  fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 1 ]
+  [ "$(printf '%s\n' "${output}" | tail -n 1)" = "approval: pending" ]
+  [[ "${output}" == *"lint: fail"* ]]
+}
+
+@test "no approval line for any other review decision" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  for decision in APPROVED CHANGES_REQUESTED '' null; do
+    printf '{"reviewDecision":%s}\n' "$([ "${decision}" = null ] && echo null || printf '"%s"' "${decision}")" >"${FIX}/review.json"
+    ci --repo o/r --pr 7 --no-sonar --no-codeql
+    [ "${status}" -eq 0 ]
+    [[ "${output}" != *approval* ]]
+  done
+}
+
+@test "no approval line in --sha mode" {
+  sha_green
+  fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [[ "${output}" != *approval* ]]
+  [ "$(grep -c "pr view" "${BIN}/gh.log" || true)" -eq 0 ]
+}
+
+@test "--wait polling is unchanged by a pending approval" {
+  fixture pr-checks.json '[{"name":"e2e","bucket":"pending"}]'
+  fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql --wait --timeout 2
+  [ "${status}" -eq 2 ]
+  [ "$(wc -l <"${BIN}/sleep.log")" -eq 2 ]
+  [ "$(grep -c reviewDecision "${BIN}/gh.log")" -eq 1 ]
+}
+
 @test "--help documents the statuses and exit codes" {
   ci --help
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"0 green, 1 failed, 2 pending, 3 not-started, 4 error"* ]]
   [[ "${output}" == *"--no-sonar"* && "${output}" == *"--no-codeql"* ]]
+  [[ "${output}" == *"approval: pending"* ]]
 }
 
 @test "bad arguments are an error" {
