@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.2.1...agent-kit-v1.3.0) (2026-10-19)
+
+
+### Features
+
+* **agent-kit:** report a pending review in ci-status ([#199](https://github.com/anthony-spruyt/claude-plugins/issues/199)) ([356c1bd](https://github.com/anthony-spruyt/claude-plugins/commit/356c1bde6117e1510d22027fb06af571c1e4d642))
+
 ## [1.2.1](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.2.0...agent-kit-v1.2.1) (2026-10-14)
 
 
