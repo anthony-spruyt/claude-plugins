@@ -5,6 +5,10 @@ trap 'printf "error\nunexpected failure near line %s\n" "${LINENO}"; exit 4' ERR
 
 readonly IGNORED_CHECKS='["Mergify Merge Protections","Mergify Merge Queue"]'
 readonly INTERVAL=60
+# shellcheck disable=SC2016
+readonly RERUN_RUN='def superseded($all): . as $r | $r.conclusion == "cancelled" and $r.workflowDatabaseId != null and any($all[]; .workflowDatabaseId == $r.workflowDatabaseId and .databaseId > $r.databaseId);'
+# shellcheck disable=SC2016
+readonly RERUN_CHECK='def superseded($all): . as $r | $r.conclusion == "cancelled" and $r.check_suite.id != null and any($all[]; .name == $r.name and .id > $r.id and .check_suite.id != null and .check_suite.id != $r.check_suite.id);'
 
 usage() {
   cat <<'EOF'
@@ -16,7 +20,8 @@ Exit codes: 0 green, 1 failed, 2 pending, 3 not-started, 4 error.
 --wait polls every 60s for --timeout minutes (default 8) and returns at once on green, failed,
 or a run that needs approval. A PR also needs its Sonar gate and CodeQL clean: --sonar-key sets
 the project key (default <owner>_<repo>), --no-sonar and --no-codeql skip one each. Mergify Merge
-Protections and Mergify Merge Queue are ignored.
+Protections and Mergify Merge Queue are ignored. A PR still waiting on a review ends with the
+line "review: pending"; that is not CI and never changes the state or exit code.
 EOF
 }
 
@@ -111,11 +116,11 @@ record_runs() {
     return
   fi
   record_unfinished "${runs}"
-  add failed "$(jq -r '.[] | select(.status == "completed" and (.conclusion | IN("success", "skipped", "neutral") | not)) | "\(.name): \(.conclusion)"' <<<"${runs}")"
+  add failed "$(jq -r "${RERUN_RUN} . as \$all | .[] | select(superseded(\$all) | not) | select(.status == \"completed\" and (.conclusion | IN(\"success\", \"skipped\", \"neutral\") | not)) | \"\(.name): \(.conclusion)\"" <<<"${runs}")"
 }
 
 fetch_runs() {
-  runs_json=$(gh run list --commit "$1" --repo "${repo}" --limit 100 --json name,status,conclusion) ||
+  runs_json=$(gh run list --commit "$1" --repo "${repo}" --limit 100 --json name,status,conclusion,databaseId,workflowDatabaseId) ||
     die "gh run list failed for $1"
   jq -e . >/dev/null 2>&1 <<<"${runs_json}" || die "gh run list gave no JSON for $1"
 }
@@ -175,7 +180,7 @@ check_codeql() {
 check_sha() {
   local runs statuses count
   runs=$(gh api --paginate "repos/${repo}/commits/${sha}/check-runs?per_page=100" | jq -s --argjson ig "${IGNORED_CHECKS}" \
-    '[.[].check_runs[] | select(.name | IN($ig[]) | not)]') || die "check-runs query failed"
+    "${RERUN_CHECK} [.[].check_runs[] | select(.name | IN(\$ig[]) | not)] | . as \$all | [.[] | select(superseded(\$all) | not)]") || die "check-runs query failed"
   count=$(jq 'length' <<<"${runs}")
   [[ "${count}" -gt 0 ]] || not_started=1
   add pending "$(jq -r '.[] | select(.status != "completed") | "\(.name): \(.status)"' <<<"${runs}")"
@@ -226,7 +231,14 @@ while :; do
   slept=$((slept + INTERVAL))
 done
 
+review=""
+if [[ -n "${pr}" ]]; then
+  review=$(gh pr view "${pr}" --repo "${repo}" --json reviewDecision | jq -r '.reviewDecision // ""') ||
+    die "gh pr view failed for PR ${pr}"
+fi
+
 printf '%s\n' "${state}"
 [[ ${#failed[@]} -eq 0 ]] || printf '%s\n' "${failed[@]}"
 [[ ${#pending[@]} -eq 0 ]] || printf '%s\n' "${pending[@]}"
+[[ "${review}" != "REVIEW_REQUIRED" ]] || printf 'review: pending\n'
 exit "${code}"

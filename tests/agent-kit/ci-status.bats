@@ -2,6 +2,8 @@
 #
 # ci-status.sh reduces a PR's or a commit's CI to one word and an exit code.
 
+bats_require_minimum_version 1.5.0
+
 REPO_ROOT="${BATS_TEST_DIRNAME}/../.."
 SCRIPT="${REPO_ROOT}/agent-kit/bin/ci-status.sh"
 SHA="0123456789abcdef0123456789abcdef01234567"
@@ -33,6 +35,9 @@ case "$*" in
     [ -f "${FIX}/pr-checks.nojson" ] || serve pr-checks
     [ -f "${FIX}/pr-checks.rc" ] && exit "$(cat "${FIX}/pr-checks.rc")"
     exit 0 ;;
+  "pr view"*reviewDecision*)
+    [ -f "${FIX}/review.rc" ] && { echo "pr view broke" >&2; exit "$(cat "${FIX}/review.rc")"; }
+    serve review '{"reviewDecision":""}' ;;
   "pr view"*) echo '{"headRefOid":"0123456789abcdef0123456789abcdef01234567"}' ;;
   "run list"*)
     [ -f "${FIX}/runs.rc" ] && { echo "run list broke" >&2; exit "$(cat "${FIX}/runs.rc")"; }
@@ -438,6 +443,131 @@ sha_green() {
   [ "$(wc -l <"${BIN}/sleep.log")" -eq 8 ]
 }
 
+cr() {
+  printf '{"id":%s,"name":"%s","status":"completed","conclusion":"%s","check_suite":{"id":%s}}' "$1" "$2" "$3" "$4"
+}
+
+check_runs() {
+  local IFS=,
+  fixture check-runs.json "{\"check_runs\":[$*]}"
+  fixture runs.json '[{"name":"CI","status":"completed","conclusion":"success"}]'
+}
+
+wf() {
+  printf '{"databaseId":%s,"workflowDatabaseId":%s,"name":"%s","status":"completed","conclusion":"%s"}' "$1" "$2" "$3" "$4"
+}
+
+wf_runs() {
+  local IFS=,
+  fixture check-runs.json '{"check_runs":[{"id":1,"name":"build","status":"completed","conclusion":"success","check_suite":{"id":1}}]}'
+  fixture runs.json "[$*]"
+}
+
+@test "a cancelled check-run with a newer same-name run in another suite is ignored" {
+  check_runs "$(cr 10 guard cancelled 100)" "$(cr 11 guard success 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
+@test "a cancelled check-run stays failed when the newer run in another suite has a different name" {
+  check_runs "$(cr 10 guard cancelled 100)" "$(cr 11 other success 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
+@test "a cancelled check-run stays failed when the newer same-name run is in the same suite" {
+  check_runs "$(cr 10 guard cancelled 100)" "$(cr 11 guard success 100)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
+@test "same-suite same-name jobs are all counted: a failure beside a higher-id skipped job stays failed" {
+  check_runs "$(cr 10 Test failure 100)" "$(cr 11 Test skipped 100)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Test: failure"* ]]
+}
+
+@test "a lone cancelled check-run is failed" {
+  check_runs "$(cr 10 guard cancelled 100)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
+@test "a cancelled check-run newer than a success of the same name is failed" {
+  check_runs "$(cr 10 guard success 100)" "$(cr 11 guard cancelled 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
+@test "a non-cancelled failure is never dropped for a newer success in another suite" {
+  check_runs "$(cr 10 guard failure 100)" "$(cr 11 guard success 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: failure"* ]]
+}
+
+@test "a cancelled check-run with no suite id is not treated as superseded" {
+  check_runs '{"id":10,"name":"guard","status":"completed","conclusion":"cancelled","check_suite":{"id":null}}' "$(cr 11 guard success 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
+@test "only the newest of several cancelled check-runs of one name is reported" {
+  check_runs "$(cr 10 guard cancelled 100)" "$(cr 11 guard cancelled 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [ "$(printf '%s\n' "${output}" | grep -c 'guard: cancelled')" -eq 1 ]
+}
+
+@test "a cancelled workflow run with a newer run of the same workflow is ignored" {
+  wf_runs "$(wf 20 5 Guard cancelled)" "$(wf 21 5 Guard success)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
+@test "a cancelled workflow run stays failed when only another workflow is newer" {
+  wf_runs "$(wf 20 5 Guard cancelled)" "$(wf 21 6 Other success)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Guard: cancelled"* ]]
+}
+
+@test "a cancelled workflow run newer than a success of the same workflow is failed" {
+  wf_runs "$(wf 20 5 Guard success)" "$(wf 21 5 Guard cancelled)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Guard: cancelled"* ]]
+}
+
+@test "a lone cancelled workflow run is failed" {
+  wf_runs "$(wf 20 5 Guard cancelled)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Guard: cancelled"* ]]
+}
+
+@test "a failed workflow run is never dropped for a newer success of the same workflow" {
+  wf_runs "$(wf 20 5 Guard failure)" "$(wf 21 5 Guard success)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Guard: failure"* ]]
+}
+
+@test "a PR does not apply the cancelled-run rule to workflow runs it only checks for unfinished work" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture runs.json "[$(wf 20 5 Guard cancelled),$(wf 21 5 Guard success)]"
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 0 ]
+}
+
 @test "--wait keeps polling while CI has not started and then reports not-started" {
   fixture pr-checks.json '[]'
   ci --repo o/r --pr 7 --no-sonar --no-codeql --wait --timeout 2
@@ -496,11 +626,68 @@ sha_green() {
   [ "$(first_line)" = "error" ]
 }
 
+@test "a PR that needs review prints review: pending after the checks" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+  [ "$(printf '%s\n' "${output}" | tail -n 1)" = "review: pending" ]
+}
+
+@test "review: pending follows the failed and pending lines" {
+  fixture pr-checks.json '[{"name":"lint","bucket":"fail"},{"name":"e2e","bucket":"pending"}]'
+  fixture pr-checks.rc 1
+  fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 1 ]
+  [ "$(printf '%s\n' "${output}" | tail -n 1)" = "review: pending" ]
+  [[ "${output}" == *"lint: fail"* ]]
+}
+
+@test "a failing review decision lookup is an error, never a CI status" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture review.rc 1
+  run --separate-stderr bash "${SCRIPT}" --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 4 ]
+  [ "$(first_line)" = "error" ]
+  [[ "${output}" == *"gh pr view failed for PR 7"* ]]
+}
+
+@test "no review line for any other review decision" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  for decision in APPROVED CHANGES_REQUESTED '' null; do
+    printf '{"reviewDecision":%s}\n' "$([ "${decision}" = null ] && echo null || printf '"%s"' "${decision}")" >"${FIX}/review.json"
+    ci --repo o/r --pr 7 --no-sonar --no-codeql
+    [ "${status}" -eq 0 ]
+    [[ "${output}" != *review:* ]]
+  done
+}
+
+@test "no review line in --sha mode" {
+  sha_green
+  fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [[ "${output}" != *review:* ]]
+  [ "$(grep -c "pr view" "${BIN}/gh.log" || true)" -eq 0 ]
+}
+
+@test "--wait polling is unchanged by a pending review" {
+  fixture pr-checks.json '[{"name":"e2e","bucket":"pending"}]'
+  fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql --wait --timeout 2
+  [ "${status}" -eq 2 ]
+  [ "$(wc -l <"${BIN}/sleep.log")" -eq 2 ]
+  [ "$(grep -c reviewDecision "${BIN}/gh.log")" -eq 1 ]
+}
+
 @test "--help documents the statuses and exit codes" {
   ci --help
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"0 green, 1 failed, 2 pending, 3 not-started, 4 error"* ]]
   [[ "${output}" == *"--no-sonar"* && "${output}" == *"--no-codeql"* ]]
+  [[ "${output}" == *"review: pending"* ]]
 }
 
 @test "bad arguments are an error" {
