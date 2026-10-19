@@ -439,6 +439,124 @@ sha_green() {
   [ "$(wc -l <"${BIN}/sleep.log")" -eq 8 ]
 }
 
+cr() {
+  printf '{"id":%s,"name":"%s","status":"completed","conclusion":"%s","check_suite":{"id":%s}}' "$1" "$2" "$3" "$4"
+}
+
+check_runs() {
+  local IFS=,
+  fixture check-runs.json "{\"check_runs\":[$*]}"
+  fixture runs.json '[{"name":"CI","status":"completed","conclusion":"success"}]'
+}
+
+wf() {
+  printf '{"databaseId":%s,"workflowDatabaseId":%s,"name":"%s","status":"completed","conclusion":"%s"}' "$1" "$2" "$3" "$4"
+}
+
+wf_runs() {
+  local IFS=,
+  fixture check-runs.json '{"check_runs":[{"id":1,"name":"build","status":"completed","conclusion":"success","check_suite":{"id":1}}]}'
+  fixture runs.json "[$*]"
+}
+
+@test "a cancelled check-run with a newer same-name run in another suite is ignored" {
+  check_runs "$(cr 10 guard cancelled 100)" "$(cr 11 guard success 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
+@test "a cancelled check-run stays failed when the newer same-name run is in the same suite" {
+  check_runs "$(cr 10 guard cancelled 100)" "$(cr 11 guard success 100)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
+@test "same-suite same-name jobs are all counted: a failure beside a higher-id skipped job stays failed" {
+  check_runs "$(cr 10 Test failure 100)" "$(cr 11 Test skipped 100)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Test: failure"* ]]
+}
+
+@test "a lone cancelled check-run is failed" {
+  check_runs "$(cr 10 guard cancelled 100)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
+@test "a cancelled check-run newer than a success of the same name is failed" {
+  check_runs "$(cr 10 guard success 100)" "$(cr 11 guard cancelled 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
+@test "a non-cancelled failure is never dropped for a newer success in another suite" {
+  check_runs "$(cr 10 guard failure 100)" "$(cr 11 guard success 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: failure"* ]]
+}
+
+@test "a cancelled check-run with no suite id is not treated as superseded" {
+  check_runs '{"id":10,"name":"guard","status":"completed","conclusion":"cancelled","check_suite":{"id":null}}' "$(cr 11 guard success 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
+@test "only the newest of several cancelled check-runs of one name is reported" {
+  check_runs "$(cr 10 guard cancelled 100)" "$(cr 11 guard cancelled 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [ "$(printf '%s\n' "${output}" | grep -c 'guard: cancelled')" -eq 1 ]
+}
+
+@test "a cancelled workflow run with a newer run of the same workflow is ignored" {
+  wf_runs "$(wf 20 5 Guard cancelled)" "$(wf 21 5 Guard success)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
+@test "a cancelled workflow run stays failed when only another workflow is newer" {
+  wf_runs "$(wf 20 5 Guard cancelled)" "$(wf 21 6 Other success)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Guard: cancelled"* ]]
+}
+
+@test "a cancelled workflow run newer than a success of the same workflow is failed" {
+  wf_runs "$(wf 20 5 Guard success)" "$(wf 21 5 Guard cancelled)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Guard: cancelled"* ]]
+}
+
+@test "a lone cancelled workflow run is failed" {
+  wf_runs "$(wf 20 5 Guard cancelled)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Guard: cancelled"* ]]
+}
+
+@test "a failed workflow run is never dropped for a newer success of the same workflow" {
+  wf_runs "$(wf 20 5 Guard failure)" "$(wf 21 5 Guard success)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"Guard: failure"* ]]
+}
+
+@test "a PR does not apply the cancelled-run rule to workflow runs it only checks for unfinished work" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture runs.json "[$(wf 20 5 Guard cancelled),$(wf 21 5 Guard success)]"
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 0 ]
+}
+
 @test "--wait keeps polling while CI has not started and then reports not-started" {
   fixture pr-checks.json '[]'
   ci --repo o/r --pr 7 --no-sonar --no-codeql --wait --timeout 2
