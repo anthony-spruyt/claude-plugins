@@ -21,7 +21,7 @@ Exit codes: 0 green, 1 failed, 2 pending, 3 not-started, 4 error.
 or a run that needs approval. A PR also needs its Sonar gate and CodeQL clean: --sonar-key sets
 the project key (default <owner>_<repo>), --no-sonar and --no-codeql skip one each. Mergify Merge
 Protections and Mergify Merge Queue are ignored. A PR still waiting on a review ends with the
-line "approval: pending"; that is not CI and never changes the state or exit code.
+line "review: pending"; that is not CI and never changes the state or exit code.
 EOF
 }
 
@@ -240,5 +240,5 @@ fi
 printf '%s\n' "${state}"
 [[ ${#failed[@]} -eq 0 ]] || printf '%s\n' "${failed[@]}"
 [[ ${#pending[@]} -eq 0 ]] || printf '%s\n' "${pending[@]}"
-[[ "${review}" != "REVIEW_REQUIRED" ]] || printf 'approval: pending\n'
+[[ "${review}" != "REVIEW_REQUIRED" ]] || printf 'review: pending\n'
 exit "${code}"

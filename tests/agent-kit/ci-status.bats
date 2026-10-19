@@ -2,6 +2,8 @@
 #
 # ci-status.sh reduces a PR's or a commit's CI to one word and an exit code.
 
+bats_require_minimum_version 1.5.0
+
 REPO_ROOT="${BATS_TEST_DIRNAME}/../.."
 SCRIPT="${REPO_ROOT}/agent-kit/bin/ci-status.sh"
 SHA="0123456789abcdef0123456789abcdef01234567"
@@ -33,7 +35,9 @@ case "$*" in
     [ -f "${FIX}/pr-checks.nojson" ] || serve pr-checks
     [ -f "${FIX}/pr-checks.rc" ] && exit "$(cat "${FIX}/pr-checks.rc")"
     exit 0 ;;
-  "pr view"*reviewDecision*) serve review '{"reviewDecision":""}' ;;
+  "pr view"*reviewDecision*)
+    [ -f "${FIX}/review.rc" ] && { echo "pr view broke" >&2; exit "$(cat "${FIX}/review.rc")"; }
+    serve review '{"reviewDecision":""}' ;;
   "pr view"*) echo '{"headRefOid":"0123456789abcdef0123456789abcdef01234567"}' ;;
   "run list"*)
     [ -f "${FIX}/runs.rc" ] && { echo "run list broke" >&2; exit "$(cat "${FIX}/runs.rc")"; }
@@ -466,6 +470,13 @@ wf_runs() {
   [ "$(first_line)" = "green" ]
 }
 
+@test "a cancelled check-run stays failed when the newer run in another suite has a different name" {
+  check_runs "$(cr 10 guard cancelled 100)" "$(cr 11 other success 101)"
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"guard: cancelled"* ]]
+}
+
 @test "a cancelled check-run stays failed when the newer same-name run is in the same suite" {
   check_runs "$(cr 10 guard cancelled 100)" "$(cr 11 guard success 100)"
   ci --repo o/r --sha "${SHA}"
@@ -615,45 +626,54 @@ wf_runs() {
   [ "$(first_line)" = "error" ]
 }
 
-@test "a PR that needs review prints approval: pending after the checks" {
+@test "a PR that needs review prints review: pending after the checks" {
   fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
   fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
   ci --repo o/r --pr 7 --no-sonar --no-codeql
   [ "${status}" -eq 0 ]
   [ "$(first_line)" = "green" ]
-  [ "$(printf '%s\n' "${output}" | tail -n 1)" = "approval: pending" ]
+  [ "$(printf '%s\n' "${output}" | tail -n 1)" = "review: pending" ]
 }
 
-@test "approval: pending follows the failed and pending lines" {
+@test "review: pending follows the failed and pending lines" {
   fixture pr-checks.json '[{"name":"lint","bucket":"fail"},{"name":"e2e","bucket":"pending"}]'
   fixture pr-checks.rc 1
   fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
   ci --repo o/r --pr 7 --no-sonar --no-codeql
   [ "${status}" -eq 1 ]
-  [ "$(printf '%s\n' "${output}" | tail -n 1)" = "approval: pending" ]
+  [ "$(printf '%s\n' "${output}" | tail -n 1)" = "review: pending" ]
   [[ "${output}" == *"lint: fail"* ]]
 }
 
-@test "no approval line for any other review decision" {
+@test "a failing review decision lookup is an error, never a CI status" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture review.rc 1
+  run --separate-stderr bash "${SCRIPT}" --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 4 ]
+  [ "$(first_line)" = "error" ]
+  [[ "${output}" == *"gh pr view failed for PR 7"* ]]
+}
+
+@test "no review line for any other review decision" {
   fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
   for decision in APPROVED CHANGES_REQUESTED '' null; do
     printf '{"reviewDecision":%s}\n' "$([ "${decision}" = null ] && echo null || printf '"%s"' "${decision}")" >"${FIX}/review.json"
     ci --repo o/r --pr 7 --no-sonar --no-codeql
     [ "${status}" -eq 0 ]
-    [[ "${output}" != *approval* ]]
+    [[ "${output}" != *review:* ]]
   done
 }
 
-@test "no approval line in --sha mode" {
+@test "no review line in --sha mode" {
   sha_green
   fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
   ci --repo o/r --sha "${SHA}"
   [ "${status}" -eq 0 ]
-  [[ "${output}" != *approval* ]]
+  [[ "${output}" != *review:* ]]
   [ "$(grep -c "pr view" "${BIN}/gh.log" || true)" -eq 0 ]
 }
 
-@test "--wait polling is unchanged by a pending approval" {
+@test "--wait polling is unchanged by a pending review" {
   fixture pr-checks.json '[{"name":"e2e","bucket":"pending"}]'
   fixture review.json '{"reviewDecision":"REVIEW_REQUIRED"}'
   ci --repo o/r --pr 7 --no-sonar --no-codeql --wait --timeout 2
@@ -667,7 +687,7 @@ wf_runs() {
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"0 green, 1 failed, 2 pending, 3 not-started, 4 error"* ]]
   [[ "${output}" == *"--no-sonar"* && "${output}" == *"--no-codeql"* ]]
-  [[ "${output}" == *"approval: pending"* ]]
+  [[ "${output}" == *"review: pending"* ]]
 }
 
 @test "bad arguments are an error" {
