@@ -5,6 +5,7 @@ import glob
 import os
 import sys
 import time
+from functools import partial
 
 import pytest
 
@@ -23,8 +24,11 @@ RULES = [
 # Quadratic patterns run for seconds here; 200ms leaves headroom for a loaded CI box
 LIMIT = 0.2
 
-# Parallel xdist workers stretch wall time; CPU time does not count that
+# CPU time leaves out waiting for a CPU under xdist; a core shared with other workers still slows the work
 CLOCK = time.thread_time
+
+# Loose wall cap: work moved to another thread, a subprocess or a blocking call reads ~0 CPU time
+WALL_FACTOR = 5
 
 INPUTS = {
     "many-heredocs-one-line": "cat <<A " * 5000,
@@ -105,16 +109,21 @@ INPUTS = {
 }
 
 
-def _fastest(engine, rule, data):
-    timings = []
+def assert_fast(work, limit, label, before=None):
+    wall_limit = limit * WALL_FACTOR
+    cpu_times, wall_times = [], []
     for _ in range(3):
-        clean_lines.cache_clear()
-        start = CLOCK()
-        engine._rule_matches(rule, data)
-        timings.append(CLOCK() - start)
-        if timings[-1] < LIMIT:
+        if before:
+            before()
+        cpu_start, wall_start = CLOCK(), time.perf_counter()
+        work()
+        cpu_times.append(CLOCK() - cpu_start)
+        wall_times.append(time.perf_counter() - wall_start)
+        if cpu_times[-1] < limit and wall_times[-1] < wall_limit:
             break
-    return min(timings)
+    cpu, wall = min(cpu_times), min(wall_times)
+    message = f"{label} took {cpu * 1000:.0f}ms CPU, {wall * 1000:.0f}ms wall"
+    assert cpu < limit and wall < wall_limit, message
 
 
 @pytest.mark.parametrize("name", INPUTS)
@@ -122,8 +131,8 @@ def test_rules_finish_quickly(name):
     data = {"tool_name": "Bash", "tool_input": {"command": INPUTS[name]}}
     engine = RuleEngine()
     for rule in RULES:
-        elapsed = _fastest(engine, rule, data)
-        assert elapsed < LIMIT, f"{rule.name} took {elapsed * 1000:.0f}ms on {name}"
+        work = partial(engine._rule_matches, rule, data)
+        assert_fast(work, LIMIT, f"{rule.name} on {name}", clean_lines.cache_clear)
 
 
 def _measure(work):
@@ -143,3 +152,8 @@ def _burn_cpu():
 def test_clock_counts_cpu_time_and_not_waiting():
     assert _measure(_burn_cpu) >= LIMIT
     assert _measure(lambda: time.sleep(LIMIT * 1.25)) < LIMIT
+
+
+def test_wall_cap_fails_work_that_only_waits():
+    with pytest.raises(AssertionError, match="ms wall"):
+        assert_fast(lambda: time.sleep(0.06), 0.01, "sleep")
