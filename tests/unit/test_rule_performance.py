@@ -123,7 +123,8 @@ def assert_fast(work, limit, label, before=None):
             break
     cpu, wall = min(cpu_times), min(wall_times)
     message = f"{label} took {cpu * 1000:.0f}ms CPU, {wall * 1000:.0f}ms wall"
-    assert cpu < limit and wall < wall_limit, message
+    assert cpu < limit, message
+    assert wall < wall_limit, message
 
 
 @pytest.mark.parametrize("name", INPUTS)
