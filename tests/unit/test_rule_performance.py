@@ -23,6 +23,9 @@ RULES = [
 # Quadratic patterns run for seconds here; 200ms leaves headroom for a loaded CI box
 LIMIT = 0.2
 
+# Parallel xdist workers stretch wall time; CPU time does not count that
+CLOCK = time.thread_time
+
 INPUTS = {
     "many-heredocs-one-line": "cat <<A " * 5000,
     "many-heredocs-multiline": "cat <<A\n" * 5000,
@@ -106,9 +109,9 @@ def _fastest(engine, rule, data):
     timings = []
     for _ in range(3):
         clean_lines.cache_clear()
-        start = time.perf_counter()
+        start = CLOCK()
         engine._rule_matches(rule, data)
-        timings.append(time.perf_counter() - start)
+        timings.append(CLOCK() - start)
         if timings[-1] < LIMIT:
             break
     return min(timings)
@@ -121,3 +124,22 @@ def test_rules_finish_quickly(name):
     for rule in RULES:
         elapsed = _fastest(engine, rule, data)
         assert elapsed < LIMIT, f"{rule.name} took {elapsed * 1000:.0f}ms on {name}"
+
+
+def _measure(work):
+    start = CLOCK()
+    work()
+    return CLOCK() - start
+
+
+def _burn_cpu():
+    # Wall cap so a clock that never advances fails the test instead of hanging it
+    began = time.perf_counter()
+    cpu_start = CLOCK()
+    while CLOCK() - cpu_start < LIMIT * 1.25 and time.perf_counter() - began < 5:
+        pass
+
+
+def test_clock_counts_cpu_time_and_not_waiting():
+    assert _measure(_burn_cpu) >= LIMIT
+    assert _measure(lambda: time.sleep(LIMIT * 1.25)) < LIMIT

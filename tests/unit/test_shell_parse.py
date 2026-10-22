@@ -3,7 +3,6 @@
 
 import os
 import sys
-import time
 
 import pytest
 
@@ -11,7 +10,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
 from core.shell_parse import MAX_LENGTH, _inner, normalise, parse_commands
-from tests.unit.test_rule_performance import INPUTS
+from tests.unit.test_rule_performance import CLOCK, INPUTS
 
 
 def pairs(command):
@@ -873,9 +872,9 @@ def test_parse_commands_is_fast(name):
     command = ADVERSARIAL[name]
     timings = []
     for _ in range(3):
-        start = time.perf_counter()
+        start = CLOCK()
         parse_commands(command)
-        timings.append(time.perf_counter() - start)
+        timings.append(CLOCK() - start)
     assert min(timings) < BUDGET, f"{name} took {min(timings) * 1000:.0f}ms"
 
 
@@ -884,9 +883,9 @@ def test_parse_is_fast(name):
     command = ADVERSARIAL[name]
     timings = []
     for _ in range(3):
-        start = time.perf_counter()
+        start = CLOCK()
         normalise(command)
-        timings.append(time.perf_counter() - start)
+        timings.append(CLOCK() - start)
     assert min(timings) < BUDGET, f"{name} took {min(timings) * 1000:.0f}ms"
 
 
@@ -973,9 +972,9 @@ class TestReviewFixes:
 def test_brace_glob_check_is_linear(command):
     timings = []
     for _ in range(3):
-        start = time.perf_counter()
+        start = CLOCK()
         normalise(command)
-        timings.append(time.perf_counter() - start)
+        timings.append(CLOCK() - start)
     assert min(timings) < 0.05, f"took {min(timings) * 1000:.0f}ms"
 
 
