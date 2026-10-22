@@ -3,7 +3,7 @@
 
 import os
 import sys
-import time
+from functools import partial
 
 import pytest
 
@@ -11,7 +11,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 
 from core.shell_parse import MAX_LENGTH, _inner, normalise, parse_commands
-from tests.unit.test_rule_performance import INPUTS
+from tests.unit.test_rule_performance import INPUTS, assert_fast
 
 
 def pairs(command):
@@ -864,30 +864,18 @@ ADVERSARIAL = dict(
 )
 
 
-# Linear parsing takes ~40ms on 20k chars here and ~75ms on CI; quadratic takes seconds
+# Linear parsing takes ~40ms on 20k chars here; quadratic takes seconds
 BUDGET = 0.2
 
 
 @pytest.mark.parametrize("name", ADVERSARIAL)
 def test_parse_commands_is_fast(name):
-    command = ADVERSARIAL[name]
-    timings = []
-    for _ in range(3):
-        start = time.perf_counter()
-        parse_commands(command)
-        timings.append(time.perf_counter() - start)
-    assert min(timings) < BUDGET, f"{name} took {min(timings) * 1000:.0f}ms"
+    assert_fast(partial(parse_commands, ADVERSARIAL[name]), BUDGET, name)
 
 
 @pytest.mark.parametrize("name", ADVERSARIAL)
 def test_parse_is_fast(name):
-    command = ADVERSARIAL[name]
-    timings = []
-    for _ in range(3):
-        start = time.perf_counter()
-        normalise(command)
-        timings.append(time.perf_counter() - start)
-    assert min(timings) < BUDGET, f"{name} took {min(timings) * 1000:.0f}ms"
+    assert_fast(partial(normalise, ADVERSARIAL[name]), BUDGET, name)
 
 
 PE = "print" + "e" + "nv"
@@ -971,12 +959,7 @@ class TestReviewFixes:
     ],
 )
 def test_brace_glob_check_is_linear(command):
-    timings = []
-    for _ in range(3):
-        start = time.perf_counter()
-        normalise(command)
-        timings.append(time.perf_counter() - start)
-    assert min(timings) < 0.05, f"took {min(timings) * 1000:.0f}ms"
+    assert_fast(partial(normalise, command), 0.05, "brace-glob check")
 
 
 def test_eval_skips_only_one_double_dash():
