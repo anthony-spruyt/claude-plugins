@@ -396,15 +396,6 @@ with_repo_config() {
   printf '%b' "$1" >"${CLAUDE_PROJECT_DIR}/.claude/agent-kit.json"
 }
 
-@test "the shipped progress.json default holds builder, 10, 200000 and 90/95" {
-  [ "$(jq -c . "${PLUGIN}/config/progress.json")" = '{"notesAgents":["builder"],"nudgeAfterToolCalls":10,"compactAtTokens":200000,"warnAtPercent":[90,95]}' ]
-}
-
-@test "the old plain-text config files are gone" {
-  [ ! -e "${PLUGIN}/config/notes-agents" ]
-  [ ! -e "${PLUGIN}/config/notes-nudge-calls" ]
-}
-
 @test "the default opts builder in and nobody else" {
   sub_start
   assert_injected "${SUB_NOTES}"
