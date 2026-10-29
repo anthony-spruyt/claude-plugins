@@ -248,6 +248,18 @@ push_reviewed() {
   [[ "${output}" == *"${BASE}..${reviewed}"* ]]
 }
 
+@test "creates a branch whose name nests under a stale local origin-tracking ref" {
+  git -C "${TMP}/other" push -q origin "${BASE}:refs/heads/feat/x"
+  git update-ref refs/remotes/origin/feat "${BASE}"
+  [ -z "$(git -C "${TMP}/origin.git" branch --list feat)" ]
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" new-branch
+  [ "${status}" -eq 0 ]
+  [ "$(git -C "${TMP}/origin.git" rev-parse new-branch)" = "${reviewed}" ]
+  [[ "${output}" == *"${BASE}..${reviewed}"* ]]
+}
+
 @test "refuses to create a branch from a base that origin does not have and creates nothing" {
   commit "${TMP}/work" a.txt a "unpublished base"
   local_base="$(git rev-parse HEAD)"
@@ -327,6 +339,18 @@ push_reviewed() {
   [ "${status}" -ne 0 ]
   [[ "${output}" == *"base"* ]]
   [ "$(origin_head)" = "${BASE}" ]
+}
+
+@test "takes the pre-push tip from the branch named exactly, not from a branch that merely ends with its name" {
+  commit "${TMP}/other" x.txt x "on x/main"
+  git -C "${TMP}/other" push -q origin HEAD:refs/heads/x/main
+  [ "$(git -C "${TMP}/origin.git" rev-parse x/main)" != "${BASE}" ]
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" main
+  [ "${status}" -eq 0 ]
+  [ "$(origin_head)" = "${reviewed}" ]
+  [[ "${output}" == *"${BASE}..${reviewed}"* ]]
 }
 
 @test "refuses an unsigned commit on a new branch and creates nothing" {

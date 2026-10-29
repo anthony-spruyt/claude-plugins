@@ -30,7 +30,7 @@ if [[ -n "${pre_push}" ]]; then
   git merge-base --is-ancestor "${base}" "${pre_push}" ||
     fail "base ${base} is not on origin/${branch}: unreviewed commits sit below the range"
 else
-  git fetch --quiet origin "+refs/heads/*:refs/remotes/origin/*" || fail "cannot fetch origin"
+  git fetch --quiet --prune origin "+refs/heads/*:refs/remotes/origin/*" || fail "cannot fetch origin"
   published=""
   while read -r tip _; do
     if [[ -n "${tip}" ]] && git merge-base --is-ancestor "${base}" "${tip}" 2>/dev/null; then published=1; fi
