@@ -25,12 +25,12 @@ while read -r tip ref; do
   if [[ "${ref}" == "refs/heads/${branch}" ]]; then pre_push="${tip}"; fi
 done <<<"${remote_heads}"
 
+git fetch --quiet --prune origin "+refs/heads/*:refs/remotes/origin/*" || fail "cannot fetch origin"
+
 if [[ -n "${pre_push}" ]]; then
-  git fetch --quiet origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || fail "cannot fetch origin ${branch}"
   git merge-base --is-ancestor "${base}" "${pre_push}" ||
     fail "base ${base} is not on origin/${branch}: unreviewed commits sit below the range"
 else
-  git fetch --quiet --prune origin "+refs/heads/*:refs/remotes/origin/*" || fail "cannot fetch origin"
   published=""
   while read -r tip _; do
     if [[ -n "${tip}" ]] && git merge-base --is-ancestor "${base}" "${tip}" 2>/dev/null; then published=1; fi

@@ -260,6 +260,21 @@ push_reviewed() {
   [[ "${output}" == *"${BASE}..${reviewed}"* ]]
 }
 
+@test "pushes to an existing branch whose name nests under a stale local origin-tracking ref" {
+  commit "${TMP}/other" o.txt o "someone else"
+  git -C "${TMP}/other" push -q origin HEAD:refs/heads/feat/x
+  pre="$(git -C "${TMP}/other" rev-parse HEAD)"
+  git update-ref refs/remotes/origin/feat "${BASE}"
+  [ -z "$(git -C "${TMP}/origin.git" branch --list feat)" ]
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" feat/x
+  [ "${status}" -eq 0 ]
+  pushed="$(git -C "${TMP}/origin.git" rev-parse feat/x)"
+  [ "$(git -C "${TMP}/origin.git" rev-parse "${pushed}^")" = "${pre}" ]
+  [[ "${output}" == *"${pre}..${pushed}"* ]]
+}
+
 @test "refuses to create a branch from a base that origin does not have and creates nothing" {
   commit "${TMP}/work" a.txt a "unpublished base"
   local_base="$(git rev-parse HEAD)"
