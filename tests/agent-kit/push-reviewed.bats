@@ -259,6 +259,76 @@ push_reviewed() {
   [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
 }
 
+@test "refuses to create a branch when only a local origin-tracking ref holds the base" {
+  commit "${TMP}/work" a.txt a "unpublished base"
+  local_base="$(git rev-parse HEAD)"
+  git update-ref refs/remotes/origin/looks-published "${local_base}"
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
+@test "refuses to create a branch when the base is reachable only through a symbolic ref under refs/remotes/origin" {
+  commit "${TMP}/work" a.txt a "unpublished base"
+  local_base="$(git rev-parse HEAD)"
+  git branch hold "${local_base}"
+  git symbolic-ref refs/remotes/origin/alias refs/heads/hold
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
+@test "refuses to create a branch when the base is only on a second remote" {
+  git init -q --bare -b main "${TMP}/upstream.git"
+  git remote add upstream "${TMP}/upstream.git"
+  commit "${TMP}/work" a.txt a "base on upstream only"
+  local_base="$(git rev-parse HEAD)"
+  git push -q upstream "${local_base}:refs/heads/main"
+  git fetch -q upstream
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
+@test "creates the named branch from a detached HEAD at the reviewed sha" {
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  git checkout -q --detach
+  push_reviewed "${BASE}" "${reviewed}" new-branch
+  [ "${status}" -eq 0 ]
+  [ "$(git -C "${TMP}/origin.git" rev-parse new-branch)" = "${reviewed}" ]
+}
+
+@test "pushes to an existing branch from a detached HEAD at the reviewed sha" {
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  git checkout -q --detach
+  push_reviewed "${BASE}" "${reviewed}" main
+  [ "${status}" -eq 0 ]
+  [ "$(origin_head)" = "${reviewed}" ]
+}
+
+@test "refuses an existing branch when a local branch named origin/<branch> holds the base" {
+  commit "${TMP}/work" a.txt a "unpublished base"
+  local_base="$(git rev-parse HEAD)"
+  git branch origin/main "${local_base}"
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" main
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ "$(origin_head)" = "${BASE}" ]
+}
+
 @test "refuses an unsigned commit on a new branch and creates nothing" {
   disable_signing "${TMP}/work"
   commit "${TMP}/work" a.txt a "unsigned"
