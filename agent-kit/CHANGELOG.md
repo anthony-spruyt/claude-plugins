@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.3.0...agent-kit-v1.4.0) (2026-10-29)
+
+
+### Features
+
+* **agent-kit:** create a missing branch in push-reviewed ([#231](https://github.com/anthony-spruyt/claude-plugins/issues/231)) ([213b32a](https://github.com/anthony-spruyt/claude-plugins/commit/213b32a8d33079d67a8b8b952a37438b9244a13c))
+
 ## [1.3.0](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.2.1...agent-kit-v1.3.0) (2026-10-19)
 
 
