@@ -107,7 +107,7 @@ The plugin's `bin/` is on the Bash tool's `PATH` in the main session and in suba
 | Script             | Purpose                                                                             |
 | ------------------ | ----------------------------------------------------------------------------------- |
 | `workspace.sh`     | Clone a repo into its own directory on a new branch and print the path              |
-| `push-reviewed.sh` | Push the signed commits a reviewer approved, or stop without pushing                |
+| `push-reviewed.sh` | Push the signed commits a reviewer approved (creates a missing branch), or stop     |
 | `ci-status.sh`     | Report CI, CodeQL, Sonar and pending review of a PR or commit, optionally waiting   |
 
 ## Skills

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pushes the commits a reviewer approved (<base>..<sha>) to origin/<branch>, or stops without pushing.
+# Pushes the commits a reviewer approved (<base>..<sha>) to origin/<branch>, creating the branch when origin lacks it, or stops without pushing.
 # It also stops when any commit it would push is unsigned or has a bad signature.
 # Run it from the clone that holds them. Prints the pushed range, <pre-push tip>..<pushed sha>.
 set -euo pipefail
@@ -18,10 +18,16 @@ sha=$(git rev-parse --verify --quiet "${sha}^{commit}") || fail "sha ${2} is not
 [[ -z "$(git status --porcelain)" ]] || fail "working tree is not clean"
 [[ "$(git rev-parse HEAD)" == "${sha}" ]] || fail "HEAD is not the reviewed sha ${sha}"
 
-git fetch --quiet origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || fail "cannot fetch origin ${branch}"
-pre_push=$(git rev-parse --verify --quiet "origin/${branch}") || fail "origin/${branch} not found"
-git merge-base --is-ancestor "${base}" "${pre_push}" ||
-  fail "base ${base} is not on origin/${branch}: unreviewed commits sit below the range"
+remote_refs=$(git ls-remote --heads origin "refs/heads/${branch}") || fail "cannot list origin heads"
+if [[ -n "${remote_refs}" ]]; then
+  git fetch --quiet origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || fail "cannot fetch origin ${branch}"
+  pre_push=$(git rev-parse --verify --quiet "origin/${branch}") || fail "origin/${branch} not found"
+  git merge-base --is-ancestor "${base}" "${pre_push}" ||
+    fail "base ${base} is not on origin/${branch}: unreviewed commits sit below the range"
+else
+  [[ -n "$(git branch -r --contains "${base}")" ]] || fail "base ${base} is not on any origin branch: unreviewed commits sit below the range"
+  pre_push="${base}"
+fi
 
 git merge-base --is-ancestor "${base}" "${sha}" || fail "base ${base} is not an ancestor of ${sha}"
 [[ -n "$(git rev-list "${base}..${sha}")" ]] || fail "no commits between ${base} and ${sha}"

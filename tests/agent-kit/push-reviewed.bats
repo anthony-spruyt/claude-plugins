@@ -238,6 +238,37 @@ push_reviewed() {
   [ "$(origin_head)" = "${reviewed}" ]
 }
 
+@test "creates the named branch when origin does not have it and prints the range from the base" {
+  commit "${TMP}/work" a.txt a "reviewed 1"
+  commit "${TMP}/work" b.txt b "reviewed 2"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" new-branch
+  [ "${status}" -eq 0 ]
+  [ "$(git -C "${TMP}/origin.git" rev-parse new-branch)" = "${reviewed}" ]
+  [[ "${output}" == *"${BASE}..${reviewed}"* ]]
+}
+
+@test "refuses to create a branch from a base that origin does not have and creates nothing" {
+  commit "${TMP}/work" a.txt a "unpublished base"
+  local_base="$(git rev-parse HEAD)"
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
+@test "refuses an unsigned commit on a new branch and creates nothing" {
+  disable_signing "${TMP}/work"
+  commit "${TMP}/work" a.txt a "unsigned"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"unsigned"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
 @test "needs three arguments" {
   push_reviewed "${BASE}" main
   [ "${status}" -ne 0 ]
