@@ -238,6 +238,146 @@ push_reviewed() {
   [ "$(origin_head)" = "${reviewed}" ]
 }
 
+@test "creates the named branch when origin does not have it and prints the range from the base" {
+  commit "${TMP}/work" a.txt a "reviewed 1"
+  commit "${TMP}/work" b.txt b "reviewed 2"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" new-branch
+  [ "${status}" -eq 0 ]
+  [ "$(git -C "${TMP}/origin.git" rev-parse new-branch)" = "${reviewed}" ]
+  [[ "${output}" == *"${BASE}..${reviewed}"* ]]
+}
+
+@test "creates a branch whose name nests under a stale local origin-tracking ref" {
+  git -C "${TMP}/other" push -q origin "${BASE}:refs/heads/feat/x"
+  git update-ref refs/remotes/origin/feat "${BASE}"
+  [ -z "$(git -C "${TMP}/origin.git" branch --list feat)" ]
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" new-branch
+  [ "${status}" -eq 0 ]
+  [ "$(git -C "${TMP}/origin.git" rev-parse new-branch)" = "${reviewed}" ]
+  [[ "${output}" == *"${BASE}..${reviewed}"* ]]
+}
+
+@test "pushes to an existing branch whose name nests under a stale local origin-tracking ref" {
+  commit "${TMP}/other" o.txt o "someone else"
+  git -C "${TMP}/other" push -q origin HEAD:refs/heads/feat/x
+  pre="$(git -C "${TMP}/other" rev-parse HEAD)"
+  git update-ref refs/remotes/origin/feat "${BASE}"
+  [ -z "$(git -C "${TMP}/origin.git" branch --list feat)" ]
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" feat/x
+  [ "${status}" -eq 0 ]
+  pushed="$(git -C "${TMP}/origin.git" rev-parse feat/x)"
+  [ "$(git -C "${TMP}/origin.git" rev-parse "${pushed}^")" = "${pre}" ]
+  [[ "${output}" == *"${pre}..${pushed}"* ]]
+}
+
+@test "refuses to create a branch from a base that origin does not have and creates nothing" {
+  commit "${TMP}/work" a.txt a "unpublished base"
+  local_base="$(git rev-parse HEAD)"
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
+@test "refuses to create a branch when only a local origin-tracking ref holds the base" {
+  commit "${TMP}/work" a.txt a "unpublished base"
+  local_base="$(git rev-parse HEAD)"
+  git update-ref refs/remotes/origin/looks-published "${local_base}"
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
+@test "refuses to create a branch when the base is reachable only through a symbolic ref under refs/remotes/origin" {
+  commit "${TMP}/work" a.txt a "unpublished base"
+  local_base="$(git rev-parse HEAD)"
+  git branch hold "${local_base}"
+  git symbolic-ref refs/remotes/origin/alias refs/heads/hold
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
+@test "refuses to create a branch when the base is only on a second remote" {
+  git init -q --bare -b main "${TMP}/upstream.git"
+  git remote add upstream "${TMP}/upstream.git"
+  commit "${TMP}/work" a.txt a "base on upstream only"
+  local_base="$(git rev-parse HEAD)"
+  git push -q upstream "${local_base}:refs/heads/main"
+  git fetch -q upstream
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
+@test "creates the named branch from a detached HEAD at the reviewed sha" {
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  git checkout -q --detach
+  push_reviewed "${BASE}" "${reviewed}" new-branch
+  [ "${status}" -eq 0 ]
+  [ "$(git -C "${TMP}/origin.git" rev-parse new-branch)" = "${reviewed}" ]
+}
+
+@test "pushes to an existing branch from a detached HEAD at the reviewed sha" {
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  git checkout -q --detach
+  push_reviewed "${BASE}" "${reviewed}" main
+  [ "${status}" -eq 0 ]
+  [ "$(origin_head)" = "${reviewed}" ]
+}
+
+@test "refuses an existing branch when a local branch named origin/<branch> holds the base" {
+  commit "${TMP}/work" a.txt a "unpublished base"
+  local_base="$(git rev-parse HEAD)"
+  git branch origin/main "${local_base}"
+  commit "${TMP}/work" b.txt b "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${local_base}" "${reviewed}" main
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"base"* ]]
+  [ "$(origin_head)" = "${BASE}" ]
+}
+
+@test "takes the pre-push tip from the branch named exactly, not from a branch that merely ends with its name" {
+  commit "${TMP}/other" x.txt x "on x/main"
+  git -C "${TMP}/other" push -q origin HEAD:refs/heads/x/main
+  [ "$(git -C "${TMP}/origin.git" rev-parse x/main)" != "${BASE}" ]
+  commit "${TMP}/work" a.txt a "reviewed"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" main
+  [ "${status}" -eq 0 ]
+  [ "$(origin_head)" = "${reviewed}" ]
+  [[ "${output}" == *"${BASE}..${reviewed}"* ]]
+}
+
+@test "refuses an unsigned commit on a new branch and creates nothing" {
+  disable_signing "${TMP}/work"
+  commit "${TMP}/work" a.txt a "unsigned"
+  reviewed="$(git rev-parse HEAD)"
+  push_reviewed "${BASE}" "${reviewed}" new-branch
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"unsigned"* ]]
+  [ -z "$(git -C "${TMP}/origin.git" branch --list new-branch)" ]
+}
+
 @test "needs three arguments" {
   push_reviewed "${BASE}" main
   [ "${status}" -ne 0 ]
