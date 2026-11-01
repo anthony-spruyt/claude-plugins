@@ -1,6 +1,6 @@
 {
   "hookify-plus": "2.7.6",
-  "security-hooks": "2.8.2",
+  "security-hooks": "2.9.0",
   "best-practices": "3.1.1",
-  "agent-kit": "1.4.0"
+  "agent-kit": "1.4.1"
 }
