@@ -93,7 +93,7 @@ real_grep() {
 
 @test "skips a directory named on the command line, or a directory inside one" {
   cd "${TMP}/secrets"
-  for dir in clusterconfig clusterconfig/ sub/clusterconfig sub/clusterconfig/deep .git sub/.git "${TMP}/secrets/.git"; do
+  for dir in clusterconfig clusterconfig/ sub/clusterconfig sub/clusterconfig/deep .git sub/.git .git/refs .git/refs/heads .kube "${TMP}/secrets/.git"; do
     run grep -rl needle "${dir}"
     if [ "${status}" -ne 1 ] || [ -n "${output}" ]; then
       echo "${dir}: status ${status}, output '${output}'" >&2

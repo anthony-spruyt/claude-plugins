@@ -31,8 +31,10 @@ install_file() {
 write_rg_config() {
   local tmp glob status=0
   tmp=$(mktemp) || return 1
+  # A folder gets two globs: the first prunes the walk, the second also covers a folder passed by name
   while IFS= read -r glob || [[ -n $glob ]]; do
     [[ -z $glob ]] || printf -- '--glob=!%s\n' "$glob"
+    [[ $glob != */ ]] || printf -- '--glob=!**/%s**\n' "$glob"
   done <"$source_dir/secret-globs" >"$tmp"
   install_file "$tmp" "$rg_config" 644 || status=1
   rm -f "$tmp"
@@ -77,9 +79,10 @@ append_line() {
 }
 
 mkdir -p "$shim_dir" || exit 0
-install_file "$source_dir/grep" "$shim_dir/grep" 755 || exit 0
+# grep goes last: a running session's grep stops when it cannot read the list, and a failed step keeps the old grep
 install_file "$source_dir/secret-globs" "$shim_dir/secret-globs" 644 || exit 0
 write_rg_config || exit 0
+install_file "$source_dir/grep" "$shim_dir/grep" 755 || exit 0
 works || exit 0
 
 q_dir=$(quote "$shim_dir")

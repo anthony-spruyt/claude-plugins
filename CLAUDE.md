@@ -7,7 +7,7 @@ Plugin monorepo for Claude Code. Contains the hookify-plus engine and rule plugi
 ## Structure
 
 - `hookify-plus/` — Rule engine plugin (convention-based discovery)
-- `security-hooks/` — 32 blocking rules (requires hookify-plus), plus a SessionStart hook and `shim/` that make grep and rg skip `*.sops.*` files (standalone)
+- `security-hooks/` — 32 blocking rules (requires hookify-plus), plus a SessionStart hook and `shim/` that make grep and rg skip secret file names (standalone)
 - `best-practices/` — 4 warning rules (requires hookify-plus)
 - `agent-kit/` — Progress notes hooks, `bin/` helper scripts, `writing-agents` skill (standalone)
 - `tests/` — Integration tests for all rules

@@ -45,12 +45,12 @@ The rules need the **hookify-plus** plugin from this same marketplace. Without t
 
 ## grep and rg skip secret files
 
-In Claude sessions, `grep` and `rg` skip secret files (the names in `shim/secret-globs`) and `.git/`. Everything else about them is as usual.
+In Claude sessions, `grep` skips secret files (the names in `shim/secret-globs`) and `.git/`, and so does `rg` while it walks a folder; `rg` searches a file you name on its command line. Everything else about them is as usual.
 
-- `shim/secret-globs` is the one list: a glob per line, and a glob ending in `/` is a directory. It holds `*.sops.*`, `.env*`, key and certificate files, cloud and package-manager credential files, Terraform state, Talos config and `.git/`.
+- `shim/secret-globs` is the one list: a glob per line, and a glob ending in `/` is a directory. It holds `*.sops.*`, `.env`, `.env.*`, `.envrc`, secret and token files, key and certificate files, cloud, package-manager, GitHub CLI and Terraform Cloud credential files, Terraform state, Talos config and `.git/`.
 - A SessionStart hook (every source, `compact` included) copies a `grep` wrapper and the list to `${CLAUDE_PLUGIN_DATA}/shim`, which survives plugin updates, writes an rg config from the list next to them, then adds them to the Bash tool's shell through `CLAUDE_ENV_FILE`.
 - The wrapper runs the real grep with an `--exclude=` (file) or `--exclude-dir=` (directory) for each entry, placed after your options so that a later `--include` does not undo it. If it cannot tell where the options end (an option it does not know, together with `--` or `POSIXLY_CORRECT`), it exits 2 with an error instead of guessing. It also exits 2 when it cannot read the list.
-- rg gets `--glob=!<glob>` for each entry from the config. If you set `RIPGREP_CONFIG_PATH` yourself, copy the lines of `${CLAUDE_PLUGIN_DATA}/shim/ripgreprc` into that file.
+- rg gets `--glob=!<glob>` for each entry from the config, and `--glob=!**/<dir>/**` as well for a directory, so a directory you name on its command line is skipped too. If you set `RIPGREP_CONFIG_PATH` yourself, copy the lines of `${CLAUDE_PLUGIN_DATA}/shim/ripgreprc` into that file.
 - It needs GNU grep. Without one the hook installs nothing.
 - Only Claude sessions are affected. Your own terminal is unchanged.
 - Set `SECURITY_HOOKS_GREP_SHIM=0` to turn all of it off.

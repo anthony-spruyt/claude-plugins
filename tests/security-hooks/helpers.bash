@@ -16,9 +16,11 @@ real_grep_path() {
 }
 
 # The kept names look like secret files but are not on the list
-KEPT_FILES=(kept.txt sub/notes.txt environment.ts .gitignore .github/ci.yml clusterconfig.md tfstate.md secretary.yaml)
-SKIPPED_FILES=(.env sub/.env .env.local app.tfstate sub/terraform.tfstate.backup clusterconfig/node.yaml
-  sub/clusterconfig/deep/worker.yaml .git/config sub/.git/HEAD)
+KEPT_FILES=(kept.txt sub/notes.txt environment.ts .gitignore .github/ci.yml clusterconfig.md tfstate.md secretary.yaml hosts.txt
+  envrc.md environ.md)
+SKIPPED_FILES=(.env sub/.env .env.local .envrc app.tfstate sub/terraform.tfstate.backup clusterconfig/node.yaml
+  sub/clusterconfig/deep/worker.yaml .git/config .git/refs/heads/main sub/.git/HEAD .kube/config .aws/credentials
+  .config/gh/hosts.yml .terraform.d/credentials.tfrc.json sub/secrets.yaml.bak deploy_id_rsa proc/1/environ)
 
 make_secret_tree() {
   local root="$1" f
