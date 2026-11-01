@@ -1,5 +1,5 @@
 {
-  "description": "Makes grep and rg skip *.sops.* files in Claude sessions",
+  "description": "Makes grep and rg skip secret file names in Claude sessions",
   "hooks": {
     "SessionStart": [
       {
