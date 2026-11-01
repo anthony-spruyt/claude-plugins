@@ -152,7 +152,7 @@ real_grep() {
 
 @test "stops with a clear error when the glob list is missing or empty, unless the shim is off" {
   mkdir "${TMP}/lonely"
-  cp "${SHIM_DIR}/grep" "${TMP}/lonely/grep"
+  cp "${SHIM_DIR}/grep" "${SHIM_DIR}/shim-common.bash" "${TMP}/lonely/"
   run --separate-stderr "${TMP}/lonely/grep" -rl needle .
   [ "${status}" -eq 2 ]
   [ -z "${output}" ]
@@ -165,6 +165,15 @@ real_grep() {
   rm "${TMP}/lonely/secret-globs"
   SECURITY_HOOKS_GREP_SHIM=0 run "${TMP}/lonely/grep" -l needle b.yaml
   [ "${output}" = "b.yaml" ]
+}
+
+@test "stops with a clear error when the helper next to it is missing" {
+  mkdir "${TMP}/bare"
+  cp "${SHIM_DIR}/grep" "${SHIM_DIR}/secret-globs" "${TMP}/bare/"
+  run --separate-stderr "${TMP}/bare/grep" -rl needle .
+  [ "${status}" -eq 2 ]
+  [ -z "${output}" ]
+  [[ "${stderr}" == "grep: "*"shim-common.bash"* ]]
 }
 
 @test "still skips them when a -- ends the options" {
@@ -331,7 +340,7 @@ real_grep() {
 
 @test "does not loop between different copies of itself on PATH" {
   mkdir "${TMP}/copy" "${TMP}/older"
-  cp "${SHIM_DIR}/grep" "${SHIM_DIR}/secret-globs" "${TMP}/copy/"
+  cp "${SHIM_DIR}/grep" "${SHIM_DIR}/shim-common.bash" "${SHIM_DIR}/secret-globs" "${TMP}/copy/"
   {
     sed -n 1,2p "${SHIM_DIR}/grep"
     printf 'exit 99\n'

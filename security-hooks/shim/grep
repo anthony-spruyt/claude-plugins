@@ -14,14 +14,8 @@ LONG_OPTIONS=(
 SHORT_NO_ARGUMENT=0123456789EFGHILPRTUVZabchilnoqrsuvwxyz
 SHORT_ARGUMENT=ABCDXdefm
 
-is_shim() {
-  local second
-  { IFS= read -r _ && IFS= read -r second; } 2>/dev/null <"$1"
-  [[ $second == "# security-hooks grep shim"* ]]
-}
-
-# Sets GLOBS_FILE to the secret-globs that sits next to this script, however it was reached through symlinks.
-find_globs_file() {
+# Sets SHIM_HOME to the folder this script lives in, however it was reached through symlinks, and sources the helper from there.
+load_common() {
   local path=${BASH_SOURCE[0]} target hops=0
   while [[ -L $path ]] && ((hops < 40)); do
     target=$(readlink -- "$path") || break
@@ -33,40 +27,33 @@ find_globs_file() {
     hops=$((hops + 1))
   done
   [[ $path == */* ]] || path=./$path
-  GLOBS_FILE=${path%/*}/secret-globs
+  SHIM_HOME=${path%/*}
+  [[ -r $SHIM_HOME/shim-common.bash ]] || {
+    echo "grep: cannot read shim-common.bash from $SHIM_HOME" >&2
+    exit 2
+  }
+  # shellcheck source-path=SCRIPTDIR source=shim-common.bash
+  source "$SHIM_HOME/shim-common.bash"
 }
 
-# Sets EXCLUDES from secret-globs, failing when there are no entries; a directory entry ends in "/".
+load_common
+
+# Sets EXCLUDES from the globs, failing when there are none.
 # The D/* patterns catch a directory operand below D and a file named below D, which --exclude-dir=D alone misses.
 exclude_options() {
   local glob
   EXCLUDES=()
-  find_globs_file
-  [[ -r $GLOBS_FILE ]] || return 1
-  while IFS= read -r glob || [[ -n $glob ]]; do
+  read_globs || return 1
+  for glob in "${GLOBS[@]}"; do
     if [[ $glob == */ ]]; then
       glob=${glob%/}
       [[ -n $glob ]] || continue
       EXCLUDES+=("--exclude-dir=$glob" "--exclude-dir=$glob/*" "--exclude=$glob/*")
-    elif [[ -n $glob ]]; then
+    else
       EXCLUDES+=("--exclude=$glob")
     fi
-  done <"$GLOBS_FILE"
-  ((${#EXCLUDES[@]} > 0))
-}
-
-find_real_grep() {
-  local dir candidate dirs
-  IFS=: read -ra dirs <<<"$PATH"
-  for dir in "${dirs[@]}"; do
-    [[ -n $dir ]] || continue
-    candidate=$dir/grep
-    [[ -f $candidate && -x $candidate ]] || continue
-    ! is_shim "$candidate" || continue
-    printf '%s' "$candidate"
-    return 0
   done
-  return 1
+  ((${#EXCLUDES[@]} > 0))
 }
 
 # Sets ARITY to 1 if the short option takes an argument, 0 if not; fails for an option grep does not have.
@@ -172,7 +159,7 @@ options_end() {
 
 main() {
   local real word careful=0 status
-  real=$(find_real_grep) || {
+  real=$(find_real grep) || {
     echo "grep: no grep found on PATH other than this wrapper" >&2
     exit 127
   }

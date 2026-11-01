@@ -10,7 +10,7 @@ data_dir=${CLAUDE_PLUGIN_DATA:-}
 [[ -n $env_file && -n $data_dir ]] || exit 0
 
 source_dir=${BASH_SOURCE[0]%/*}/../shim
-[[ -f $source_dir/grep && -f $source_dir/secret-globs ]] || exit 0
+[[ -f $source_dir/grep && -f $source_dir/shim-common.bash && -f $source_dir/secret-globs ]] || exit 0
 shim_dir=$data_dir/shim
 rg_config=$shim_dir/ripgreprc
 
@@ -79,8 +79,9 @@ append_line() {
 }
 
 mkdir -p "$shim_dir" || exit 0
-# grep goes last: a running session's grep stops when it cannot read the list, and a failed step keeps the old grep
+# The shims go last: a running session's shim stops when it cannot read the list or the helper, and a failed step keeps the old shim
 install_file "$source_dir/secret-globs" "$shim_dir/secret-globs" 644 || exit 0
+install_file "$source_dir/shim-common.bash" "$shim_dir/shim-common.bash" 644 || exit 0
 write_rg_config || exit 0
 install_file "$source_dir/grep" "$shim_dir/grep" 755 || exit 0
 works || exit 0

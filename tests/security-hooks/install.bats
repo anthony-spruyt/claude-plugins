@@ -56,6 +56,14 @@ in_shell() {
   [ -s "${CLAUDE_ENV_FILE}" ]
 }
 
+@test "installs the helper the shims source next to them, and replaces an older copy" {
+  install
+  cmp "${PLUGIN}/shim/shim-common.bash" "${CLAUDE_PLUGIN_DATA}/shim/shim-common.bash"
+  printf '# newer\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/shim-common.bash"
+  install
+  cmp "${CLAUDE_PLUGIN_ROOT}/shim/shim-common.bash" "${CLAUDE_PLUGIN_DATA}/shim/shim-common.bash"
+}
+
 @test "the env lines never mention the plugin root" {
   install
   [ "${status}" -eq 0 ]
@@ -249,6 +257,21 @@ in_shell() {
   [ "$(tail -n1 "${CLAUDE_PLUGIN_DATA}/shim/secret-globs")" = "extra-name" ]
 }
 
+@test "leaves the shim it had in place when the helper cannot be installed" {
+  install
+  cp "${CLAUDE_PLUGIN_DATA}/shim/grep" "${TMP}/grep.before"
+  printf '# newer\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/grep"
+  printf '# newer\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/shim-common.bash"
+  real_cp="$(command -v cp)"
+  mkdir "${TMP}/failcp"
+  printf '#!/bin/sh\ncase $1 in */shim-common.bash) exit 1 ;; *) ;; esac\nexec %s "$@"\n' "${real_cp}" >"${TMP}/failcp/cp"
+  chmod +x "${TMP}/failcp/cp"
+  PATH="${TMP}/failcp:${ORIG_PATH}"
+  install
+  [ "${status}" -eq 0 ]
+  cmp "${TMP}/grep.before" "${CLAUDE_PLUGIN_DATA}/shim/grep"
+}
+
 @test "a changed glob list reaches the installed list and the rg config" {
   install
   printf 'extra-name\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/secret-globs"
@@ -286,7 +309,7 @@ in_shell() {
   install
   [ "$(tail -n1 "${CLAUDE_PLUGIN_DATA}/shim/grep")" = "# newer" ]
   [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
-  [ "$(find "${CLAUDE_PLUGIN_DATA}/shim" -type f | wc -l)" -eq 3 ]
+  [ "$(find "${CLAUDE_PLUGIN_DATA}/shim" -type f | wc -l)" -eq 4 ]
 }
 
 @test "a data dir with a space and a quote in its name works" {
@@ -403,6 +426,14 @@ in_shell() {
   install
   [ "${status}" -eq 0 ]
   [ ! -e "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "installs nothing when the helper is missing" {
+  rm "${CLAUDE_PLUGIN_ROOT}/shim/shim-common.bash"
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+  [ ! -e "${CLAUDE_PLUGIN_DATA}" ]
 }
 
 @test "installs nothing when the glob list is missing" {
