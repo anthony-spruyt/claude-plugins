@@ -24,7 +24,7 @@ bats tests/hooks/
 # Run agent-kit tests
 bats tests/agent-kit/
 
-# Run security-hooks tests (grep shim and installer)
+# Run security-hooks tests (grep and rg shims and installer)
 bats tests/security-hooks/
 
 # Run unit tests

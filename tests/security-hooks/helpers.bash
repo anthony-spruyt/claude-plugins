@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
-# The first grep on PATH that is not the shim, so the tests also run in a shell where the shim is already first.
+# The first command with this name on PATH that is not the shim, so the tests also run in a shell where the shims are already first.
 
-real_grep_path() {
-  local dir dirs second
+real_path() {
+  local name="$1" dir dirs second
   IFS=: read -ra dirs <<<"${PATH}"
   for dir in "${dirs[@]}"; do
-    [[ -f "${dir}/grep" && -x "${dir}/grep" ]] || continue
+    [[ -f "${dir}/${name}" && -x "${dir}/${name}" ]] || continue
     second=''
-    { IFS= read -r _ && IFS= read -r second; } 2>/dev/null <"${dir}/grep" || true
-    case "${second}" in "# security-hooks grep shim"*) continue ;; *) ;; esac
-    printf '%s' "${dir}/grep"
+    { IFS= read -r _ && IFS= read -r second; } 2>/dev/null <"${dir}/${name}" || true
+    case "${second}" in "# security-hooks ${name} shim"*) continue ;; *) ;; esac
+    printf '%s' "${dir}/${name}"
     return 0
   done
   return 1
+}
+
+real_grep_path() {
+  real_path grep
 }
 
 # The kept names look like secret files but are not on the list
@@ -35,9 +39,9 @@ kept_listing() {
   printf '%s\n' "${KEPT_FILES[@]/#/${prefix}}" | LC_ALL=C sort
 }
 
-# type -P finds the rg binary; Claude's rg is a shell function. Under CI a missing rg fails the test instead of skipping it.
+# A PATH search finds the rg binary; Claude's rg is a shell function. Under CI a missing rg fails the test instead of skipping it.
 require_rg() {
-  RG="$(type -P rg || true)"
+  RG="$(real_path rg || true)"
   if [[ -n "${RG}" ]]; then
     return 0
   fi
