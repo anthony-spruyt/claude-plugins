@@ -188,6 +188,10 @@ class TestBypass:
     def test_secret_sent_into_git_or_gh_text_is_a_persist(self, tmp_path):
         assert fz.bypass_kind('gh pr create --title x --body "$SECRET_TOKEN"', [], str(tmp_path)) == "persist"
 
+    @pytest.mark.parametrize("head", [h for h in fz.BYPASS_HEADS if h.startswith("f() {")])
+    def test_function_wrapper_heads_carry_a_secret_to_the_wrapped_command(self, tmp_path, head):
+        assert fz.bypass_kind(head + "$SECRET_TOKEN", [], str(tmp_path))
+
     @pytest.mark.skipif(not fz.sandbox_available(), reason="bwrap sandbox not usable here")
     def test_sandbox_blocks_writes_outside_the_work_dir(self, tmp_path):
         work = tmp_path / "work"

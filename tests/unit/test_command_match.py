@@ -185,6 +185,9 @@ class TestOpaqueAlsoUsesFallback:
             "echo printenv | cat | sh",
             "bash < <(echo printenv)",
             "echo printenv | xargs nice",
+            "xargs nice < printenv",
+            "cat printenv | sh",
+            "echo printenv | cut -d: -f1 | sh",
             "trap printenv EXIT",
             "busybox printenv",
             "docker exec c printenv",
@@ -202,6 +205,7 @@ class TestOpaqueAlsoUsesFallback:
             "echo printenv > run.sh",
             "printf 'printenv' >> ~/.bashrc",
             "echo printenv | ssh host",
+            "echo printenv | ssh -t host",
             "echo printenv | tee x | bash",
             "parallel ::: printenv",
             "cat > /tmp/r.md <<'EOF'\nprintenv\nEOF\nbash /tmp/r.md",
@@ -263,9 +267,608 @@ class TestOpaqueAlsoUsesFallback:
         os.link(other, path)
         assert _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), self._report(path))
 
-    @pytest.mark.parametrize("cmd", ["echo printenv", "mkdir -p printenv # x", "git log printenv"])
+    @pytest.mark.parametrize(
+        "cmd", ["echo printenv", "mkdir -p printenv # x", "git log printenv", "echo printenv | ssh host ls"]
+    )
     def test_plain_commands_skip_fallback(self, cmd):
         assert not _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+
+
+class TestOpaqueFallbackPerCommand:
+    FALLBACK = r"kubectl\b(?=.*\ssecrets?\b)(?=.*\s-o\s*(?:json|yaml)\b)"
+
+    def _blocks(self, cmd, fallback=FALLBACK):
+        return _matches(_rule(pattern=r"^nomatch$", fallback=fallback), cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get secret demo-creds; kubectl get pods -o json",
+            "kubectl get secret demo-creds && kubectl get pods -o json",
+            "kubectl get secret demo-creds || kubectl get pods -o json",
+            "kubectl get secret demo-creds\nkubectl get pods -o json",
+        ],
+    )
+    def test_flags_of_another_command_do_not_match(self, cmd):
+        assert not self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get secret demo -o json",
+            "kubectl get secret demo -o json; kubectl get pods",
+            "kubectl get pods; kubectl get secret demo -o json",
+            "kubectl get pods && kubectl get secret demo -o json",
+            "kubectl get pods; kubectl get secret demo -o json &",
+            "kubectl get secret x $(true; echo) -o json",
+            "kubectl get secret x `true; echo` -o json",
+            "kubectl get secret x \\\n -o json",
+            "kubectl get secret x '; ' -o json",
+        ],
+    )
+    def test_one_command_still_matches(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "n=$((1)); kubectl get secret demo; kubectl get pods -o json",
+            "kubectl get secret demo # note\nkubectl get pods -o json",
+            "kubectl get secret demo; kubectl get pods -o json <<EOF\nx\nEOF",
+        ],
+    )
+    def test_unparsed_or_unsplittable_command_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            'kc() { kubectl -n x "$@"; }; kc get secret db -o yaml',
+            'function kc { kubectl get secret x "$@"; }; kc -o json',
+            "hash -p /usr/local/bin/kubectl k; k get secret x -o json",
+            "echo 'kubectl get secret x \"$@\"' > /tmp/a.sh; bash /tmp/a.sh -o json",
+            "echo 'kubectl get secret x' > /tmp/a.sh; source /tmp/a.sh -o json",
+            "printf 'kubectl get secret x' > ./a.env; . ./a.env -o json",
+            "f() { kubectl \"$@\"; }; export -f f; bash -c 'f get secret x -o json'",
+            "alias k=kubectl; k get secret x -o json",
+            "alias k='kubectl get secret'; k x -o json",
+        ],
+    )
+    def test_code_defined_in_one_command_and_run_in_another_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    def test_a_command_text_that_differs_from_the_parsed_one_is_matched_whole(self):
+        raw = "kubectl get secret demo-creds; kubectl get pods -o json"
+        changed = "kubectl get secret demo -o json"
+        condition = Condition("command", "command_match", r"^nomatch$", self.FALLBACK)
+        engine = RuleEngine()
+        assert not engine._command_match(condition, "Bash", raw, raw, True, True)
+        assert engine._command_match(condition, "Bash", raw, changed, True, True)
+
+    def test_function_defined_and_called_in_separate_commands_is_matched_whole(self):
+        commit_ip = r"git\s+commit\b.*\b\d{1,3}(?:\.\d{1,3}){3}\b"
+        assert self._blocks('f() { git commit -m "$1"; }; f "host 192.0.2.5"', commit_ip)
+
+
+class TestOpaqueFallbackScope:
+    """Per command only when the code a command hides cannot be set up by another command."""
+
+    FALLBACK = r"\bfirst\b.*\bsecond\b"
+
+    def _blocks(self, cmd):
+        return _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get first; echo second",
+            "kubectl exec p -- first && echo second",
+            "docker exec c first || echo second",
+            "podman run first\necho second",
+            "oc get first; echo second",
+            "kubectl get first >/dev/null 2>&1; echo second",
+            "kubectl get first 2>&1 | head; echo second",
+            "kubectl get first >&2; echo second",
+            "kubectl get first; sed s/a/b/ f; echo second",
+            "kubectl get first; curl -s -H x url; echo second",
+            "kubectl get first; echo MYPATH=x PYTHONPATH=y; echo second",
+        ],
+    )
+    def test_runner_keeping_its_code_in_one_command_is_matched_per_command(self, cmd):
+        assert not self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "busybox first; echo second",
+            "toybox first; echo second",
+            "flatpak-spawn --host first; echo second",
+            "distrobox enter c -- first; echo second",
+            "toolbox run first; echo second",
+        ],
+    )
+    def test_runner_that_can_run_a_script_file_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get first; echo x > /tmp/f; echo second",
+            "kubectl get first > /tmp/f; echo second",
+            "kubectl get first >> /tmp/f; echo second",
+            "kubectl get first 2> /tmp/f; echo second",
+            "kubectl get first &> /tmp/f; echo second",
+            "kubectl get first >& /tmp/f; echo second",
+            "kubectl get first >| /tmp/f; echo second",
+            "kubectl get first; { echo x; } > /tmp/f; echo second",
+            "kubectl get first; (echo x) >> /tmp/f; echo second",
+            "kubectl get first; bash -c 'echo x > /tmp/f'; echo second",
+            "kubectl get first; echo $(echo x > /tmp/f); echo second",
+            "kubectl get first; echo x | tee /tmp/f; echo second",
+            "kubectl get first; cp a b; echo second",
+            "kubectl get first; mv a b; echo second",
+            "kubectl get first; ln -s a b; echo second",
+            "kubectl get first; install a b; echo second",
+            "kubectl get first; dd if=a of=b; echo second",
+            "kubectl get first; sed -i s/a/b/ f; echo second",
+            "kubectl get first; sed -ni p f; echo second",
+            "kubectl get first; sed --in-place s/a/b/ f; echo second",
+            "kubectl get first; curl -o f url; echo second",
+            "kubectl get first; curl -sSO url; echo second",
+            "kubectl get first; curl --output f url; echo second",
+            "kubectl get first; curl --remote-name url; echo second",
+            "kubectl get first; wget url; echo second",
+            "kubectl get first; tar xf a.tar; echo second",
+            "kubectl get first; unzip a.zip; echo second",
+            "kubectl get first; rsync a b; echo second",
+            "kubectl get first; scp a b; echo second",
+            "kubectl get first; patch f p; echo second",
+            "kubectl get first; python3 -c 'print(1)'; echo second",
+            "kubectl get first; perl -e 'print 1'; echo second",
+            "kubectl get first; awk 'BEGIN{print 1}'; echo second",
+            "kubectl cp first p:/tmp/f; echo second",
+            "docker cp first c:/tmp/f; echo second",
+            "oc cp first p:/tmp/f; echo second",
+        ],
+    )
+    def test_command_that_can_write_a_file_next_to_a_runner_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "PATH=/tmp/p:$PATH kubectl get first; echo second",
+            "kubectl get first; PATH=/tmp/p:$PATH echo second",
+            "PATH=/tmp/p; kubectl get first; echo second",
+            "PATH+=:/tmp/p; kubectl get first; echo second",
+            "export PATH=/tmp/p:$PATH; kubectl get first; echo second",
+            "declare -x PATH=/tmp/p; kubectl get first; echo second",
+            "env PATH=/tmp/p kubectl get first; echo second",
+            "kubectl get first; env 'PATH=/tmp/p' echo second",
+            "kubectl get first; read PATH; echo second",
+            "kubectl get first; printf -v PATH x; echo second",
+        ],
+    )
+    def test_path_change_next_to_a_runner_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get first; c=x; echo second",
+            "c=x; kubectl get first; echo second",
+            "kubectl get first && c=x; echo second",
+            "kubectl get first\nc=x\necho second",
+            "kubectl get first; (c=x); echo second",
+            "kubectl get first; { c=x; }; echo second",
+            "kubectl get first; c+=x; echo second",
+            "kubectl get first; a[1]=x; echo second",
+            "kubectl get first; export c=x; echo second",
+            "kubectl get first; declare c=x; echo second",
+            "kubectl get first; local c=x; echo second",
+            "kubectl get first; readonly c=x; echo second",
+            "kubectl get first; read c; echo second",
+            "kubectl get first; mapfile c; echo second",
+            "kubectl get first; getopts a c; echo second",
+            "kubectl get first; printf -v c x; echo second",
+            "kubectl get first; set -- a b; echo second",
+            "kubectl get first; set a b; echo second",
+            "kubectl get first; set -e a b; echo second",
+            "kubectl get first; : ${c:=x}; echo second",
+            "kubectl get first; : ${c=x}; echo second",
+            "kubectl get first; echo $_; echo second",
+            "kubectl get first; echo ${_}; echo second",
+            "eval 'c=x'; kubectl get first; echo second",
+        ],
+    )
+    def test_variable_set_next_to_a_runner_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get first -l app=web; echo second",
+            "kubectl get first --selector app=web; echo second",
+            "docker run -e A=b first; echo second",
+            "KUBECONFIG=/x kubectl get first; echo second",
+            "kubectl get first; export KUBECONFIG; echo second",
+            "kubectl get first; echo a=b; echo second",
+            'kubectl get first; echo "a=b"; echo second',
+            "kubectl get first; set -e; echo second",
+            "kubectl get first; set -euo pipefail; echo second",
+            "kubectl get first; set -o pipefail; echo second",
+            "kubectl get first; echo _x $_x ${_x}; echo second",
+        ],
+    )
+    def test_arguments_that_only_look_like_a_variable_set_are_matched_per_command(self, cmd):
+        assert not self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "f() { first; }; f second",
+            "function f { first; }; f second",
+            "source first; echo second",
+            ". first; echo second",
+            "trap first EXIT; echo second",
+            "hash first; echo second",
+            "exec first; echo second",
+            "PS4=first bash -xc :; echo second",
+            "echo first > run.sh; echo second",
+            'echo "${first@P}"; echo second',
+            "git -c alias.x='!first' x; echo second",
+            "find first -exec {} \\; ; echo second",
+            "bash < <(echo first); echo second",
+            "echo first | cat | sh; echo second",
+            "echo first | xargs nice; echo second",
+            "echo first | ssh host; echo second",
+            "{ first; } < f; echo second",
+            "tmux send-keys first; tmux send-keys second",
+            "make first; echo second",
+            "parallel first ::: x; echo second",
+            "vim -c first; echo second",
+            "kubectl get x; trap first EXIT; echo second",
+            "kubectl get first; . ./x.sh; echo second",
+        ],
+    )
+    def test_code_that_can_reach_another_command_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+
+class TestOpaqueFallbackKeepsPipes:
+    FALLBACK = r"\benv\s*\|\s*grep\b"
+
+    def _blocks(self, cmd):
+        return _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get pods; env | grep TOKEN",
+            "kubectl get pods && env | grep TOKEN",
+            "env | grep TOKEN; docker ps",
+            "docker ps\nenv | grep TOKEN",
+            "docker ps | env | grep TOKEN",
+        ],
+    )
+    def test_pipe_inside_one_command_matches(self, cmd):
+        assert self._blocks(cmd)
+
+
+class TestOpaqueFallbackAcrossCommands:
+    """The text a fallback needs sits in two commands, so only the whole command can match it."""
+
+    FALLBACK = r"kubectl\s+get\b.*\bsecrets?\b.*\s-o\s*(?:json|yaml)\b"
+
+    def _blocks(self, cmd):
+        return _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "printf 'exec kubectl get \"$@\"' > /tmp/p/kubectl-g; PATH=/tmp/p:$PATH kubectl g secret db -o yaml",
+            "printf 'exec kubectl get \"$@\"' > /tmp/p/oc-g; PATH=/tmp/p:$PATH oc g secret db -o yaml",
+            "printf 'exec kubectl get \"$@\"' > ~/.docker/cli-plugins/docker-g; docker g secret db -o yaml",
+            "printf 'exec kubectl get \"$@\"' > /tmp/p/kubectl-g; kubectl g secret db -o yaml",
+            "printf 'exec kubectl get \"$@\"' | tee /tmp/p/kubectl-g; kubectl g secret db -o yaml",
+            "kubectl get cm x > /tmp/p/g; sh /tmp/p/g secret db -o yaml",
+            "kubectl version; echo 'kubectl get \"$@\"' > /tmp/x; sh /tmp/x secret db -o yaml",
+        ],
+    )
+    def test_code_saved_by_one_command_and_run_by_another_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "c='kubectl get'; kubectl exec p -- sh -c \"$c secret db -o yaml\"",
+            "c='kubectl get'; docker exec p sh -c \"$c secret db -o yaml\"",
+            "export c='kubectl get'; docker exec p sh -c \"$c secret db -o yaml\"",
+            'c=$(echo kubectl get); docker exec p sh -c "$c secret db -o yaml"',
+            'set -- kubectl get; docker exec p sh -c "$* secret db -o yaml"',
+            "echo 'kubectl get'; docker exec p sh -c \"$_ secret db -o yaml\"",
+            ": ${c:='kubectl get'}; docker exec p sh -c \"$c secret db -o yaml\"",
+            'eval "c=\'kubectl get\'"; docker exec p sh -c "$c secret db -o yaml"',
+        ],
+    )
+    def test_code_held_in_a_variable_and_run_by_another_command_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get x; busybox sh /tmp/x secret db -o yaml",
+            "kubectl get x; toybox sh /tmp/x secret db -o yaml",
+        ],
+    )
+    def test_runner_of_script_files_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "for i in 1 2; do kubectl get $@; set -- secret db -o yaml; done",
+            "for i in 1 2\ndo\n  kubectl get $@\n  set -- secret db -o yaml\ndone",
+            "for ((i=0; i<2; i++)); do kubectl get $@; set -- secret db -o yaml; done",
+            "while true; do kubectl get $@; set -- secret db -o yaml; done",
+            "until false; do kubectl get $@; set -- secret db -o yaml; done",
+            "select i in a b; do kubectl get $@; set -- secret db -o yaml; done",
+            "until false; do kubectl exec p -- kubectl get $c; c='secret db -o yaml'; done",
+            "echo a | while read i; do kubectl get $@; set -- secret db -o yaml; done",
+            "! while true; do kubectl get $@; set -- secret db -o yaml; done",
+            "true && for i in 1 2; do kubectl get $@; set -- secret db -o yaml; done",
+            "if true; then for i in 1 2; do kubectl get $@; set -- secret db -o yaml; done; fi",
+        ],
+    )
+    def test_commands_in_a_loop_are_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get pods; echo secret db -o yaml",
+            "kubectl get pods; kubectl wait --for=condition=Ready pod/x; echo secret db -o yaml",
+            "kubectl get pods 2>&1 | head -n 5; echo secret db -o yaml",
+        ],
+    )
+    def test_commands_with_no_write_path_change_or_loop_are_matched_per_command(self, cmd):
+        assert not self._blocks(cmd)
+
+
+def _pieces(command):
+    """What a LOCAL fallback is matched against, or None when it is matched whole."""
+    parsed = rule_engine.normalise(command)
+    return tuple(rule_engine.fallback_pieces(command, parsed[3])) if parsed and parsed[3] else None
+
+
+class TestFallbackPiecesSeparators:
+    @pytest.mark.parametrize(
+        "cmd",
+        ["a; b", "a;b", "a && b", "a&&b", "a || b", "a||b", "a\nb", "a ;\n b"],
+    )
+    def test_splits_on_list_operators_and_newlines(self, cmd):
+        assert _pieces(cmd) == ("a", "b")
+
+    def test_keeps_pipes_and_background_together(self):
+        assert _pieces("a | b; c & d |& e") == ("a | b", "c & d |& e")
+
+    @pytest.mark.parametrize("cmd", ["a; b &", "a && b &", "a || b &", "a\nb &", "a;\n b &\n"])
+    def test_a_background_command_at_the_end_is_a_piece(self, cmd):
+        assert _pieces(cmd) == ("a", "b &")
+
+    @pytest.mark.parametrize("cmd", ["a &\nb", "a & \n b", "a &\n\nb"])
+    def test_a_newline_after_a_background_command_ends_it(self, cmd):
+        assert _pieces(cmd) == ("a &", "b")
+
+    def test_a_background_command_and_the_next_on_one_line_stay_together(self):
+        assert _pieces("a & b") == ("a & b",)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "a",
+            "a; b",
+            "a;\n\n b\n",
+            "a && b &",
+            "a & b; c &",
+            "a &\nb",
+            "a |\n b || c",
+            "if a; then b; fi; c &",
+            "a; b;",
+            "a; b ",
+        ],
+    )
+    def test_spans_leave_out_only_the_separators(self, cmd):
+        spans = rule_engine.normalise(cmd)[3]
+        gaps = {cmd[end:start] for (_, end), (start, _) in zip(spans, spans[1:])}
+        assert (spans[0][0], spans[-1][1]) == (0, len(cmd))
+        assert gaps <= {";", "&&", "||", "\n"}
+
+    def test_background_commands_before_a_separator_stay_in_their_piece(self):
+        assert _pieces("a & b; c &") == ("a & b", "c &")
+
+    def test_a_newline_after_a_pipe_continues_the_pipeline(self):
+        assert _pieces("a |\n b; c") == ("a |\n b", "c")
+
+    def test_an_if_and_a_test_expression_are_each_one_piece(self):
+        assert _pieces("if a; then b; fi; c") == ("if a; then b; fi", "c")
+        assert _pieces("[[ a && b ]]; c") == ("[[ a && b ]]", "c")
+
+    def test_drops_empty_pieces(self):
+        assert _pieces("a; b;\n\n ") == ("a", "b")
+
+    def test_no_separator_is_one_piece(self):
+        assert _pieces("kubectl get pods") == ("kubectl get pods",)
+
+
+class TestFallbackPiecesQuotesAndEscapes:
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "a 'x; y' b",
+            'a "x; y" b',
+            "a 'x && y' b",
+            'a "x\ny" b',
+            'a "it\'s; ok" b',
+            "a 'say \"hi\"; ok' b",
+            'a "x \\" ; y" b',
+            "a x\\;y b",
+            "a x\\&&y b",
+        ],
+    )
+    def test_does_not_split_inside_quotes_or_after_a_backslash(self, cmd):
+        assert _pieces(cmd) == (cmd,)
+
+    def test_single_quote_ends_at_the_next_quote_whatever_precedes_it(self):
+        assert _pieces("a 'x\\'; b") == ("a 'x\\'", "b")
+
+    def test_joins_backslash_newline(self):
+        assert _pieces("a \\\n  b; c") == ("a   b", "c")
+        assert _pieces("kub\\\nectl x") == ("kubectl x",)
+        assert _pieces('a "x\\\ny" b') == ('a "xy" b',)
+
+    def test_joins_backslash_newline_inside_single_quotes_for_the_shell_that_runs_the_text(self):
+        assert _pieces("a 'x\\\ny'") == ("a 'xy'",)
+
+    def test_keeps_an_escaped_backslash_before_a_newline(self):
+        assert _pieces('a "x\\\\\ny" b') == ('a "x\\\\\ny" b',)
+
+    @pytest.mark.parametrize("cmd", ["a 'x; b", 'a "x; b', 'a "x\\"; b', "a 'x\"; b"])
+    def test_unclosed_quote_gives_up(self, cmd):
+        assert _pieces(cmd) is None
+
+
+class TestFallbackPiecesNesting:
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "a $(b; c) d",
+            "a $(b && c) d",
+            "(a; b)",
+            "a $(b $(c; d); e) f",
+            "a $(b 'x)' ; c) d",
+            'a $(b "x)" ; c) d',
+            "a `b; c` d",
+            "{ b; c; }",
+            "a ${b:-c;d} e",
+            'a "x $(b; c) y" d',
+            'a "x `b; c` y" d',
+            'a "x `b "c; d"` y" e',
+            'a "x ${b:-c;d} y" d',
+            'a "$(b "c; d")" e',
+            "a <(b; c) d",
+            "a >(b; c) d",
+            "a $(b\nc) d",
+            "(b\nc)",
+        ],
+    )
+    def test_does_not_split_inside_groups_and_substitutions(self, cmd):
+        assert _pieces(cmd) == (cmd,)
+
+    def test_splits_around_a_group(self):
+        assert _pieces("(a; b); c && { d; e; }") == ("(a; b)", "c", "{ d; e; }")
+
+    def test_splits_after_a_quoted_substitution(self):
+        assert _pieces('a "$(b)"; c') == ('a "$(b)"', "c")
+
+    @pytest.mark.parametrize(
+        "expansion",
+        ["${b:-'c;d'}", '${b:-"c;d"}', "${b:-`c;d`}", "${b:-$(c;d)}", "${b:-${c};d}"],
+    )
+    def test_splits_after_a_parameter_expansion_with_separators_inside(self, expansion):
+        assert _pieces(f"a {expansion}; e") == (f"a {expansion}", "e")
+
+    def test_a_comment_inside_backticks_leaves_the_cuts_outside_alone(self):
+        assert _pieces("a `# x\n` b") == ("a `# x\n` b",)
+        assert _pieces("a `# x\n`; b") == ("a `# x\n`", "b")
+
+    @pytest.mark.parametrize(
+        ("cmd", "expected"),
+        [("a { b; c", ("a { b", "c")), ("a b}; c", ("a b}", "c")), ("a $(b}); c", ("a $(b})", "c"))],
+    )
+    def test_braces_outside_command_position_are_plain_words(self, cmd, expected):
+        assert _pieces(cmd) == expected
+
+    @pytest.mark.parametrize(
+        "cmd",
+        ["a $(b; c", "a (b; c", "{ b; c", "a ${b; c", "a `b; c", 'a "$(b; c"', "a $(b 'x); c)"],
+    )
+    def test_unclosed_group_gives_up(self, cmd):
+        assert _pieces(cmd) is None
+
+    @pytest.mark.parametrize("cmd", ["a b); c", "a (b}; c", "a {b); c"])
+    def test_unmatched_closer_gives_up(self, cmd):
+        assert _pieces(cmd) is None
+
+
+class TestFallbackPiecesGivesUp:
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "cat <<EOF; a\nb\nEOF",
+            "cat <<'EOF'\nx\nEOF\na",
+            "cat <<-EOF\nx\nEOF",
+            "a <<< b; c",
+            "a $'\\';'' b",
+            "a # it's; b",
+            "a; # note\nb",
+            "a (# x\n) b",
+            "case x in a) b;; esac; c",
+            "case x in (a) b;; (c) d;; esac",
+            "a $(case x in a) b;; esac); c",
+            "a $((1; 2)) b",
+            "# x\na",
+            "a\n# x\nb",
+            "a\t# x\nb",
+            "a;# x\nb",
+            "a&# x\nb",
+            "a|# x\nb",
+            "(a)# x\nb",
+            "a ># x\nb",
+            "a <# x\nb",
+            "cat <\\\n<EOF\nx\nEOF",
+            "a $\\\n'x;y'; b",
+            "ca\\\nse x in (a) b;; esac",
+            "for i in 1 2; do a; b; done",
+            "for ((i=0; i<2; i++)); do a; done",
+            "while a; do b; c; done",
+            "until a; do b; c; done",
+            "select i in x y; do a; b; done",
+            "a && for i in 1; do b; done",
+            "a | while read i; do b; done",
+            "! while a; do b; done",
+            "if a; then for i in 1; do b; done; fi",
+            "{ for i in 1; do a; done; }; b",
+            "fo\\\nr i in 1; do a; done",
+        ],
+    )
+    def test_gives_up_on_what_it_cannot_read_with_certainty(self, cmd):
+        assert _pieces(cmd) is None
+
+    @pytest.mark.parametrize("cmd", ["a $#; b", "a x#y; b", "a 'x #'; b", 'a "x #"; b', "a ${#b}; c", "a \\#b; c"])
+    def test_a_hash_inside_a_word_is_not_a_comment(self, cmd):
+        assert _pieces(cmd) is not None
+
+    @pytest.mark.parametrize("cmd", ["showcase a; b", "a --case-file x; b", "a case_x; b"])
+    def test_other_words_containing_case_split(self, cmd):
+        assert _pieces(cmd) is not None
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "a --for=x; b",
+            "a --while x; b",
+            "a format; b",
+            "a forward; b",
+            "a for_each; b",
+            "a for-each; b",
+            "a unlike; b",
+            "a selected; b",
+            "a until_x; b",
+        ],
+    )
+    def test_other_words_containing_a_loop_keyword_split(self, cmd):
+        assert _pieces(cmd) is not None
 
 
 class TestMaskedCleanLines:
