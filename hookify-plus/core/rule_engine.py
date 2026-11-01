@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Optional
 from core.config_loader import Condition, Rule
 from core.globbing import MAX_ENTRIES
 from core.masking import mask_data
-from core.opaque import opaque
-from core.shell_parse import _BODIES, parse_commands, render
+from core.opaque import Opacity, opaque
+from core.shell_parse import _BODIES, join_lines, parse_commands, render
 
 
 @lru_cache(maxsize=128)
@@ -29,13 +29,13 @@ def compile_regex(pattern: str) -> re.Pattern:
 
 
 def normalise(command: str, cwd: str = "", entries: Optional[List[int]] = None, prefix_ends: bool = False):
-    functions, overflow = set(), []
+    functions, variables, overflow, spans = set(), set(), [], []
     _BODIES.clear()
-    commands = parse_commands(command, functions, prefix_ends)
+    commands = parse_commands(command, functions, prefix_ends, variables, spans)
     if commands is None:
         return None
     lines = render(commands, cwd, overflow, entries)
-    return None if lines is None else (lines, opaque(command, commands, functions), overflow)
+    return None if lines is None else (lines, opaque(command, commands, functions, variables), overflow, spans)
 
 
 def _clean_path(path: str) -> str:
@@ -45,12 +45,17 @@ def _clean_path(path: str) -> str:
 
 @lru_cache(maxsize=16)
 def clean_lines(command: str, cwd: str = "") -> Optional[tuple]:
-    """Cached parse: (clean lines, opaque) or None. Several rules parse the same command."""
+    """Cached parse: (clean lines, opacity, glob overflow, command spans) or None. Rules share one parse."""
     try:
         parsed = normalise(command, cwd)
     except Exception:  # noqa: BLE001
         return None
-    return None if parsed is None else (tuple(parsed[0]), parsed[1], tuple(parsed[2]))
+    return None if parsed is None else (tuple(parsed[0]), parsed[1], tuple(parsed[2]), tuple(parsed[3]))
+
+
+def fallback_pieces(command: str, spans: tuple) -> List[str]:
+    """The text of each top-level command, as bash reads it."""
+    return [piece for piece in (join_lines(command[start:end]).strip() for start, end in spans) if piece]
 
 
 SEGMENT_BREAKS = frozenset(";&|\n()`")
@@ -330,17 +335,28 @@ class RuleEngine:
         if tool_name != "Bash":
             return self._regex_match(condition.fallback or pattern, field_value)
         parsed = clean_lines(raw_value, cwd)
-        if parsed is None or (strict and parsed[1] and condition.fallback):
-            if self._regex_match(condition.fallback or pattern, field_value):
-                return True
-            if parsed is None:
-                # Block rules also try each piece that parses, so one unreadable piece can't hide the rest
-                lines = segment_lines(field_value, cwd)[0] if strict else ()
-                return any(self._regex_match(pattern, line) for line in lines)
+        if parsed is None:
+            return self._unparsed_match(condition, field_value, strict, cwd)
+        # Masking moves text, so the spans only fit an unmasked command
+        spans = parsed[3] if parsed[1] == Opacity.LOCAL and field_value == raw_value else ()
+        if strict and parsed[1] and condition.fallback and self._fallback_match(condition.fallback, field_value, spans):
+            return True
         lines = parsed[0]
         if mask:
             lines = [mask_data(line) for line in lines]
         return any(self._regex_match(pattern, line) for line in lines)
+
+    def _unparsed_match(self, condition: Condition, field_value: str, strict: bool, cwd: str) -> bool:
+        if self._regex_match(condition.fallback or condition.pattern, field_value):
+            return True
+        # Block rules also try each piece that parses, so one unreadable piece can't hide the rest
+        lines = segment_lines(field_value, cwd)[0] if strict else ()
+        return any(self._regex_match(condition.pattern, line) for line in lines)
+
+    def _fallback_match(self, pattern: str, command: str, spans: tuple) -> bool:
+        """Per command when its hidden code stays in one command, so another command's flags stay out; else whole."""
+        pieces = fallback_pieces(command, spans) or [command]
+        return any(self._regex_match(pattern, piece) for piece in pieces)
 
     @staticmethod
     def _glob_overflow(command: str, cwd: str) -> bool:
