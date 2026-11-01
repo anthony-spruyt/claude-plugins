@@ -8,6 +8,7 @@ import sys
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
+from core.command_split import split_commands
 from core.config_loader import Condition, Rule
 from core.globbing import MAX_ENTRIES
 from core.masking import mask_data
@@ -331,7 +332,7 @@ class RuleEngine:
             return self._regex_match(condition.fallback or pattern, field_value)
         parsed = clean_lines(raw_value, cwd)
         if parsed is None or (strict and parsed[1] and condition.fallback):
-            if self._regex_match(condition.fallback or pattern, field_value):
+            if self._fallback_match(condition.fallback or pattern, field_value, parsed is None):
                 return True
             if parsed is None:
                 # Block rules also try each piece that parses, so one unreadable piece can't hide the rest
@@ -341,6 +342,13 @@ class RuleEngine:
         if mask:
             lines = [mask_data(line) for line in lines]
         return any(self._regex_match(pattern, line) for line in lines)
+
+    def _fallback_match(self, pattern: str, command: str, unparsed: bool) -> bool:
+        """An unparsed command is matched whole; an opaque one per command, so one command's flags stay its own."""
+        pieces = None if unparsed else split_commands(command)
+        if pieces is None:
+            return self._regex_match(pattern, command)
+        return any(self._regex_match(pattern, piece) for piece in pieces)
 
     @staticmethod
     def _glob_overflow(command: str, cwd: str) -> bool:

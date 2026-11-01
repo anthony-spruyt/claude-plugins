@@ -268,6 +268,75 @@ class TestOpaqueAlsoUsesFallback:
         assert not _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
 
 
+class TestOpaqueFallbackPerCommand:
+    FALLBACK = r"kubectl\b(?=.*\ssecrets?\b)(?=.*\s-o\s*json\b)"
+
+    def _blocks(self, cmd):
+        return _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get secret demo-creds; kubectl get pods -o json",
+            "kubectl get secret demo-creds && kubectl get pods -o json",
+            "kubectl get secret demo-creds || kubectl get pods -o json",
+            "kubectl get secret demo-creds\nkubectl get pods -o json",
+        ],
+    )
+    def test_flags_of_another_command_do_not_match(self, cmd):
+        assert not self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get secret demo -o json",
+            "kubectl get secret demo -o json; kubectl get pods",
+            "kubectl get pods; kubectl get secret demo -o json",
+            "kubectl get pods && kubectl get secret demo -o json",
+            "kubectl get secret x $(true; echo) -o json",
+            "kubectl get secret x `true; echo` -o json",
+            "kubectl get secret x \\\n -o json",
+            "kubectl get secret x '; ' -o json",
+        ],
+    )
+    def test_one_command_still_matches(self, cmd):
+        assert self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "n=$((1)); kubectl get secret demo; kubectl get pods -o json",
+            "kubectl get secret demo # note\nkubectl get pods -o json",
+            "kubectl get secret demo; kubectl get pods -o json <<EOF\nx\nEOF",
+        ],
+    )
+    def test_unparsed_or_unsplittable_command_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+
+class TestOpaqueFallbackKeepsPipes:
+    FALLBACK = r"\benv\s*\|\s*grep\b"
+
+    def _blocks(self, cmd):
+        return _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get pods; env | grep TOKEN",
+            "kubectl get pods && env | grep TOKEN",
+            "env | grep TOKEN; docker ps",
+            "docker ps\nenv | grep TOKEN",
+            "docker ps | env | grep TOKEN",
+        ],
+    )
+    def test_pipe_inside_one_command_matches(self, cmd):
+        assert self._blocks(cmd)
+
+    def test_separate_commands_are_not_a_pipe(self):
+        assert not self._blocks("docker ps; env\ngrep TOKEN f")
+
+
 class TestMaskedCleanLines:
     NAME = r"\.npmrc\b"
 
