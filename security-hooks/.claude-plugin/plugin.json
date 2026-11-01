@@ -1,6 +1,6 @@
 {
   "name": "security-hooks",
-  "version": "2.8.2",
+  "version": "2.9.0",
   "description": "32 blocking rules preventing secret exposure via CLI commands and file reads, plus grep and rg that skip *.sops.* files",
   "author": {
     "name": "anthony-spruyt"

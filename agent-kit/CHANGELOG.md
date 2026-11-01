@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.4.0...agent-kit-v1.4.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **agent-kit:** have agents write progress notes with Write or Edit ([#240](https://github.com/anthony-spruyt/claude-plugins/issues/240)) ([749cc01](https://github.com/anthony-spruyt/claude-plugins/commit/749cc01e71a2893a2e4aeab59b5050cd5556a052))
+
 ## [1.4.0](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.3.0...agent-kit-v1.4.0) (2026-10-29)
 
 

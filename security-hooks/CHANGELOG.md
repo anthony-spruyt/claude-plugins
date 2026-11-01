@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/anthony-spruyt/claude-plugins/compare/security-hooks-v2.8.2...security-hooks-v2.9.0) (2026-11-01)
+
+
+### Features
+
+* **security-hooks:** skip SOPS files in grep and rg ([#244](https://github.com/anthony-spruyt/claude-plugins/issues/244)) ([bfd0c3e](https://github.com/anthony-spruyt/claude-plugins/commit/bfd0c3e6e7a476a1e5cb59a28c995222f4066e31))
+
 ## [2.8.2](https://github.com/anthony-spruyt/claude-plugins/compare/security-hooks-v2.8.1...security-hooks-v2.8.2) (2026-10-14)
 
 
