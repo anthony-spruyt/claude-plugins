@@ -17,6 +17,7 @@ The rule text lives in the script and arrives with every injection (start, resum
 
 - Keep notes for any task with more than one step. Skip one-shot edits and questions.
 - Keep the file under 100 lines. First line: goal and issue. Then done with commit SHAs, the exact next step, decisions and why, dead ends, commands and gotchas.
+- Write and update the file with the Write or Edit tool, not a shell heredoc.
 - Update it after each commit and before stopping.
 - Delete the file when the task is done. Keep it when blocked or unfinished.
 - If a brief or the owner names an earlier notes file, read it first and delete it when finished.
