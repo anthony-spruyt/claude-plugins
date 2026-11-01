@@ -4,6 +4,10 @@
 
 Plugin monorepo for Claude Code. Contains the hookify-plus engine and rule plugins.
 
+## Scope
+
+Rules and shims guard against an agent's accidental mistakes: write, test and review them against commands an agent would plausibly run by mistake.
+
 ## Structure
 
 - `hookify-plus/` — Rule engine plugin (convention-based discovery)
