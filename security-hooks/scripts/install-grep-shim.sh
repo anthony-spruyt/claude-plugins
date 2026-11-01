@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SessionStart hook: puts the grep shim, its secret-globs and the rg config built from them in the plugin data dir
+# SessionStart hook: puts the grep and rg shims, their helper, secret-globs and the rg config built from the globs in the plugin data dir
 # and points the Bash tool's shell at them.
 # Any failure leaves nothing installed and the session starts as usual. Stdout becomes session context, so it stays empty.
 set -u
@@ -10,9 +10,15 @@ data_dir=${CLAUDE_PLUGIN_DATA:-}
 [[ -n $env_file && -n $data_dir ]] || exit 0
 
 source_dir=${BASH_SOURCE[0]%/*}/../shim
-[[ -f $source_dir/grep && -f $source_dir/secret-globs ]] || exit 0
+[[ -f $source_dir/grep && -f $source_dir/rg && -f $source_dir/shim-common.bash && -f $source_dir/secret-globs ]] || exit 0
 shim_dir=$data_dir/shim
 rg_config=$shim_dir/ripgreprc
+
+SHIM_HOME=$source_dir
+# shellcheck source-path=SCRIPTDIR source=../shim/shim-common.bash
+source "$source_dir/shim-common.bash"
+install_rg=0
+! find_real rg >/dev/null || install_rg=1
 
 # A rename keeps sessions that are running grep right now on a complete file
 install_file() {
@@ -41,21 +47,33 @@ write_rg_config() {
   return "$status"
 }
 
+grep_works() {
+  local dir=$1 out
+  out=$("$shim_dir/grep" --version | head -n 1)
+  [[ $out == "grep (GNU grep)"* ]] || return 1
+  out=$(cd "$dir" && "$shim_dir/grep" -rl needle . && "$shim_dir/grep" -l needle skipped.sops.txt .git/config)
+  [[ $out == ./kept.txt ]]
+}
+
+# -g '*' lists every file when nothing excludes any; the path is explicit because rg reads a piped stdin when it has none
+rg_works() {
+  local dir=$1 out
+  out=$(cd "$dir" && unset RIPGREP_CONFIG_PATH && "$shim_dir/rg" -g '*' -l needle . </dev/null)
+  [[ $out == ./kept.txt ]]
+}
+
 works() {
-  local dir out name
+  local dir name status=1
   dir=$(mktemp -d) || return 1
   mkdir "$dir/.git"
   for name in kept.txt skipped.sops.txt .git/config; do
     printf 'needle\n' >"$dir/$name"
   done
-  out=$("$shim_dir/grep" --version | head -n 1)
-  if [[ $out == "grep (GNU grep)"* ]]; then
-    out=$(cd "$dir" && "$shim_dir/grep" -rl needle . && "$shim_dir/grep" -l needle skipped.sops.txt .git/config)
-  else
-    out=
+  if grep_works "$dir" && { ((install_rg == 0)) || rg_works "$dir"; }; then
+    status=0
   fi
   rm -rf "$dir"
-  [[ $out == ./kept.txt ]]
+  return "$status"
 }
 
 # Single quotes, so nothing in the path is expanded when the line is sourced
@@ -79,10 +97,17 @@ append_line() {
 }
 
 mkdir -p "$shim_dir" || exit 0
-# grep goes last: a running session's grep stops when it cannot read the list, and a failed step keeps the old grep
+# The shims go last: a running session's shim stops when it cannot read the list or the helper, and a failed step keeps the old shim
 install_file "$source_dir/secret-globs" "$shim_dir/secret-globs" 644 || exit 0
+install_file "$source_dir/shim-common.bash" "$shim_dir/shim-common.bash" 644 || exit 0
 write_rg_config || exit 0
 install_file "$source_dir/grep" "$shim_dir/grep" 755 || exit 0
+if ((install_rg)); then
+  install_file "$source_dir/rg" "$shim_dir/rg" 755 || exit 0
+else
+  # Claude's shell defines its own rg function only when no rg is on PATH, and a leftover shim would hide it
+  rm -f "$shim_dir/rg"
+fi
 works || exit 0
 
 q_dir=$(quote "$shim_dir")

@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 #
-# The SessionStart hook installs the grep shim, the secret glob list and the rg config built from it outside the plugin dir
-# and writes the lines that make the Bash tool's shell use them.
+# The SessionStart hook installs the grep and rg shims, their helper, the secret glob list and the rg config built from it outside the
+# plugin dir and writes the lines that make the Bash tool's shell use them.
 
 # shellcheck disable=SC2016,SC2030,SC2031
 bats_require_minimum_version 1.5.0
@@ -54,6 +54,113 @@ in_shell() {
   cmp "${PLUGIN}/shim/secret-globs" "${CLAUDE_PLUGIN_DATA}/shim/secret-globs"
   [ -f "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" ]
   [ -s "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "installs the helper the shims source next to them, and replaces an older copy" {
+  install
+  cmp "${PLUGIN}/shim/shim-common.bash" "${CLAUDE_PLUGIN_DATA}/shim/shim-common.bash"
+  printf '# newer\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/shim-common.bash"
+  install
+  cmp "${CLAUDE_PLUGIN_ROOT}/shim/shim-common.bash" "${CLAUDE_PLUGIN_DATA}/shim/shim-common.bash"
+}
+
+@test "installs the rg shim next to grep when a real rg is on PATH" {
+  require_rg
+  install
+  [ "${status}" -eq 0 ]
+  [ -x "${CLAUDE_PLUGIN_DATA}/shim/rg" ]
+  cmp "${PLUGIN}/shim/rg" "${CLAUDE_PLUGIN_DATA}/shim/rg"
+}
+
+make_nobin() {
+  local tool
+  mkdir "${TMP}/nobin"
+  for tool in bash env cmp cp mv mktemp chmod rm mkdir head tail; do
+    ln -s "$(type -P "${tool}")" "${TMP}/nobin/${tool}"
+  done
+  ln -s "${REAL_GREP}" "${TMP}/nobin/grep"
+}
+
+@test "installs no rg shim when there is no rg on PATH, and still installs grep" {
+  make_nobin
+  PATH="${TMP}/nobin" install
+  [ "${status}" -eq 0 ]
+  [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
+  [ ! -e "${CLAUDE_PLUGIN_DATA}/shim/rg" ]
+  [ -s "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "removes the rg shim of an earlier install when there is no rg on PATH any more" {
+  require_rg
+  install
+  [ -x "${CLAUDE_PLUGIN_DATA}/shim/rg" ]
+  make_nobin
+  PATH="${TMP}/nobin" install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_PLUGIN_DATA}/shim/rg" ]
+  [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
+  [ -s "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "after sourcing the env lines rg skips *.sops.* files even with the caller's own glob" {
+  require_rg
+  install
+  in_shell "${CLAUDE_ENV_FILE}" 'type -t rg; rg -g "*.yaml" -l needle .'
+  [ "${status}" -eq 0 ]
+  [ "${lines[0]}" = "file" ]
+  [ "${lines[1]}" = "./b.yaml" ]
+  [ "${#lines[@]}" -eq 2 ]
+  in_shell "${CLAUDE_ENV_FILE}" 'rg --iglob "*" --hidden --no-ignore -l needle . | sort' "${TMP}/secrets"
+  [ "${output}" = "$(kept_listing ./)" ]
+}
+
+@test "the installed rg shim keeps working after the plugin root is gone" {
+  require_rg
+  install
+  rm -rf "${CLAUDE_PLUGIN_ROOT}"
+  in_shell "${CLAUDE_ENV_FILE}" 'rg -g "*" -l needle .'
+  [ "${output}" = "./b.yaml" ]
+  [ -z "${stderr}" ]
+}
+
+@test "the installed rg shim runs on its own and skips secret files and .git/ with a caller glob" {
+  require_rg
+  install
+  run "${CLAUDE_PLUGIN_DATA}/shim/rg" -g '*' --hidden --no-ignore -l needle "${TMP}/secrets"
+  [ "${status}" -eq 0 ]
+  [ "$(printf '%s\n' "${output}" | LC_ALL=C sort)" = "$(kept_listing "${TMP}/secrets/")" ]
+}
+
+@test "the rg shim adds the globs of the rg config as --glob, and as --iglob only when the caller passes --iglob" {
+  install
+  mkdir "${TMP}/fakebin"
+  printf '#!/bin/sh\nprintf "%%s\\n" "$@"\n' >"${TMP}/fakebin/rg"
+  chmod +x "${TMP}/fakebin/rg"
+  PATH="${TMP}/fakebin:${ORIG_PATH}"
+  run "${CLAUDE_PLUGIN_DATA}/shim/rg" needle .
+  [ "${status}" -eq 0 ]
+  globs=()
+  iglobs=()
+  for word in "${lines[@]}"; do
+    case "${word}" in
+    --glob=*) globs+=("${word}") ;;
+    --iglob=*) iglobs+=("${word#--iglob=}") ;;
+    *) ;;
+    esac
+  done
+  [ "${#globs[@]}" -gt 10 ]
+  [ "$(printf '%s\n' "${globs[@]}")" = "$(cat "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc")" ]
+  [ "${#iglobs[@]}" -eq 0 ]
+  run "${CLAUDE_PLUGIN_DATA}/shim/rg" --iglob '*' needle .
+  [ "${status}" -eq 0 ]
+  iglobs=()
+  for word in "${lines[@]}"; do
+    case "${word}" in
+    --iglob=*) iglobs+=("${word#--iglob=}") ;;
+    *) ;;
+    esac
+  done
+  [ "$(printf '%s\n' "${iglobs[@]/#/--glob=}")" = "$(cat "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc")" ]
 }
 
 @test "the env lines never mention the plugin root" {
@@ -249,6 +356,25 @@ in_shell() {
   [ "$(tail -n1 "${CLAUDE_PLUGIN_DATA}/shim/secret-globs")" = "extra-name" ]
 }
 
+@test "leaves the shims it had in place when the helper cannot be installed" {
+  require_rg
+  install
+  cp "${CLAUDE_PLUGIN_DATA}/shim/grep" "${TMP}/grep.before"
+  cp "${CLAUDE_PLUGIN_DATA}/shim/rg" "${TMP}/rg.before"
+  printf '# newer\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/grep"
+  printf '# newer\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/rg"
+  printf '# newer\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/shim-common.bash"
+  real_cp="$(command -v cp)"
+  mkdir "${TMP}/failcp"
+  printf '#!/bin/sh\ncase $1 in */shim-common.bash) exit 1 ;; *) ;; esac\nexec %s "$@"\n' "${real_cp}" >"${TMP}/failcp/cp"
+  chmod +x "${TMP}/failcp/cp"
+  PATH="${TMP}/failcp:${ORIG_PATH}"
+  install
+  [ "${status}" -eq 0 ]
+  cmp "${TMP}/grep.before" "${CLAUDE_PLUGIN_DATA}/shim/grep"
+  cmp "${TMP}/rg.before" "${CLAUDE_PLUGIN_DATA}/shim/rg"
+}
+
 @test "a changed glob list reaches the installed list and the rg config" {
   install
   printf 'extra-name\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/secret-globs"
@@ -281,12 +407,13 @@ in_shell() {
 }
 
 @test "replaces an older copy of the shim with the new one" {
+  require_rg
   install
   printf '# newer\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/grep"
   install
   [ "$(tail -n1 "${CLAUDE_PLUGIN_DATA}/shim/grep")" = "# newer" ]
   [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
-  [ "$(find "${CLAUDE_PLUGIN_DATA}/shim" -type f | wc -l)" -eq 3 ]
+  [ "$(find "${CLAUDE_PLUGIN_DATA}/shim" -type f | wc -l)" -eq 5 ]
 }
 
 @test "a data dir with a space and a quote in its name works" {
@@ -403,6 +530,44 @@ in_shell() {
   install
   [ "${status}" -eq 0 ]
   [ ! -e "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "installs nothing when the rg shim lets a listed file through" {
+  require_rg
+  mkdir "${TMP}/odd"
+  printf '#!/bin/sh\nfor a; do shift; case $a in --glob=!*|--iglob=!*) ;; *) set -- "$@" "$a" ;; esac; done\nexec %s "$@"\n' "${RG}" >"${TMP}/odd/rg"
+  chmod +x "${TMP}/odd/rg"
+  PATH="${TMP}/odd:${ORIG_PATH}"
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "installs nothing when a glob of the caller brings a listed file back" {
+  require_rg
+  mkdir "${TMP}/odd"
+  printf '#!/bin/sh\nfor a; do [ "$a" = -g ] && caller=1; done\nif [ "${caller:-0}" = 1 ]; then for a; do shift; case $a in --glob=!*|--iglob=!*) ;; *) set -- "$@" "$a" ;; esac; done; fi\nexec %s "$@"\n' "${RG}" >"${TMP}/odd/rg"
+  chmod +x "${TMP}/odd/rg"
+  PATH="${TMP}/odd:${ORIG_PATH}"
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "installs nothing when the rg shim is missing" {
+  rm "${CLAUDE_PLUGIN_ROOT}/shim/rg"
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+  [ ! -e "${CLAUDE_PLUGIN_DATA}" ]
+}
+
+@test "installs nothing when the helper is missing" {
+  rm "${CLAUDE_PLUGIN_ROOT}/shim/shim-common.bash"
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+  [ ! -e "${CLAUDE_PLUGIN_DATA}" ]
 }
 
 @test "installs nothing when the glob list is missing" {
