@@ -72,16 +72,33 @@ in_shell() {
   cmp "${PLUGIN}/shim/rg" "${CLAUDE_PLUGIN_DATA}/shim/rg"
 }
 
-@test "installs no rg shim when there is no rg on PATH, and still installs grep" {
+make_nobin() {
+  local tool
   mkdir "${TMP}/nobin"
   for tool in bash env cmp cp mv mktemp chmod rm mkdir head tail; do
     ln -s "$(type -P "${tool}")" "${TMP}/nobin/${tool}"
   done
   ln -s "${REAL_GREP}" "${TMP}/nobin/grep"
+}
+
+@test "installs no rg shim when there is no rg on PATH, and still installs grep" {
+  make_nobin
   PATH="${TMP}/nobin" install
   [ "${status}" -eq 0 ]
   [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
   [ ! -e "${CLAUDE_PLUGIN_DATA}/shim/rg" ]
+  [ -s "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "removes the rg shim of an earlier install when there is no rg on PATH any more" {
+  require_rg
+  install
+  [ -x "${CLAUDE_PLUGIN_DATA}/shim/rg" ]
+  make_nobin
+  PATH="${TMP}/nobin" install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_PLUGIN_DATA}/shim/rg" ]
+  [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
   [ -s "${CLAUDE_ENV_FILE}" ]
 }
 
@@ -114,7 +131,7 @@ in_shell() {
   [ "$(printf '%s\n' "${output}" | LC_ALL=C sort)" = "$(kept_listing "${TMP}/secrets/")" ]
 }
 
-@test "the rg shim adds the globs of the rg config, as --glob and as --iglob" {
+@test "the rg shim adds the globs of the rg config as --glob, and as --iglob only when the caller passes --iglob" {
   install
   mkdir "${TMP}/fakebin"
   printf '#!/bin/sh\nprintf "%%s\\n" "$@"\n' >"${TMP}/fakebin/rg"
@@ -133,6 +150,16 @@ in_shell() {
   done
   [ "${#globs[@]}" -gt 10 ]
   [ "$(printf '%s\n' "${globs[@]}")" = "$(cat "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc")" ]
+  [ "${#iglobs[@]}" -eq 0 ]
+  run "${CLAUDE_PLUGIN_DATA}/shim/rg" --iglob '*' needle .
+  [ "${status}" -eq 0 ]
+  iglobs=()
+  for word in "${lines[@]}"; do
+    case "${word}" in
+    --iglob=*) iglobs+=("${word#--iglob=}") ;;
+    *) ;;
+    esac
+  done
   [ "$(printf '%s\n' "${iglobs[@]/#/--glob=}")" = "$(cat "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc")" ]
 }
 

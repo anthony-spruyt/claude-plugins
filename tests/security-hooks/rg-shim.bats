@@ -37,6 +37,23 @@ sorted() {
   printf '%s\n' "$1" | LC_ALL=C sort
 }
 
+# make_cased_tree DIR: files that match a listed glob only when case is ignored, each holding needle and a line that looks like a flag
+make_cased_tree() {
+  local root="$1" glob path name kube=Kube host=Hosts server=Server env=Envi
+  local names=("${kube}Config.java" "${env}ron" "${host}.yml" "${server}.KEY")
+  while IFS= read -r glob; do
+    [[ -n "${glob}" ]] || continue
+    path="${glob//\*/x}"
+    path="${path^^}"
+    [[ "${glob}" != */ ]] || path="${path}inner.txt"
+    names+=("${path}")
+  done <"${SHIM_DIR}/secret-globs"
+  for name in "${names[@]}"; do
+    mkdir -p "$(dirname -- "${root}/${name}")"
+    printf 'needle\n--iglob\n' >"${root}/${name}"
+  done
+}
+
 # expect_rg WANT ARGS...: runs rg with ARGS and checks its sorted output
 expect_rg() {
   local want="$1"
@@ -84,6 +101,23 @@ expect_rg() {
   expect_rg ./secretary.yaml --hidden --no-ignore -l -g '*.yaml' needle .
   expect_rg ./secretary.yaml --hidden --no-ignore -l --iglob '*.YAML' needle .
   expect_rg "$(kept_listing ./)" -l -g '*' --hidden --no-ignore needle .
+}
+
+@test "a search without --iglob keeps files whose names match a listed glob only in another case" {
+  make_cased_tree "${TMP}/cased"
+  all="$(find "${TMP}/cased" -type f | LC_ALL=C sort)"
+  [ "$(printf '%s\n' "${all}" | wc -l)" -gt 30 ]
+  expect_rg "${all}" --hidden --no-ignore -l needle "${TMP}/cased"
+  expect_rg "${all}" --hidden --no-ignore -l -g '*' needle "${TMP}/cased"
+  expect_rg "${all}" --hidden --no-ignore -l --glob='*' needle "${TMP}/cased"
+}
+
+@test "a --iglob that is a flag's value or follows a -- does not make the skips ignore case" {
+  make_cased_tree "${TMP}/cased"
+  all="$(find "${TMP}/cased" -type f | LC_ALL=C sort)"
+  expect_rg "${all}" --hidden --no-ignore -l -e --iglob "${TMP}/cased"
+  expect_rg "${all}" --hidden --no-ignore -l --regexp --iglob "${TMP}/cased"
+  expect_rg "${all}" --hidden --no-ignore -l -- --iglob "${TMP}/cased"
 }
 
 @test "skips them when the caller's glob comes after the pattern and the path" {

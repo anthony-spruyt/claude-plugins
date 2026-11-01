@@ -104,6 +104,9 @@ write_rg_config || exit 0
 install_file "$source_dir/grep" "$shim_dir/grep" 755 || exit 0
 if ((install_rg)); then
   install_file "$source_dir/rg" "$shim_dir/rg" 755 || exit 0
+else
+  # Claude's shell defines its own rg function only when no rg is on PATH, and a leftover shim would hide it
+  rm -f "$shim_dir/rg"
 fi
 works || exit 0
 

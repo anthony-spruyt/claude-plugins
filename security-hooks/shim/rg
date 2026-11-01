@@ -36,15 +36,18 @@ LONG_VALUE_FLAGS=(
 )
 SHORT_VALUE_FLAGS=ABCEMTdefgjmrt
 
-# Sets GLOB_OPTIONS from the globs, failing when there are none; a directory entry also gets a glob that covers it when it is named on the command line.
-# rg applies every --iglob after every --glob, so a caller's --iglob is only beaten by an --iglob of ours.
+# Sets GLOB_OPTIONS from GLOBS; a directory entry also gets a glob that covers it when it is named on the command line.
+# --iglob matches case-insensitively and rg applies it after every --glob, so ours are added only when the caller passes one.
 glob_options() {
-  local glob
+  local glob pattern patterns
   GLOB_OPTIONS=()
-  read_globs || return 1
   for glob in "${GLOBS[@]}"; do
-    GLOB_OPTIONS+=("--glob=!$glob" "--iglob=!$glob")
-    [[ $glob != */ ]] || GLOB_OPTIONS+=("--glob=!**/$glob**" "--iglob=!**/$glob**")
+    patterns=("$glob")
+    [[ $glob != */ ]] || patterns+=("**/$glob**")
+    for pattern in "${patterns[@]}"; do
+      GLOB_OPTIONS+=("--glob=!$pattern")
+      ((CALLER_IGLOB == 0)) || GLOB_OPTIONS+=("--iglob=!$pattern")
+    done
   done
 }
 
@@ -75,11 +78,17 @@ short_needs_next() {
   return 1
 }
 
-# Sets END to the number of words before the "--" that ends the options, else to all of them.
+is_iglob() {
+  local word=$1
+  [[ $word == --iglob || $word == --iglob=* ]]
+}
+
+# Sets END to the number of words before the "--" that ends the options, else to all of them, and CALLER_IGLOB to 1 when one of those is --iglob.
 # Fails when the last flag is missing its value.
 options_end() {
   local words=("$@") count=$# i=0 word
   END=$count
+  CALLER_IGLOB=0
   while ((i < count)); do
     word=${words[i]}
     i=$((i + 1))
@@ -89,6 +98,7 @@ options_end() {
       return 0
       ;;
     --*)
+      ! is_iglob "$word" || CALLER_IGLOB=1
       if long_takes_value "${word#--}"; then
         ((i < count)) || return 1
         i=$((i + 1))
@@ -114,11 +124,12 @@ main() {
   if [[ ${SECURITY_HOOKS_GREP_SHIM:-} == 0 ]]; then
     exec -a rg "$real" "$@"
   fi
-  glob_options || {
+  read_globs || {
     echo "rg: cannot read secret-file globs from $GLOBS_FILE" >&2
     exit 2
   }
   options_end "$@" || exec -a rg "$real" "$@"
+  glob_options
   exec -a rg "$real" "${@:1:END}" "${GLOB_OPTIONS[@]}" "${@:END+1}"
 }
 
