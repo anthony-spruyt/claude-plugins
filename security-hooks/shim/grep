@@ -1,0 +1,169 @@
+#!/usr/bin/env -S bash -p
+# security-hooks grep shim: runs the real grep with --exclude=*.sops.*. Installed by scripts/install-grep-shim.sh.
+# Keep the line above as line 2: is_shim reads it from every grep on PATH, so copies of the shim never call each other.
+# bash -p ignores the caller's BASH_ENV, SHELLOPTS and BASHOPTS, which would change how this script runs.
+
+LONG_OPTIONS=(
+  after-context: basic-regexp before-context: binary binary-files: byte-offset color? colour? context: count
+  dereference-recursive devices: directories: exclude: exclude-dir: exclude-from: extended-regexp file:
+  files-with-matches files-without-match fixed-regexp fixed-strings group-separator: help ignore-case include:
+  initial-tab invert-match label: line-buffered line-number line-regexp max-count: no-filename
+  no-group-separator no-ignore-case no-messages null null-data only-matching perl-regexp quiet recursive
+  regexp: silent text unix-byte-offsets version with-filename word-regexp
+)
+SHORT_NO_ARGUMENT=0123456789EFGHILPRTUVZabchilnoqrsuvwxyz
+SHORT_ARGUMENT=ABCDXdefm
+
+is_shim() {
+  local second
+  { IFS= read -r _ && IFS= read -r second; } 2>/dev/null <"$1"
+  [[ $second == "# security-hooks grep shim"* ]]
+}
+
+find_real_grep() {
+  local dir candidate dirs
+  IFS=: read -ra dirs <<<"$PATH"
+  for dir in "${dirs[@]}"; do
+    [[ -n $dir ]] || continue
+    candidate=$dir/grep
+    [[ -f $candidate && -x $candidate ]] || continue
+    ! is_shim "$candidate" || continue
+    printf '%s' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+# Sets ARITY to 1 if the short option takes an argument, 0 if not; fails for an option grep does not have.
+short_arity() {
+  case $SHORT_ARGUMENT in *"$1"*)
+    ARITY=1
+    return 0
+    ;;
+  esac
+  case $SHORT_NO_ARGUMENT in *"$1"*)
+    ARITY=0
+    return 0
+    ;;
+  esac
+  return 1
+}
+
+# Same for a long option name, which getopt lets the caller abbreviate. grep rejects an ambiguous prefix before it searches.
+long_arity() {
+  local name=$1 entry key arity found=""
+  for entry in "${LONG_OPTIONS[@]}"; do
+    arity=0
+    key=$entry
+    case $entry in
+    *:)
+      arity=1
+      key=${entry%:}
+      ;;
+    *\?) key=${entry%\?} ;;
+    esac
+    if [[ $key == "$name" ]]; then
+      ARITY=$arity
+      return 0
+    fi
+    if [[ -z $found && ${key:0:${#name}} == "$name" ]]; then
+      found=$arity
+    fi
+  done
+  [[ -n $found ]] || return 1
+  ARITY=$found
+}
+
+# Sets END to the number of words before the first operand (POSIXLY_CORRECT) or a "--", else to all of them.
+# Returns 1 for a word it does not know (BAD) and 2 for an option missing its argument.
+options_end() {
+  local words=("$@") count=$# i=0 word rest
+  END=$count
+  while ((i < count)); do
+    word=${words[i]}
+    case $word in
+    --)
+      END=$i
+      return 0
+      ;;
+    --*)
+      rest=${word#--}
+      i=$((i + 1))
+      if [[ $rest == *=* ]]; then
+        long_arity "${rest%%=*}" || {
+          BAD=$word
+          return 1
+        }
+      else
+        long_arity "$rest" || {
+          BAD=$word
+          return 1
+        }
+        if ((ARITY == 1)); then
+          ((i < count)) || return 2
+          i=$((i + 1))
+        fi
+      fi
+      ;;
+    -?*)
+      rest=${word#-}
+      i=$((i + 1))
+      while [[ -n $rest ]]; do
+        short_arity "${rest:0:1}" || {
+          BAD=$word
+          return 1
+        }
+        rest=${rest:1}
+        if ((ARITY == 1)); then
+          if [[ -z $rest ]]; then
+            ((i < count)) || return 2
+            i=$((i + 1))
+          fi
+          break
+        fi
+      done
+      ;;
+    *)
+      if [[ -n ${POSIXLY_CORRECT+x} ]]; then
+        END=$i
+        return 0
+      fi
+      i=$((i + 1))
+      ;;
+    esac
+  done
+  return 0
+}
+
+main() {
+  local real word careful=0 status
+  real=$(find_real_grep) || {
+    echo "grep: no grep found on PATH other than this wrapper" >&2
+    exit 127
+  }
+  if [[ ${SECURITY_HOOKS_GREP_SHIM:-} == 0 ]]; then
+    exec -a grep "$real" "$@"
+  fi
+  [[ -z ${POSIXLY_CORRECT+x} ]] || careful=1
+  for word in "$@"; do
+    [[ $word != -- ]] || careful=1
+  done
+  END=$#
+  options_end "$@"
+  status=$?
+  if ((status == 2)); then
+    exec -a grep "$real" "$@"
+  elif ((status == 1)); then
+    if ((careful)); then
+      echo "grep: cannot tell where the options end (don't know $BAD)" >&2
+      exit 2
+    fi
+    END=$#
+  fi
+  # After the caller's options: a later --include overrides an earlier --exclude
+  exec -a grep "$real" "${@:1:END}" "--exclude=*.sops.*" "${@:END+1}"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi
