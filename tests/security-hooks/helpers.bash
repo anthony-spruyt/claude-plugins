@@ -31,7 +31,8 @@ make_secret_tree() {
 }
 
 kept_listing() {
-  printf '%s\n' "${KEPT_FILES[@]/#/$1}" | LC_ALL=C sort
+  local prefix="$1"
+  printf '%s\n' "${KEPT_FILES[@]/#/${prefix}}" | LC_ALL=C sort
 }
 
 # type -P finds the rg binary; Claude's rg is a shell function. Under CI a missing rg fails the test instead of skipping it.
