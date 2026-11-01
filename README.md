@@ -4,12 +4,12 @@ Plugin monorepo for Claude Code by [@anthony-spruyt](https://github.com/anthony-
 
 ## Plugins
 
-| Plugin                              | Description                                              |
-| ----------------------------------- | -------------------------------------------------------- |
-| [hookify-plus](./hookify-plus/)     | Rule engine with convention-based discovery              |
-| [security-hooks](./security-hooks/) | 32 blocking rules, plus grep and rg that skip SOPS files |
-| [best-practices](./best-practices/) | 5 rules for tool usage and rm targets that stall         |
-| [agent-kit](./agent-kit/)           | Progress notes, agent helper scripts, skills             |
+| Plugin                              | Description                                                |
+| ----------------------------------- | ---------------------------------------------------------- |
+| [hookify-plus](./hookify-plus/)     | Rule engine with convention-based discovery                |
+| [security-hooks](./security-hooks/) | 32 blocking rules, plus grep and rg that skip secret files |
+| [best-practices](./best-practices/) | 5 rules for tool usage and rm targets that stall           |
+| [agent-kit](./agent-kit/)           | Progress notes, agent helper scripts, skills               |
 
 ## Installation
 

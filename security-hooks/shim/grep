@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -p
-# security-hooks grep shim: runs the real grep with --exclude=*.sops.*. Installed by scripts/install-grep-shim.sh.
+# security-hooks grep shim: runs the real grep with the excludes built from secret-globs. Installed by scripts/install-grep-shim.sh.
 # Keep the line above as line 2: is_shim reads it from every grep on PATH, so copies of the shim never call each other.
 # bash -p ignores the caller's BASH_ENV, SHELLOPTS and BASHOPTS, which would change how this script runs.
 
@@ -18,6 +18,41 @@ is_shim() {
   local second
   { IFS= read -r _ && IFS= read -r second; } 2>/dev/null <"$1"
   [[ $second == "# security-hooks grep shim"* ]]
+}
+
+# Sets GLOBS_FILE to the secret-globs that sits next to this script, however it was reached through symlinks.
+find_globs_file() {
+  local path=${BASH_SOURCE[0]} target hops=0
+  while [[ -L $path ]] && ((hops < 40)); do
+    target=$(readlink -- "$path") || break
+    if [[ $target == /* || $path != */* ]]; then
+      path=$target
+    else
+      path=${path%/*}/$target
+    fi
+    hops=$((hops + 1))
+  done
+  [[ $path == */* ]] || path=./$path
+  GLOBS_FILE=${path%/*}/secret-globs
+}
+
+# Sets EXCLUDES from secret-globs, failing when there are no entries; a directory entry ends in "/".
+# The D/* patterns catch a directory operand below D and a file named below D, which --exclude-dir=D alone misses.
+exclude_options() {
+  local glob
+  EXCLUDES=()
+  find_globs_file
+  [[ -r $GLOBS_FILE ]] || return 1
+  while IFS= read -r glob || [[ -n $glob ]]; do
+    if [[ $glob == */ ]]; then
+      glob=${glob%/}
+      [[ -n $glob ]] || continue
+      EXCLUDES+=("--exclude-dir=$glob" "--exclude-dir=$glob/*" "--exclude=$glob/*")
+    elif [[ -n $glob ]]; then
+      EXCLUDES+=("--exclude=$glob")
+    fi
+  done <"$GLOBS_FILE"
+  ((${#EXCLUDES[@]} > 0))
 }
 
 find_real_grep() {
@@ -144,6 +179,10 @@ main() {
   if [[ ${SECURITY_HOOKS_GREP_SHIM:-} == 0 ]]; then
     exec -a grep "$real" "$@"
   fi
+  exclude_options || {
+    echo "grep: cannot read secret-file globs from $GLOBS_FILE" >&2
+    exit 2
+  }
   [[ -z ${POSIXLY_CORRECT+x} ]] || careful=1
   for word in "$@"; do
     [[ $word != -- ]] || careful=1
@@ -161,7 +200,7 @@ main() {
     END=$#
   fi
   # After the caller's options: a later --include overrides an earlier --exclude
-  exec -a grep "$real" "${@:1:END}" "--exclude=*.sops.*" "${@:END+1}"
+  exec -a grep "$real" "${@:1:END}" "${EXCLUDES[@]}" "${@:END+1}"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then

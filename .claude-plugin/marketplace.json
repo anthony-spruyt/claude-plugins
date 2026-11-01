@@ -16,7 +16,7 @@
     },
     {
       "name": "security-hooks",
-      "description": "32 blocking rules preventing secret exposure via CLI commands and file reads, plus grep and rg that skip *.sops.* files",
+      "description": "32 blocking rules preventing secret exposure via CLI commands and file reads, plus grep and rg that skip secret file names",
       "author": {
         "name": "anthony-spruyt"
       },
