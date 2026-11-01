@@ -1,0 +1,16 @@
+{
+  "description": "Makes grep and rg skip *.sops.* files in Claude sessions",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/install-grep-shim.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

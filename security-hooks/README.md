@@ -1,10 +1,10 @@
 # security-hooks
 
-Blocking rules for Claude Code that prevent accidental secret exposure.
+Blocking rules for Claude Code that prevent accidental secret exposure, and `grep` and `rg` that skip `*.sops.*` files.
 
 ## Requirements
 
-Requires the **hookify-plus** plugin to be installed from this same marketplace. Without the engine, these rule files are inert markdown with no effect.
+The rules need the **hookify-plus** plugin from this same marketplace. Without the engine, the rule files are inert markdown with no effect. The grep and rg part below works on its own.
 
 ## Rules (32)
 
@@ -42,6 +42,17 @@ Requires the **hookify-plus** plugin to be installed from this same marketplace.
 | block-shell-read-secret-files | Shell reads of the files the `block-read-*` rules guard |
 | block-sops-decrypt            | `sops -d` / `sops --decrypt` / `sops exec-*`            |
 | block-sops-read               | `sops` file reads without encrypt flag                  |
+
+## grep and rg skip SOPS files
+
+In Claude sessions, `grep` and `rg` skip `*.sops.*` files.
+
+- A SessionStart hook (every source, `compact` included) copies a `grep` wrapper and an rg config (`--glob=!*.sops.*`) to `${CLAUDE_PLUGIN_DATA}/shim`, which survives plugin updates, then adds them to the Bash tool's shell through `CLAUDE_ENV_FILE`.
+- The wrapper runs the real grep with `--exclude=*.sops.*`, placed after your options so that a later `--include` does not undo it. If it cannot tell where the options end (an option it does not know, together with `--` or `POSIXLY_CORRECT`), it exits 2 with an error instead of guessing.
+- If you set `RIPGREP_CONFIG_PATH` yourself, add `--glob=!*.sops.*` to that file.
+- It needs GNU grep. Without one the hook installs nothing.
+- Only Claude sessions are affected. Your own terminal is unchanged.
+- Set `SECURITY_HOOKS_GREP_SHIM=0` to turn all of it off.
 
 ## Installation
 
