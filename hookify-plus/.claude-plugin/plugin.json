@@ -1,6 +1,6 @@
 {
   "name": "hookify-plus",
-  "version": "2.7.6",
+  "version": "2.7.7",
   "description": "Rule engine with convention-based discovery, rate-limited warnings, and stderr fix for #12446",
   "author": {
     "name": "anthony-spruyt"

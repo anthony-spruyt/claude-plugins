@@ -1,6 +1,6 @@
 {
   "name": "best-practices",
-  "version": "3.1.1",
+  "version": "3.2.0",
   "description": "Rules for conventional commits, tool usage, shell wrappers, and rm targets that stall on a permission prompt",
   "author": {
     "name": "anthony-spruyt"

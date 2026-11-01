@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.7.7](https://github.com/anthony-spruyt/claude-plugins/compare/hookify-plus-v2.7.6...hookify-plus-v2.7.7) (2026-11-01)
+
+
+### Bug Fixes
+
+* **hookify-plus:** keep glob expansion linear in path parts ([#257](https://github.com/anthony-spruyt/claude-plugins/issues/257)) ([4538083](https://github.com/anthony-spruyt/claude-plugins/commit/4538083cfc1aeb169bfc508c271b97438d8406c4))
+* **hookify-plus:** match fallbacks per command in compound commands ([#243](https://github.com/anthony-spruyt/claude-plugins/issues/243)) ([033357c](https://github.com/anthony-spruyt/claude-plugins/commit/033357ce0e98c4625846e3403d23661e9e319fec))
+
 ## [2.7.6](https://github.com/anthony-spruyt/claude-plugins/compare/hookify-plus-v2.7.5...hookify-plus-v2.7.6) (2026-10-14)
 
 
