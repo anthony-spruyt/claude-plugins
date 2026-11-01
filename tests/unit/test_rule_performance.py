@@ -106,6 +106,16 @@ INPUTS = {
     "arithmetic-unclosed-quote": "$((1)); '" + ";" * 19900,
     "arithmetic-brace-words": "$((1)); " + "echo {1..300};" * 1300,
     "ps-many-flags": "ps" + " a" * 9990 + " x",
+    "many-rm-words": "rm " * 6600,
+    "many-rm-paths": "/bin/rm " * 2500,
+    "many-rm-in-targets": "rm a/rm " * 2500,
+    "rm-many-flags": "rm" + " -r" * 6600 + " x",
+    "rm-long-flag": "rm -" + "r" * 19990,
+    "rm-continuations": "rm \\\n" * 5000,
+    "rm-unclosed-substitutions": "rm -r " + "a/$(" * 4000,
+    "rm-many-stars": "rm " + "*/" * 9990,
+    "rm-unbalanced-quotes": "rm " + 'a" ' * 6600,
+    "rm-open-quotes-then-glob": "rm " + '"a ' * 6600 + "/*",
 }
 
 

@@ -99,6 +99,12 @@ hook() {
   assert_success
 }
 
+@test "hookify integration: rm rule cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/rm_rules.yaml"
+  assert_success
+}
+
 @test "pretooluse: block rule exits 2 with the rule message" {
   run hook pretooluse.py "sops -d secrets.yaml"
   assert_equal "$status" 2

@@ -1,0 +1,378 @@
+# block-rm-unchecked-target: rm shapes Claude Code stops on stay blocked, plain literal paths stay allowed.
+test_cases:
+  # Globs are matched on the raw command: expansion against files in the working directory must not hide them
+  - name: 'block-rm-unchecked-target: blocks bare star'
+    tool: Bash
+    command: rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks dot-slash star'
+    tool: Bash
+    command: rm -rf ./*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks dir star'
+    tool: Bash
+    command: rm -rf logs/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks dir star slash'
+    tool: Bash
+    command: rm -rf logs/*/
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks nested star'
+    tool: Bash
+    command: rm -rf logs/*/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks absolute dir star'
+    tool: Bash
+    command: rm -rf /tmp/x/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks root star'
+    tool: Bash
+    command: rm -rf /*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks bare star that matches files'
+    tool: Bash
+    command: rm -rf *
+    files: ['a.txt', 'b.txt']
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks dir star that matches files'
+    tool: Bash
+    command: rm -rf logs/*
+    files: ['logs/a.log', 'logs/b.log']
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks nested star that matches files'
+    tool: Bash
+    command: rm -rf logs/*/*
+    files: ['logs/a/x.log']
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks star among literal targets'
+    tool: Bash
+    command: rm -f a.txt logs/* b.txt
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks rmdir star'
+    tool: Bash
+    command: rmdir logs/*/
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks quoted variable then star'
+    tool: Bash
+    command: rm -rf "$DIR"/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable then star'
+    tool: Bash
+    command: rm -rf $DIR/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks braced variable then star'
+    tool: Bash
+    command: rm -rf "${DIR}"/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable then trailing slash'
+    tool: Bash
+    command: rm -rf $DIR/
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks quoted variable with trailing slash'
+    tool: Bash
+    command: rm -rf "$DIR/"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks positional then trailing slash'
+    tool: Bash
+    command: rm -rf "$1"/
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks all-arguments then star'
+    tool: Bash
+    command: rm -rf "$@"/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks guard on a different variable'
+    tool: Bash
+    command: rm -rf "${A:?}" "$B"/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks quoted substitution'
+    tool: Bash
+    command: rm -rf "$(pwd)"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks bare substitution'
+    tool: Bash
+    command: rm -rf $(git rev-parse --show-toplevel)
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks backticks'
+    tool: Bash
+    command: rm -rf `pwd`
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks substitution with nested parentheses'
+    tool: Bash
+    command: rm -rf "$(dirname "$(pwd)")"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks substitution after separate flags'
+    tool: Bash
+    command: rm -f -r "$(pwd)"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks substitution with capital R'
+    tool: Bash
+    command: rm -fR "$(pwd)"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks substitution with long recursive flag'
+    tool: Bash
+    command: rm --recursive "$(pwd)"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks substitution after a literal target'
+    tool: Bash
+    command: rm -rf build "$(pwd)"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks trailing substitution after home'
+    tool: Bash
+    command: rm -rf ~/$(cmd)
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks trailing substitution inside quotes'
+    tool: Bash
+    command: rm -rf "$HOME/$(cmd)"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks trailing substitution after a relative path'
+    tool: Bash
+    command: rm -f build/$(cmd)
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks trailing backticks after a path'
+    tool: Bash
+    command: rm -f /tmp/x/`cmd`
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks filesystem root'
+    tool: Bash
+    command: rm -rf /
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks root after double dash'
+    tool: Bash
+    command: rm -rf -- /
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks tilde'
+    tool: Bash
+    command: rm -rf ~
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks tilde slash'
+    tool: Bash
+    command: rm -rf ~/
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks HOME'
+    tool: Bash
+    command: rm -rf $HOME
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks quoted HOME'
+    tool: Bash
+    command: rm -rf "$HOME"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks braced HOME'
+    tool: Bash
+    command: rm -rf "${HOME}"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks top-level directory'
+    tool: Bash
+    command: rm -rf /usr
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks tmp itself'
+    tool: Bash
+    command: rm -rf /tmp
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks top-level directory with trailing slash'
+    tool: Bash
+    command: rm -rf /tmp/
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks quoted top-level directory'
+    tool: Bash
+    command: rm -rf "/usr"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks rmdir top-level directory'
+    tool: Bash
+    command: rmdir /usr
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks top-level directory among literal targets'
+    tool: Bash
+    command: rm -f a.txt /usr b.txt
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks after cd'
+    tool: Bash
+    command: cd build && rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks after a semicolon'
+    tool: Bash
+    command: echo hi; rm -rf logs/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in a pipeline stage'
+    tool: Bash
+    command: ls | xargs rm -rf ./*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under sudo'
+    tool: Bash
+    command: sudo rm -rf /usr
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks by absolute path'
+    tool: Bash
+    command: /bin/rm -rf /usr
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in a subshell'
+    tool: Bash
+    command: (rm -rf /usr)
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in an if body'
+    tool: Bash
+    command: if true; then rm -rf /usr; fi
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in find exec'
+    tool: Bash
+    command: find . -name build -exec rm -rf "$d"/* \;
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in xargs'
+    tool: Bash
+    command: printf 'a\n' | xargs rm -rf "$D"/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in bash -c single quotes'
+    tool: Bash
+    command: bash -c 'rm -rf "$DIR"/*'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in bash -c double quotes'
+    tool: Bash
+    command: bash -c "cd build && rm -rf *"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in bash -c top-level directory'
+    tool: Bash
+    command: bash -c 'rm -rf /usr'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in a command substitution'
+    tool: Bash
+    command: echo "$(rm -rf /usr)"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks when the parser gives up'
+    tool: Bash
+    command: echo $((1 + 1)); rm -rf /usr
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks glob when the parser gives up'
+    tool: Bash
+    command: echo $((1 + 1)); rm -rf logs/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks after a commit message'
+    tool: Bash
+    command: 'git commit -m "fix: x" && rm -rf /usr'
+    expect: block
+  - name: 'block-rm-unchecked-target: allows literal absolute path'
+    tool: Bash
+    command: rm -rf /tmp/agent-work/x
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows two literal files'
+    tool: Bash
+    command: rm -f a.txt b.txt
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows relative directory'
+    tool: Bash
+    command: rm -rf build
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows relative directory with trailing slash'
+    tool: Bash
+    command: rm -rf ./build/
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows glob that ends in a suffix'
+    tool: Bash
+    command: rm -f /tmp/x/*.log
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows relative glob that ends in a suffix'
+    tool: Bash
+    command: rm -f logs/*.log
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows glob with a prefix in the last segment'
+    tool: Bash
+    command: rm -f dist/app-*
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows second-level literal path'
+    tool: Bash
+    command: rm -rf /tmp/x
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows second-level path with trailing slash'
+    tool: Bash
+    command: rm -rf /tmp/x/
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows rmdir of a literal path'
+    tool: Bash
+    command: rmdir /tmp/x/empty
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows guarded variable'
+    tool: Bash
+    command: rm -rf "${DIR:?}"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows guarded variable then star'
+    tool: Bash
+    command: rm -rf "${DIR:?}"/*
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows guarded variable with trailing slash'
+    tool: Bash
+    command: rm -rf "${DIR:?}/"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows guarded positional then trailing slash'
+    tool: Bash
+    command: rm -rf "${1:?}"/
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows guarded variable with a message'
+    tool: Bash
+    command: rm -rf "${DIR:?set DIR first}"/*
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows variable without glob or slash'
+    tool: Bash
+    command: rm -rf "$DIR"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows variable with a subpath'
+    tool: Bash
+    command: rm -rf "$DIR/old"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows path under HOME'
+    tool: Bash
+    command: rm -rf ~/.cache/x "$HOME/.cache/y"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows non-recursive substitution'
+    tool: Bash
+    command: rm -f "$(mktemp)"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows substitution inside a file name'
+    tool: Bash
+    command: rm -rf "/tmp/x/$(date +%s)-lock"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows rmdir of a substitution'
+    tool: Bash
+    command: rmdir "$(mktemp -d)"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows rm in an earlier command than the glob'
+    tool: Bash
+    command: rm -f a.txt && cp -r build/* dist/
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows rm without a risky target before a risky pipe stage'
+    tool: Bash
+    command: rm -f a.txt | ls /usr
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows other commands on the same shapes'
+    tool: Bash
+    command: ls logs/* /usr "$DIR"/ && cp -r src/* dest/
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows git rm of a glob'
+    tool: Bash
+    command: git rm -r --cached dist/*
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows docker rm of a substitution'
+    tool: Bash
+    command: docker rm -f $(docker ps -aq)
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows prose in echo'
+    tool: Bash
+    command: echo "to empty it run rm -rf /usr"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows prose in a commit message'
+    tool: Bash
+    command: 'git commit -m "docs: never rm -rf * or rm -rf /usr"'
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows prose in a grep pattern'
+    tool: Bash
+    command: grep -rn "rm -rf logs/*" docs
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows rm text in a heredoc body'
+    tool: Bash
+    command: "cat > notes.md <<'EOF'\nrm -rf \"$DIR\"/*\nrm -rf /usr\nEOF"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows prose in echo before a quoted glob argument'
+    tool: Bash
+    command: 'cd /tmp/x && echo "remaining: rm obj/bin, no push" >> /tmp/n.md; find . -type d \( -name obj -o -name bin \) -not -path "./.git/*" | head; which docker; docker ps 2>&1 | head -2'
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows literal paths in a quoted remote command before a quoted glob argument'
+    tool: Bash
+    command: "ssh host 'rm -rf src/obj src/bin' && find . -type d -not -path './.git/*'"
+    expect: allow
