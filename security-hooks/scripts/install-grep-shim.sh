@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# SessionStart hook: puts the grep shim and the rg config in the plugin data dir and points the Bash tool's shell at them.
+# SessionStart hook: puts the grep shim, its secret-globs and the rg config built from them in the plugin data dir
+# and points the Bash tool's shell at them.
 # Any failure leaves nothing installed and the session starts as usual. Stdout becomes session context, so it stays empty.
 set -u
 
@@ -9,7 +10,7 @@ data_dir=${CLAUDE_PLUGIN_DATA:-}
 [[ -n $env_file && -n $data_dir ]] || exit 0
 
 source_dir=${BASH_SOURCE[0]%/*}/../shim
-[[ -f $source_dir/grep && -f $source_dir/ripgreprc ]] || exit 0
+[[ -f $source_dir/grep && -f $source_dir/secret-globs ]] || exit 0
 shim_dir=$data_dir/shim
 rg_config=$shim_dir/ripgreprc
 
@@ -27,14 +28,29 @@ install_file() {
   return 1
 }
 
+write_rg_config() {
+  local tmp glob status=0
+  tmp=$(mktemp) || return 1
+  # A folder gets two globs: the first prunes the walk, the second also covers a folder passed by name
+  while IFS= read -r glob || [[ -n $glob ]]; do
+    [[ -z $glob ]] || printf -- '--glob=!%s\n' "$glob"
+    [[ $glob != */ ]] || printf -- '--glob=!**/%s**\n' "$glob"
+  done <"$source_dir/secret-globs" >"$tmp"
+  install_file "$tmp" "$rg_config" 644 || status=1
+  rm -f "$tmp"
+  return "$status"
+}
+
 works() {
-  local dir out
+  local dir out name
   dir=$(mktemp -d) || return 1
-  printf 'needle\n' >"$dir/kept.txt"
-  printf 'needle\n' >"$dir/skipped.sops.txt"
+  mkdir "$dir/.git"
+  for name in kept.txt skipped.sops.txt .git/config; do
+    printf 'needle\n' >"$dir/$name"
+  done
   out=$("$shim_dir/grep" --version | head -n 1)
   if [[ $out == "grep (GNU grep)"* ]]; then
-    out=$(cd "$dir" && "$shim_dir/grep" -rl needle . && "$shim_dir/grep" -l needle skipped.sops.txt)
+    out=$(cd "$dir" && "$shim_dir/grep" -rl needle . && "$shim_dir/grep" -l needle skipped.sops.txt .git/config)
   else
     out=
   fi
@@ -63,8 +79,10 @@ append_line() {
 }
 
 mkdir -p "$shim_dir" || exit 0
+# grep goes last: a running session's grep stops when it cannot read the list, and a failed step keeps the old grep
+install_file "$source_dir/secret-globs" "$shim_dir/secret-globs" 644 || exit 0
+write_rg_config || exit 0
 install_file "$source_dir/grep" "$shim_dir/grep" 755 || exit 0
-install_file "$source_dir/ripgreprc" "$rg_config" 644 || exit 0
 works || exit 0
 
 q_dir=$(quote "$shim_dir")
