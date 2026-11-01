@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# The SessionStart hook installs the grep shim and the rg config outside the plugin dir
+# The SessionStart hook installs the grep shim, the secret glob list and the rg config built from it outside the plugin dir
 # and writes the lines that make the Bash tool's shell use them.
 
 # shellcheck disable=SC2016,SC2030,SC2031
@@ -24,6 +24,7 @@ setup() {
   printf 'needle\n' >"${TMP}/tree/a.sops.yaml"
   printf 'needle\n' >"${TMP}/tree/b.yaml"
   printf 'needle\n' >"${TMP}/tree/sub/c.sops.json"
+  make_secret_tree "${TMP}/secrets"
   printf 'grep() { echo "claude grep function"; }\n' >"${TMP}/function.sh"
   printf 'unset -f grep find 2>/dev/null || true\n' >"${TMP}/restore.sh"
 }
@@ -38,18 +39,19 @@ install() {
 
 # Runs a command in a fresh bash after sourcing the env file(s), as the Bash tool's shell does.
 in_shell() {
-  local files="$1" cmd="$2"
-  run --separate-stderr env -i HOME="${TMP}" PATH="${ORIG_PATH}" ENV_FILES="${files}" TREE="${TMP}/tree" SHIMDIR="${CLAUDE_PLUGIN_DATA}/shim" \
+  local files="$1" cmd="$2" tree="${3:-${TMP}/tree}"
+  run --separate-stderr env -i HOME="${TMP}" PATH="${ORIG_PATH}" ENV_FILES="${files}" TREE="${tree}" SHIMDIR="${CLAUDE_PLUGIN_DATA}/shim" \
     bash -c '
     for f in ${ENV_FILES}; do . "${f}"; done
     cd "${TREE}" && '"${cmd}"
 }
 
-@test "installs the shim and the rg config under the data dir and exits quietly" {
+@test "installs the shim, the glob list and the rg config under the data dir and exits quietly" {
   install
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
   [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
+  cmp "${PLUGIN}/shim/secret-globs" "${CLAUDE_PLUGIN_DATA}/shim/secret-globs"
   [ -f "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" ]
   [ -s "${CLAUDE_ENV_FILE}" ]
 }
@@ -70,6 +72,13 @@ in_shell() {
   [ "${#lines[@]}" -eq 2 ]
 }
 
+@test "after sourcing the env lines grep skips secret files and .git/" {
+  install
+  in_shell "${CLAUDE_ENV_FILE}" 'grep -rl needle . | sort' "${TMP}/secrets"
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "$(kept_listing ./)" ]
+}
+
 @test "the env lines leave a grep function of the shell alone" {
   install
   in_shell "${TMP}/function.sh ${CLAUDE_ENV_FILE}" 'type -t grep; grep -rl needle .'
@@ -85,6 +94,8 @@ in_shell() {
   in_shell "${CLAUDE_ENV_FILE}" 'grep -rl needle .'
   [ "${output}" = "./b.yaml" ]
   [ -z "${stderr}" ]
+  in_shell "${CLAUDE_ENV_FILE}" 'grep -rl needle . | sort' "${TMP}/secrets"
+  [ "${output}" = "$(kept_listing ./)" ]
 }
 
 @test "the env lines work before or after a file that unsets the grep function, and when sourced twice" {
@@ -142,6 +153,52 @@ in_shell() {
   [ "$(printf '%s\n' "${output}" | sort)" = "${TMP}/tree/b.yaml" ]
 }
 
+@test "the rg config makes rg skip secret files and .git/ even with --hidden" {
+  require_rg
+  install
+  run "${RG}" --hidden --no-ignore -l needle "${TMP}/secrets"
+  [ "$(printf '%s\n' "${output}" | wc -l)" -eq $((${#KEPT_FILES[@]} + ${#SKIPPED_FILES[@]})) ]
+  run env RIPGREP_CONFIG_PATH="${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" "${RG}" --hidden --no-ignore -l needle "${TMP}/secrets"
+  [ "${status}" -eq 0 ]
+  [ "$(printf '%s\n' "${output}" | LC_ALL=C sort)" = "$(kept_listing "${TMP}/secrets/")" ]
+}
+
+@test "every entry in secret-globs is skipped by rg, as a file or as a directory" {
+  require_rg
+  install
+  mkdir "${TMP}/each"
+  printf 'needle\n' >"${TMP}/each/kept.txt"
+  while IFS= read -r glob; do
+    [[ -n "${glob}" ]] || continue
+    if [[ "${glob}" == */ ]]; then
+      path="${glob%/}"
+      path="${path//\*/x}/inner.txt"
+    else
+      path="${glob//\*/x}"
+    fi
+    mkdir -p "$(dirname -- "${TMP}/each/${path}")"
+    printf 'needle\n' >"${TMP}/each/${path}"
+  done <"${PLUGIN}/shim/secret-globs"
+  run "${RG}" --hidden --no-ignore -l needle "${TMP}/each"
+  [ "$(printf '%s\n' "${output}" | wc -l)" -gt 10 ]
+  run env RIPGREP_CONFIG_PATH="${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" "${RG}" --hidden --no-ignore -l needle "${TMP}/each"
+  [ "${output}" = "${TMP}/each/kept.txt" ]
+}
+
+@test "the rg config has one --glob=! line for each entry of the glob list" {
+  install
+  [ "$(cat "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc")" = "$(sed 's/^/--glob=!/' "${PLUGIN}/shim/secret-globs")" ]
+}
+
+@test "a changed glob list reaches the installed list and the rg config" {
+  install
+  printf 'extra-name\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/secret-globs"
+  install
+  [ "${status}" -eq 0 ]
+  cmp "${CLAUDE_PLUGIN_ROOT}/shim/secret-globs" "${CLAUDE_PLUGIN_DATA}/shim/secret-globs"
+  [ "$(tail -n1 "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc")" = "--glob=!extra-name" ]
+}
+
 @test "running it again leaves the env file byte for byte the same" {
   install
   cp "${CLAUDE_ENV_FILE}" "${TMP}/first.sh"
@@ -170,7 +227,7 @@ in_shell() {
   install
   [ "$(tail -n1 "${CLAUDE_PLUGIN_DATA}/shim/grep")" = "# newer" ]
   [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
-  [ "$(find "${CLAUDE_PLUGIN_DATA}/shim" -type f | wc -l)" -eq 2 ]
+  [ "$(find "${CLAUDE_PLUGIN_DATA}/shim" -type f | wc -l)" -eq 3 ]
 }
 
 @test "a data dir with a space and a quote in its name works" {
@@ -260,4 +317,29 @@ in_shell() {
   run "${CLAUDE_PLUGIN_DATA}/shim/grep" -rl needle "${TMP}/tree"
   [ "${status}" -eq 0 ]
   [ "${output}" = "${TMP}/tree/b.yaml" ]
+}
+
+@test "the installed shim runs on its own and skips secret files and .git/" {
+  install
+  run "${CLAUDE_PLUGIN_DATA}/shim/grep" -rl needle "${TMP}/secrets"
+  [ "${status}" -eq 0 ]
+  [ "$(printf '%s\n' "${output}" | LC_ALL=C sort)" = "$(kept_listing "${TMP}/secrets/")" ]
+}
+
+@test "installs nothing when grep does not honour --exclude-dir" {
+  mkdir "${TMP}/odd"
+  printf '#!/bin/sh\nfor a; do shift; case $a in --exclude-dir=*) ;; *) set -- "$@" "$a" ;; esac; done\nexec %s "$@"\n' "${REAL_GREP}" >"${TMP}/odd/grep"
+  chmod +x "${TMP}/odd/grep"
+  PATH="${TMP}/odd:${ORIG_PATH}"
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "installs nothing when the glob list is missing" {
+  rm "${CLAUDE_PLUGIN_ROOT}/shim/secret-globs"
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+  [ ! -e "${CLAUDE_PLUGIN_DATA}" ]
 }

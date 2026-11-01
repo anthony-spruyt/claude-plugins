@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# The grep shim runs the real grep and skips *.sops.* files whatever options the caller passes.
+# The grep shim runs the real grep and skips the secret files listed in shim/secret-globs, and .git/, whatever options the caller passes.
 
 # shellcheck disable=SC2030,SC2031
 bats_require_minimum_version 1.5.0
@@ -21,6 +21,7 @@ setup() {
   printf 'needle\n--\n' >"${TMP}/plain/one.txt"
   printf 'other\n' >"${TMP}/plain/two.txt"
   printf 'needle three\n' >"${TMP}/plain/sub/three.txt"
+  make_secret_tree "${TMP}/secrets"
   export PATH="${SHIM_DIR}:${PATH}"
   hash -r
   cd "${TMP}/tree" || return 1
@@ -60,6 +61,109 @@ real_grep() {
   run grep -rl --include='*' needle .
   [ "$(sorted "${output}")" = "$(printf './b.yaml\n./sub/c.txt')" ]
   run grep -l --include='*.yaml' needle a.sops.yaml b.yaml
+  [ "${output}" = "b.yaml" ]
+}
+
+@test "skips secret files and .git/ in a recursive search, and keeps the lookalikes" {
+  cd "${TMP}/secrets"
+  run grep -rl needle .
+  [ "${status}" -eq 0 ]
+  [ "$(sorted "${output}")" = "$(kept_listing ./)" ]
+  run grep -rl needle
+  [ "${status}" -eq 0 ]
+  [ "$(sorted "${output}")" = "$(kept_listing '')" ]
+}
+
+@test "skips a secret file named on the command line, by relative or absolute path" {
+  cd "${TMP}/secrets"
+  for f in "${SKIPPED_FILES[@]}"; do
+    for path in "${f}" "./${f}" "${TMP}/secrets/${f}"; do
+      run grep -l needle "${path}"
+      if [ "${status}" -ne 1 ] || [ -n "${output}" ]; then
+        echo "${path}: status ${status}, output '${output}'" >&2
+        return 1
+      fi
+    done
+  done
+  run grep -l needle kept.txt .env clusterconfig/node.yaml sub/notes.txt .git/config
+  [ "$(sorted "${output}")" = "$(printf 'kept.txt\nsub/notes.txt')" ]
+  run grep -l needle environment.ts .gitignore .github/ci.yml
+  [ "$(sorted "${output}")" = "$(printf '.github/ci.yml\n.gitignore\nenvironment.ts')" ]
+}
+
+@test "skips a directory named on the command line, or a directory inside one" {
+  cd "${TMP}/secrets"
+  for dir in clusterconfig clusterconfig/ sub/clusterconfig sub/clusterconfig/deep .git sub/.git "${TMP}/secrets/.git"; do
+    run grep -rl needle "${dir}"
+    if [ "${status}" -ne 1 ] || [ -n "${output}" ]; then
+      echo "${dir}: status ${status}, output '${output}'" >&2
+      return 1
+    fi
+  done
+  run grep -rl needle .github
+  [ "${output}" = ".github/ci.yml" ]
+}
+
+@test "a later --include cannot bring secret files back" {
+  cd "${TMP}/secrets"
+  run grep -rl --include='*' needle .
+  [ "$(sorted "${output}")" = "$(kept_listing ./)" ]
+  run grep -rl --include='.env' --include='*.tfstate' --include='*.yaml' --include='config' needle .
+  [ "${output}" = "./secretary.yaml" ]
+  run grep -l --include='*' needle .env app.tfstate clusterconfig/node.yaml .git/config kept.txt
+  [ "${output}" = "kept.txt" ]
+}
+
+@test "every entry in secret-globs is skipped, as a file or as a directory" {
+  mkdir "${TMP}/each"
+  cd "${TMP}/each"
+  printf 'needle\n' >kept.txt
+  paths=()
+  while IFS= read -r glob; do
+    [[ -n "${glob}" ]] || continue
+    if [[ "${glob}" == */ ]]; then
+      path="${glob%/}"
+      path="${path//\*/x}/inner.txt"
+    else
+      path="${glob//\*/x}"
+    fi
+    mkdir -p "$(dirname -- "${path}")"
+    printf 'needle\n' >"${path}"
+    paths+=("${path}")
+  done <"${SHIM_DIR}/secret-globs"
+  [ "${#paths[@]}" -gt 10 ]
+  run grep -rl needle .
+  [ "${output}" = "./kept.txt" ]
+  for path in "${paths[@]}"; do
+    run grep -l needle "${path}"
+    if [ "${status}" -ne 1 ]; then
+      echo "${path}: status ${status}, output '${output}'" >&2
+      return 1
+    fi
+  done
+}
+
+@test "secret-globs has .git/ and *.sops.*, and each entry is a single name with no space" {
+  run real_grep -cxF -e '.git/' -e '*.sops.*' "${SHIM_DIR}/secret-globs"
+  [ "${output}" = "2" ]
+  run real_grep -nE '^(.+/.+|/|.*[[:space:]].*)$' "${SHIM_DIR}/secret-globs"
+  [ "${status}" -eq 1 ]
+}
+
+@test "stops with a clear error when the glob list is missing or empty, unless the shim is off" {
+  mkdir "${TMP}/lonely"
+  cp "${SHIM_DIR}/grep" "${TMP}/lonely/grep"
+  run --separate-stderr "${TMP}/lonely/grep" -rl needle .
+  [ "${status}" -eq 2 ]
+  [ -z "${output}" ]
+  [[ "${stderr}" == "grep: "*"secret-globs"* ]]
+  : >"${TMP}/lonely/secret-globs"
+  run --separate-stderr "${TMP}/lonely/grep" -rl needle .
+  [ "${status}" -eq 2 ]
+  [ -z "${output}" ]
+  [[ "${stderr}" == "grep: "*"secret-globs"* ]]
+  rm "${TMP}/lonely/secret-globs"
+  SECURITY_HOOKS_GREP_SHIM=0 run "${TMP}/lonely/grep" -l needle b.yaml
   [ "${output}" = "b.yaml" ]
 }
 
@@ -227,7 +331,7 @@ real_grep() {
 
 @test "does not loop between different copies of itself on PATH" {
   mkdir "${TMP}/copy" "${TMP}/older"
-  cp "${SHIM_DIR}/grep" "${TMP}/copy/grep"
+  cp "${SHIM_DIR}/grep" "${SHIM_DIR}/secret-globs" "${TMP}/copy/"
   {
     sed -n 1,2p "${SHIM_DIR}/grep"
     printf 'exit 99\n'
@@ -253,6 +357,8 @@ real_grep() {
   [ "$(sorted "${output}")" = "$(printf './a.sops.yaml\n./b.yaml\n./sub/c.sops.json\n./sub/c.txt')" ]
   SECURITY_HOOKS_GREP_SHIM=0 run grep -l needle a.sops.yaml
   [ "${output}" = "a.sops.yaml" ]
+  SECURITY_HOOKS_GREP_SHIM=0 run grep -rl needle "${TMP}/secrets"
+  [ "${#lines[@]}" -eq $((${#KEPT_FILES[@]} + ${#SKIPPED_FILES[@]})) ]
   SECURITY_HOOKS_GREP_SHIM=1 run grep -rl needle .
   [ "$(sorted "${output}")" = "$(printf './b.yaml\n./sub/c.txt')" ]
   SECURITY_HOOKS_GREP_SHIM='' run grep -rl needle .
