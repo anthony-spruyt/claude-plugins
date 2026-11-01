@@ -331,18 +331,26 @@ class RuleEngine:
         if tool_name != "Bash":
             return self._regex_match(condition.fallback or pattern, field_value)
         parsed = clean_lines(raw_value, cwd)
-        if parsed is None or (strict and parsed[1] and condition.fallback):
-            per_command = parsed is not None and parsed[1] == Opacity.LOCAL
-            if self._fallback_match(condition.fallback or pattern, field_value, per_command):
-                return True
-            if parsed is None:
-                # Block rules also try each piece that parses, so one unreadable piece can't hide the rest
-                lines = segment_lines(field_value, cwd)[0] if strict else ()
-                return any(self._regex_match(pattern, line) for line in lines)
+        if parsed is None:
+            return self._unparsed_match(condition, field_value, strict, cwd)
+        if (
+            strict
+            and parsed[1]
+            and condition.fallback
+            and self._fallback_match(condition.fallback, field_value, parsed[1] == Opacity.LOCAL)
+        ):
+            return True
         lines = parsed[0]
         if mask:
             lines = [mask_data(line) for line in lines]
         return any(self._regex_match(pattern, line) for line in lines)
+
+    def _unparsed_match(self, condition: Condition, field_value: str, strict: bool, cwd: str) -> bool:
+        if self._regex_match(condition.fallback or condition.pattern, field_value):
+            return True
+        # Block rules also try each piece that parses, so one unreadable piece can't hide the rest
+        lines = segment_lines(field_value, cwd)[0] if strict else ()
+        return any(self._regex_match(condition.pattern, line) for line in lines)
 
     def _fallback_match(self, pattern: str, command: str, per_command: bool) -> bool:
         """Per command when its hidden code stays in one command, so another command's flags stay out; else whole."""

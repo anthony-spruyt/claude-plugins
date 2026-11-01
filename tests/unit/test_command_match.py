@@ -185,6 +185,9 @@ class TestOpaqueAlsoUsesFallback:
             "echo printenv | cat | sh",
             "bash < <(echo printenv)",
             "echo printenv | xargs nice",
+            "xargs nice < printenv",
+            "cat printenv | sh",
+            "echo printenv | cut -d: -f1 | sh",
             "trap printenv EXIT",
             "busybox printenv",
             "docker exec c printenv",
@@ -202,6 +205,7 @@ class TestOpaqueAlsoUsesFallback:
             "echo printenv > run.sh",
             "printf 'printenv' >> ~/.bashrc",
             "echo printenv | ssh host",
+            "echo printenv | ssh -t host",
             "echo printenv | tee x | bash",
             "parallel ::: printenv",
             "cat > /tmp/r.md <<'EOF'\nprintenv\nEOF\nbash /tmp/r.md",
@@ -263,7 +267,9 @@ class TestOpaqueAlsoUsesFallback:
         os.link(other, path)
         assert _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), self._report(path))
 
-    @pytest.mark.parametrize("cmd", ["echo printenv", "mkdir -p printenv # x", "git log printenv"])
+    @pytest.mark.parametrize(
+        "cmd", ["echo printenv", "mkdir -p printenv # x", "git log printenv", "echo printenv | ssh host ls"]
+    )
     def test_plain_commands_skip_fallback(self, cmd):
         assert not _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
 

@@ -7,7 +7,7 @@ import enum
 import os
 import re
 import stat
-from typing import List
+from typing import Dict, List
 
 from core.masking import _message_spec
 from core.shell_parse import SHELLS, SimpleCommand, _base, _Group
@@ -269,6 +269,23 @@ def _saves(cmd: SimpleCommand) -> bool:
     return False
 
 
+def _upstream_of(commands: List[SimpleCommand]) -> Dict[int, SimpleCommand]:
+    """Each command that pipes into another, keyed by the id of the command it feeds."""
+    return {id(cmd.pipe_to): cmd for cmd in commands if cmd.pipe_to is not None}
+
+
+def _runs_fed_code(cmd: SimpleCommand, upstream: Dict[int, SimpleCommand]) -> bool:
+    """A command that runs the text another command pipes or redirects into it."""
+    name = _name(cmd)
+    prev = upstream.get(id(cmd))
+    if name == "xargs" and (prev is not None or any(_stdin_op(op) in STDIN_OPS for op, _ in cmd.redirects)):
+        return True
+    if name in STDIN_READERS and prev is not None and (_name(prev) in PASS_THROUGH or id(prev) in upstream):
+        return True
+    # ssh with only a host runs its stdin as a remote script
+    return name == "ssh" and prev is not None and len([a for a in cmd.args if not a.startswith("-")]) <= 1
+
+
 def opaque(command: str, commands: List[SimpleCommand], functions=(), variables=()) -> Opacity:  # noqa: PLR0911  # one early return per independent check
     """LOCAL only when every command that hides code keeps it to itself and none writes a file or sets a variable."""
     if functions or CODE_VAR.search(command):
@@ -276,23 +293,11 @@ def opaque(command: str, commands: List[SimpleCommand], functions=(), variables=
     # Heredoc text can be saved and run later; the parser only reads it when a shell runs it now
     if _unparsed_heredoc(commands):
         return Opacity.SHARED
-    upstream = {}
-    for cmd in commands:
-        if cmd.pipe_to is not None:
-            upstream[id(cmd.pipe_to)] = cmd
-    for cmd in commands:
-        if _runs_hidden_code(cmd) or _group_reads_stdin(cmd) or _saves_code(cmd):
-            return Opacity.SHARED
-        if _name(cmd) == "xargs" and (
-            id(cmd) in upstream or any(_stdin_op(op) in STDIN_OPS for op, _ in cmd.redirects)
-        ):
-            return Opacity.SHARED
-        prev = upstream.get(id(cmd))
-        if _name(cmd) in STDIN_READERS and prev is not None and (_name(prev) in PASS_THROUGH or id(prev) in upstream):
-            return Opacity.SHARED
-        # ssh with only a host runs its stdin as a remote script
-        if _name(cmd) == "ssh" and prev is not None and len([a for a in cmd.args if not a.startswith("-")]) <= 1:
-            return Opacity.SHARED
+    upstream = _upstream_of(commands)
+    if any(
+        _runs_hidden_code(c) or _group_reads_stdin(c) or _saves_code(c) or _runs_fed_code(c, upstream) for c in commands
+    ):
+        return Opacity.SHARED
     if not any(_name(cmd) in ONE_SHOT_RUNNERS for cmd in commands):
         return Opacity.VISIBLE
     # A written file, a new PATH or a variable lets one command run code another saved

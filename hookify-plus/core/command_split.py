@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 
 UNSPLITTABLE = re.compile(r"<<|\$'|(?<![\w-])(?:case|for|while|until|select)(?![\w-])")
 COMMENT_BEFORE = frozenset(" \t\n;&|()<>`")
+CLOSER_OF = {"(": ")", "{": "}"}
 PARAM = "${"
 
 
@@ -87,19 +88,25 @@ class _Splitter:
             self.stack.pop()
         elif c in "'\"`":
             self.stack.append(c)
-        elif c in "({":
-            self.stack.append(")" if c == "(" else "}")
+        elif c in CLOSER_OF:
+            self.stack.append(CLOSER_OF[c])
         elif c in ")}":
-            if top != c:
-                raise _UnsplittableError
-            self.stack.pop()
-        elif c == "#" and (i == 0 or self.command[i - 1] in COMMENT_BEFORE):
+            self._close(c, top)
+        elif self._starts_comment(i, c):
             raise _UnsplittableError
         elif not self.stack and (c in ";\n" or pair in ("&&", "||")):
             self._cut()
             return 1 if c in ";\n" else 2
         self.current.append(c)
         return 1
+
+    def _close(self, c: str, top: str) -> None:
+        if top != c:
+            raise _UnsplittableError
+        self.stack.pop()
+
+    def _starts_comment(self, i: int, c: str) -> bool:
+        return c == "#" and (i == 0 or self.command[i - 1] in COMMENT_BEFORE)
 
 
 @lru_cache(maxsize=64)
