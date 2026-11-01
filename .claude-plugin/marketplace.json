@@ -24,7 +24,7 @@
     },
     {
       "name": "best-practices",
-      "description": "Warning rules for conventional commits, tool usage, and shell wrappers",
+      "description": "Rules for conventional commits, tool usage, shell wrappers, and rm targets that stall on a permission prompt",
       "author": {
         "name": "anthony-spruyt"
       },

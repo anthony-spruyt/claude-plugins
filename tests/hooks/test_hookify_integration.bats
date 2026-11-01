@@ -93,9 +93,21 @@ hook() {
   assert_success
 }
 
+@test "hookify integration: compound command cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/compound_commands.yaml"
+  assert_success
+}
+
 @test "hookify integration: powershell rule cases pass" {
   run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
     "$REPO_ROOT/tests/hooks/powershell_rules.yaml"
+  assert_success
+}
+
+@test "hookify integration: rm rule cases pass" {
+  run python3 "$REPO_ROOT/tests/helpers/run_hookify_tests.py" \
+    "$REPO_ROOT/tests/hooks/rm_rules.yaml"
   assert_success
 }
 

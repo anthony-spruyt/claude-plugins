@@ -118,6 +118,36 @@ class TestSeparators:
         assert pairs("echo a \\\n  b") == [("echo", ["a", "b"])]
 
 
+class TestVariableSets:
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "c=x",
+            "c+=x; env",
+            "a[1]=x",
+            "env; c=x",
+            "(c=x)",
+            "{ c=x; }",
+            "eval 'c=x'",
+            "if true; then c=x; fi",
+            "c=x >f",
+        ],
+    )
+    def test_command_that_only_sets_a_variable_is_reported(self, command):
+        variables = set()
+        assert parse_commands(command, None, False, variables) is not None
+        assert variables
+
+    @pytest.mark.parametrize("command", ["c=x env", "c=x d=y env; wc", "env c=x", "env >f", "echo c=x"])
+    def test_variable_set_for_one_command_is_not_reported(self, command):
+        variables = set()
+        assert parse_commands(command, None, False, variables) is not None
+        assert not variables
+
+    def test_set_variable_is_not_a_command(self):
+        assert names("c=x; env") == ["env"]
+
+
 class TestRedirects:
     def test_redirect_is_not_an_argument(self):
         (echo,) = parse_commands("echo export > f")

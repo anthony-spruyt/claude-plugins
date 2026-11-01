@@ -136,6 +136,10 @@ BYPASS_HEADS = [
     "git tag v1 -m ",
     "gh release create v1 --notes ",
     "gh pr comment 1 -b ",
+    'f() { git commit -m "$@"; }; f ',
+    'f() { gh pr create --title x --body "$@"; }; f ',
+    'f() { bash -c "$@"; }; f ',
+    'f() { cat "$@"; }; f ',
 ]
 BYPASS_PIECES = [
     "'",
