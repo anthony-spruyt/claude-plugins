@@ -1,0 +1,138 @@
+#!/usr/bin/env -S bash -p
+# security-hooks rg shim: runs the real rg with the globs built from secret-globs after the caller's. Installed by scripts/install-grep-shim.sh.
+# Keep the line above as line 2: is_shim reads it from every rg on PATH, so copies of the shim never call each other.
+# bash -p ignores the caller's BASH_ENV, SHELLOPTS and BASHOPTS, which would change how this script runs.
+
+# Sets SHIM_HOME to the folder this script lives in, however it was reached through symlinks, and sources the helper from there.
+load_common() {
+  local path=${BASH_SOURCE[0]} target hops=0
+  while [[ -L $path ]] && ((hops < 40)); do
+    target=$(readlink -- "$path") || break
+    if [[ $target == /* || $path != */* ]]; then
+      path=$target
+    else
+      path=${path%/*}/$target
+    fi
+    hops=$((hops + 1))
+  done
+  [[ $path == */* ]] || path=./$path
+  SHIM_HOME=${path%/*}
+  [[ -r $SHIM_HOME/shim-common.bash ]] || {
+    echo "rg: cannot read shim-common.bash from $SHIM_HOME" >&2
+    exit 2
+  }
+  # shellcheck source-path=SCRIPTDIR source=shim-common.bash
+  source "$SHIM_HOME/shim-common.bash"
+}
+
+load_common
+
+# rg 15's flags that take a value. Any other flag counts as taking none: rg rejects an unknown flag before it searches.
+LONG_VALUE_FLAGS=(
+  after-context before-context color colors context context-separator dfa-size-limit encoding engine
+  field-context-separator field-match-separator file generate glob hostname-bin hyperlink-format iglob ignore-file
+  max-columns max-count max-depth max-filesize maxdepth path-separator pre pre-glob regex-size-limit regexp replace
+  sort sortr threads type type-add type-clear type-not
+)
+SHORT_VALUE_FLAGS=ABCEMTdefgjmrt
+
+# Sets GLOB_OPTIONS from GLOBS; a directory entry also gets a glob that covers it when it is named on the command line.
+# --iglob matches case-insensitively and rg applies it after every --glob, so ours are added only when the caller passes one.
+glob_options() {
+  local glob pattern patterns
+  GLOB_OPTIONS=()
+  for glob in "${GLOBS[@]}"; do
+    patterns=("$glob")
+    [[ $glob != */ ]] || patterns+=("**/$glob**")
+    for pattern in "${patterns[@]}"; do
+      GLOB_OPTIONS+=("--glob=!$pattern")
+      ((CALLER_IGLOB == 0)) || GLOB_OPTIONS+=("--iglob=!$pattern")
+    done
+  done
+}
+
+long_takes_value() {
+  local name=$1 flag
+  for flag in "${LONG_VALUE_FLAGS[@]}"; do
+    [[ $flag != "$name" ]] || return 0
+  done
+  return 1
+}
+
+short_takes_value() {
+  local flag=$1
+  [[ $SHORT_VALUE_FLAGS == *"$flag"* ]]
+}
+
+# Succeeds when the last flag in the cluster of short flags $1 takes a value that is not attached to it.
+short_needs_next() {
+  local rest=${1#-} flag
+  while [[ -n $rest ]]; do
+    flag=${rest:0:1}
+    rest=${rest:1}
+    if short_takes_value "$flag"; then
+      [[ -z $rest ]]
+      return
+    fi
+  done
+  return 1
+}
+
+is_iglob() {
+  local word=$1
+  [[ $word == --iglob || $word == --iglob=* ]]
+}
+
+# Sets END to the number of words before the "--" that ends the options, else to all of them, and CALLER_IGLOB to 1 when one of those is --iglob.
+# Fails when the last flag is missing its value.
+options_end() {
+  local words=("$@") count=$# i=0 word
+  END=$count
+  CALLER_IGLOB=0
+  while ((i < count)); do
+    word=${words[i]}
+    i=$((i + 1))
+    case $word in
+    --)
+      END=$((i - 1))
+      return 0
+      ;;
+    --*)
+      ! is_iglob "$word" || CALLER_IGLOB=1
+      if long_takes_value "${word#--}"; then
+        ((i < count)) || return 1
+        i=$((i + 1))
+      fi
+      ;;
+    -?*)
+      if short_needs_next "$word"; then
+        ((i < count)) || return 1
+        i=$((i + 1))
+      fi
+      ;;
+    *) ;;
+    esac
+  done
+}
+
+main() {
+  local real
+  real=$(find_real rg) || {
+    echo "rg: no rg found on PATH other than this wrapper" >&2
+    exit 127
+  }
+  if [[ ${SECURITY_HOOKS_GREP_SHIM:-} == 0 ]]; then
+    exec -a rg "$real" "$@"
+  fi
+  read_globs || {
+    echo "rg: cannot read secret-file globs from $GLOBS_FILE" >&2
+    exit 2
+  }
+  options_end "$@" || exec -a rg "$real" "$@"
+  glob_options
+  exec -a rg "$real" "${@:1:END}" "${GLOB_OPTIONS[@]}" "${@:END+1}"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi
