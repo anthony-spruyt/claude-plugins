@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0](https://github.com/anthony-spruyt/claude-plugins/compare/security-hooks-v2.10.0...security-hooks-v2.11.0) (2026-11-01)
+
+
+### Features
+
+* **security-hooks:** rg skips the listed files even with the caller's own globs ([#260](https://github.com/anthony-spruyt/claude-plugins/issues/260)) ([5c504bc](https://github.com/anthony-spruyt/claude-plugins/commit/5c504bc6b940163c5c13a97e43fdf6b8baaed268))
+
 ## [2.10.0](https://github.com/anthony-spruyt/claude-plugins/compare/security-hooks-v2.9.0...security-hooks-v2.10.0) (2026-11-01)
 
 
