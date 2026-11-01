@@ -182,7 +182,7 @@ Warning message here
 
 `command_match` (field `command` only) regex-searches each "clean line": one per simple command bash would run, quotes removed, wrappers like `sudo`/`bash -c`/`eval` unwrapped, pipes and redirects kept. If the command can't be parsed, the optional `fallback` regex (or `pattern` if there is no `fallback`) is matched against the raw command instead, masked if `mask_data: true`. Block rules also
 match `pattern` on each piece of it that parses.
-When the command runs code the parser can't see, `fallback` is matched against each top-level command (split on `;`, `&&`, `||` and newlines, never `|`) if that code stays inside one command, as with `kubectl` or `docker`, and against the whole command if it can't be split or if one command can define code another runs, such as a function, an alias or a saved script, so a `fallback` shouldn't rely on text in a neighbouring command. `glob_overflow` (no `pattern`) matches a command with a glob or brace past 256 words or 20,000 directory entries:
+When the command runs code the parser can't see, `fallback` is matched against each top-level command (split on `;`, `&&`, `||` and newlines, never `|`) if that code stays inside one command, as with `kubectl` or `docker`, and no command writes a file, sets a variable or changes `PATH`. It is matched against the whole command otherwise: when the command can't be split, holds a loop (`for`, `while`, `until`, `select`), or has one command define code another runs, such as a function, an alias, a saved script or a variable. A `fallback` shouldn't rely on text in a neighbouring command. `glob_overflow` (no `pattern`) matches a command with a glob or brace past 256 words or 20,000 directory entries:
 
 ```yaml
 conditions:

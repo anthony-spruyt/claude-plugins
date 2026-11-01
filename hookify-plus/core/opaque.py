@@ -58,25 +58,25 @@ CODE_BUILTINS = frozenset(
 # Run only the code in their own arguments, right away
 ONE_SHOT_RUNNERS = frozenset(
     [
-        "busybox",
-        "toybox",
         "docker",
         "podman",
         "nerdctl",
         "kubectl",
         "oc",
         "flatpak",
-        "flatpak-spawn",
-        "distrobox",
-        "toolbox",
         "lxc",
         "incus",
         "machinectl",
     ]
 )
-# Take code from a session, a script or a project file that another command may have written
+# Take code from a session, a script, a shell or a project file that another command may have written
 STATEFUL_RUNNERS = frozenset(
     [
+        "busybox",
+        "toybox",
+        "flatpak-spawn",
+        "distrobox",
+        "toolbox",
         "tmux",
         "screen",
         "byobu",
@@ -93,6 +93,19 @@ STATEFUL_RUNNERS = frozenset(
         "make",
     ]
 )
+# Put text in a file that a later command can run: a plugin, a script or a project file
+FILE_WRITERS = frozenset(["tee", "cp", "mv", "ln", "install", "wget", "tar", "unzip", "rsync", "scp", "patch"])
+INTERPRETERS = re.compile(r"(?:python[\d.]*|perl|ruby|node|deno|bun|php|lua[\d.]*|g?awk|mawk|pwsh|powershell)$")
+SED_IN_PLACE = re.compile(r"-[A-Za-z]*i|--in-place")
+CURL_OUTPUT = re.compile(r"-[A-Za-z]*[oO]|--(?:output|remote-name)")
+DISCARD = re.compile(r"/dev/(?:null|stdout|stderr)$")
+FD_TARGET = re.compile(r"(?:\d+-?|-)$")
+PATH_ASSIGN = re.compile(r"(?<![\w$])PATH\+?=")
+# Keep text in a variable that a later command reads back
+DECLARERS = frozenset(["export", "declare", "typeset", "readonly", "local"])
+VAR_ASSIGN_ARG = re.compile(r"[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=")
+SET_OPTION_ARG = re.compile(r"[-+]\w*o$")
+VAR_EXPANSION = re.compile(r"\$_(?!\w)|\$\{_\W|\$\{[A-Za-z_]\w*(?:\[[^\]]*\])?:?=|BASH_REMATCH")
 CODE_VAR = re.compile(r'(?:^|[\s;&|(){}\'"])(?:PS[0-4]|PROMPT_COMMAND|BASH_ENV|ENV|BASH_FUNC_\S*)\+?=')
 STDIN_PATH = re.compile(r"/dev/(?:stdin|fd/\d+)$|/proc/[^/]+/fd/\d+$|[<>]\(")
 EVAL_EXPANSION = re.compile(r"@[PE]\}|\[\$\(|\[`")
@@ -146,6 +159,54 @@ def _saves_code(cmd: SimpleCommand) -> bool:
         op.lstrip("0123456789") in WRITE_OPS and op[:1] in "1>&" and RUNNABLE_FILE.search(target)
         for op, target in cmd.redirects
     )
+
+
+def _writes_file(cmd: SimpleCommand) -> bool:  # noqa: PLR0911  # one early return per independent check
+    name = _name(cmd)
+    if name in FILE_WRITERS or INTERPRETERS.match(name):
+        return True
+    if name == "dd":
+        return any(a.startswith("of=") for a in cmd.args)
+    if name == "sed":
+        return any(SED_IN_PLACE.match(a) for a in cmd.args)
+    if name == "curl":
+        return any(CURL_OUTPUT.match(a) for a in cmd.args)
+    if name in ONE_SHOT_RUNNERS and "cp" in cmd.args:
+        return True
+    node = cmd
+    while node is not None:
+        if any(_writes_via(op, target) for op, target in node.redirects):
+            return True
+        node = node.parent
+    return False
+
+
+def _writes_via(op: str, target: str) -> bool:
+    op = _stdin_op(op)
+    if DISCARD.match(target) or (op == ">&" and FD_TARGET.match(target)):
+        return False
+    return op in (*WRITE_OPS, "<>", ">&")
+
+
+def _sets_variable(cmd: SimpleCommand) -> bool:
+    name = _name(cmd)
+    if name in ("read", "getopts"):
+        return True
+    if name in DECLARERS:
+        return any(VAR_ASSIGN_ARG.match(a) for a in cmd.args)
+    if name == "printf":
+        return any(a.startswith("-v") for a in cmd.args)
+    return name == "set" and _sets_positionals(cmd.args)
+
+
+def _sets_positionals(args: List[str]) -> bool:
+    """`set -- a b` and `set a b` fill $1, $2 ...; `set -e` and `set -o pipefail` only flip options."""
+    prev = ""
+    for arg in args:
+        if arg == "--" or (not arg.startswith(("-", "+")) and not SET_OPTION_ARG.fullmatch(prev)):
+            return True
+        prev = arg
+    return False
 
 
 def _group_reads_stdin(cmd: SimpleCommand) -> bool:
@@ -208,8 +269,8 @@ def _saves(cmd: SimpleCommand) -> bool:
     return False
 
 
-def opaque(command: str, commands: List[SimpleCommand], functions=()) -> Opacity:  # noqa: PLR0911  # one early return per independent check
-    """LOCAL only when every command that hides code keeps it to itself; any other reason is SHARED."""
+def opaque(command: str, commands: List[SimpleCommand], functions=(), variables=()) -> Opacity:  # noqa: PLR0911  # one early return per independent check
+    """LOCAL only when every command that hides code keeps it to itself and none writes a file or sets a variable."""
     if functions or CODE_VAR.search(command):
         return Opacity.SHARED
     # Heredoc text can be saved and run later; the parser only reads it when a shell runs it now
@@ -232,4 +293,11 @@ def opaque(command: str, commands: List[SimpleCommand], functions=()) -> Opacity
         # ssh with only a host runs its stdin as a remote script
         if _name(cmd) == "ssh" and prev is not None and len([a for a in cmd.args if not a.startswith("-")]) <= 1:
             return Opacity.SHARED
-    return Opacity.LOCAL if any(_name(cmd) in ONE_SHOT_RUNNERS for cmd in commands) else Opacity.VISIBLE
+    if not any(_name(cmd) in ONE_SHOT_RUNNERS for cmd in commands):
+        return Opacity.VISIBLE
+    # A written file, a new PATH or a variable lets one command run code another saved
+    if variables or PATH_ASSIGN.search(command) or VAR_EXPANSION.search(command):
+        return Opacity.SHARED
+    if any(_writes_file(cmd) or _sets_variable(cmd) for cmd in commands):
+        return Opacity.SHARED
+    return Opacity.LOCAL

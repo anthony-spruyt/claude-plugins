@@ -1,5 +1,5 @@
 # A command the parser cannot see through is checked one command at a time when it can be split and its hidden code stays inside one command, so text in one command never completes a match in another.
-# Code one command defines and another runs (functions, saved scripts, source, alias) is checked as a whole.
+# Code one command defines and another runs (functions, saved scripts, source, alias, a written file, a set variable, a changed PATH, a loop) is checked as a whole.
 test_cases:
   - name: 'compound: allows an IP in a command after the gh call'
     tool: Bash
@@ -72,4 +72,52 @@ test_cases:
   - name: 'compound: blocks an IP passed to an alias of git commit'
     tool: Bash
     command: "alias gc='git commit'; gc -m \"host 10.1.2.3\""
+    expect: block
+  - name: 'compound: allows an IP after the gh call when a command only discards output'
+    tool: Bash
+    command: 'kubectl get pods >/dev/null 2>&1; gh issue create --title x --body-file r.md; echo 10.1.2.3'
+    expect: allow
+  - name: 'compound: blocks an IP passed to a script saved by printf and found through PATH'
+    tool: Bash
+    command: "printf 'gh issue create --body \"$@\"' > /tmp/p/kubectl-g; PATH=/tmp/p:$PATH kubectl g 10.1.2.3"
+    expect: block
+  - name: 'compound: blocks an IP passed to an oc plugin saved by printf and found through PATH'
+    tool: Bash
+    command: "printf 'gh issue create --body \"$@\"' > /tmp/p/oc-g; PATH=/tmp/p:$PATH oc g 10.1.2.3"
+    expect: block
+  - name: 'compound: blocks an IP passed to a docker plugin saved by printf'
+    tool: Bash
+    command: "printf 'gh issue create --body \"$@\"' > ~/.docker/cli-plugins/docker-g; docker g 10.1.2.3"
+    expect: block
+  - name: 'compound: blocks an IP passed to a plugin saved by tee'
+    tool: Bash
+    command: "printf 'gh issue create --body \"$@\"' | tee /tmp/p/kubectl-g; kubectl g 10.1.2.3"
+    expect: block
+  - name: 'compound: blocks an IP after a busybox call that can run a script file'
+    tool: Bash
+    command: 'busybox sh /tmp/x gh issue create --body-file r.md; echo 10.1.2.3'
+    expect: block
+  - name: 'compound: blocks an IP fed to a kubectl call in a for loop'
+    tool: Bash
+    command: 'for i in 1 2; do kubectl gh issue create --body $@; set -- 10.1.2.3; done'
+    expect: block
+  - name: 'compound: blocks an IP fed to a kubectl exec call in an until loop'
+    tool: Bash
+    command: 'until false; do kubectl exec p -- gh issue create --body $c; c=10.1.2.3; done'
+    expect: block
+  - name: 'compound: blocks an IP fed to a kubectl call in a while loop on separate lines'
+    tool: Bash
+    command: "while true\ndo\n  kubectl gh issue create --body $@\n  set -- 10.1.2.3\ndone"
+    expect: block
+  - name: 'compound: allows an IP after the gh call when a variable is set only for one kubectl call'
+    tool: Bash
+    command: 'KUBECONFIG=/x kubectl get pods; gh issue create --title x --body-file r.md; echo 10.1.2.3'
+    expect: allow
+  - name: 'compound: blocks an IP passed through a variable that another command set'
+    tool: Bash
+    command: "c='gh issue create --body'; docker exec p sh -c \"$c 10.1.2.3\""
+    expect: block
+  - name: 'compound: blocks an IP passed through the positional parameters that another command set'
+    tool: Bash
+    command: "set -- gh issue create --body; kubectl exec p -- sh -c \"$* 10.1.2.3\""
     expect: block

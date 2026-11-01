@@ -144,6 +144,17 @@ class TestGivesUp:
             "cat <\\\n<EOF\nx\nEOF",
             "a $\\\n'x;y'; b",
             "ca\\\nse x in (a) b;; esac",
+            "for i in 1 2; do a; b; done",
+            "for ((i=0; i<2; i++)); do a; done",
+            "while a; do b; c; done",
+            "until a; do b; c; done",
+            "select i in x y; do a; b; done",
+            "a && for i in 1; do b; done",
+            "a | while read i; do b; done",
+            "! while a; do b; done",
+            "if a; then for i in 1; do b; done; fi",
+            "{ for i in 1; do a; done; }; b",
+            "fo\\\nr i in 1; do a; done",
         ],
     )
     def test_gives_up_on_what_it_cannot_read_with_certainty(self, cmd):
@@ -155,4 +166,21 @@ class TestGivesUp:
 
     @pytest.mark.parametrize("cmd", ["showcase a; b", "a --case-file x; b", "a case_x; b"])
     def test_other_words_containing_case_split(self, cmd):
+        assert split_commands(cmd) is not None
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "a --for=x; b",
+            "a --while x; b",
+            "a format; b",
+            "a forward; b",
+            "a for_each; b",
+            "a for-each; b",
+            "a unlike; b",
+            "a selected; b",
+            "a until_x; b",
+        ],
+    )
+    def test_other_words_containing_a_loop_keyword_split(self, cmd):
         assert split_commands(cmd) is not None

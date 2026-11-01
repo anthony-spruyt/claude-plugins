@@ -30,13 +30,13 @@ def compile_regex(pattern: str) -> re.Pattern:
 
 
 def normalise(command: str, cwd: str = "", entries: Optional[List[int]] = None, prefix_ends: bool = False):
-    functions, overflow = set(), []
+    functions, variables, overflow = set(), set(), []
     _BODIES.clear()
-    commands = parse_commands(command, functions, prefix_ends)
+    commands = parse_commands(command, functions, prefix_ends, variables)
     if commands is None:
         return None
     lines = render(commands, cwd, overflow, entries)
-    return None if lines is None else (lines, opaque(command, commands, functions), overflow)
+    return None if lines is None else (lines, opaque(command, commands, functions, variables), overflow)
 
 
 def _clean_path(path: str) -> str:

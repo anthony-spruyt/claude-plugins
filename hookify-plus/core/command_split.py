@@ -7,7 +7,7 @@ import re
 from functools import lru_cache
 from typing import List, Optional, Tuple
 
-UNSPLITTABLE = re.compile(r"<<|\$'|(?<![\w-])case(?![\w-])")
+UNSPLITTABLE = re.compile(r"<<|\$'|(?<![\w-])(?:case|for|while|until|select)(?![\w-])")
 COMMENT_BEFORE = frozenset(" \t\n;&|()<>`")
 PARAM = "${"
 

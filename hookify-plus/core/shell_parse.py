@@ -84,6 +84,10 @@ class FunctionDef(str):
     """Name of a function defined in the command; kept out of the returned commands."""
 
 
+class VariableSet(str):
+    """A command that only sets variables; kept out of the returned commands."""
+
+
 class _UnsureError(Exception):
     pass
 
@@ -1125,6 +1129,8 @@ class _Parser:
         if not words:
             words = self.wordless(assigned, redirects)
             if words is None:
+                if assigned:
+                    self.out[slot] = VariableSet()
                 return None
         name, flags = words[0]
         if flags & EXPANDED or (flags & GLOB and name != "[" and _globbing(name)):
@@ -1576,7 +1582,7 @@ def _run(  # noqa: PLR0913, PLR0917  # parser state passed down each nested pars
 
 
 def parse_commands(
-    command: str, functions: Optional[set] = None, prefix_ends: bool = False
+    command: str, functions: Optional[set] = None, prefix_ends: bool = False, variables: Optional[set] = None
 ) -> Optional[List[SimpleCommand]]:
     if len(command) > MAX_LENGTH:
         return None
@@ -1590,7 +1596,9 @@ def parse_commands(
         _PREFIX_ENDS[0] = False
     if functions is not None:
         functions.update(c for c in out if isinstance(c, FunctionDef))
-    commands = [c for c in out if c is not None and not isinstance(c, FunctionDef)]
+    if variables is not None:
+        variables.update(c for c in out if isinstance(c, VariableSet))
+    commands = [c for c in out if c is not None and not isinstance(c, (FunctionDef, VariableSet))]
     if any((_base(c.name) or c.name).startswith("-") for c in commands):
         return None
     # An alias can turn any later word into eval, so no line after it reads as written
