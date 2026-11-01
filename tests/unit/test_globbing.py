@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(REPO_ROOT, "hookify-plus"))
 from core.globbing import MAX_ENTRIES, MAX_WORDS, expand
 from core.rule_engine import normalise
 from core.shell_parse import parse_commands, render
+from tests.unit.test_rule_performance import assert_fast
 
 
 @pytest.fixture
@@ -124,6 +125,19 @@ class TestLimits:
         start = time.perf_counter()
         assert expand("*/*/*", cwd=str(tmp_path)) is None
         assert time.perf_counter() - start < 0.2
+
+    @pytest.mark.parametrize(
+        "word",
+        [
+            pytest.param("*/" * 40000, id="stars"),
+            pytest.param("*/" + "".join(f"x{n}*/" for n in range(40000)), id="parts-after-no-match"),
+            pytest.param("d*/" + "a/" * 5000 + "*/" * 100000, id="long-run-then-no-match"),
+        ],
+    )
+    def test_glob_walk_is_linear_in_path_parts(self, tmp_path, word):
+        """Quadratic work per path part, or work after nothing can match, made a long word time out."""
+        (tmp_path / "d").mkdir()
+        assert_fast(lambda: expand(word, cwd=str(tmp_path)), 0.2, "glob walk")
 
     def test_many_globs_share_one_budget(self, tmp_path):
         for n in range(MAX_ENTRIES // 4):

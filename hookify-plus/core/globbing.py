@@ -133,10 +133,11 @@ def _glob(word: str, budget: List[int], cwd: str) -> List[str]:
     def on_disk(path):
         return os.path.join(cwd, path) if cwd else path
 
+    final = max((n for n, part in enumerate(parts) if part), default=-1)
     for n, part in enumerate(parts):
         if not part:
             continue
-        last = n == len(parts) - 1 or not any(parts[n + 1 :])
+        last = n == final
         if not _has_glob(part):
             paths = [p + UNESCAPE.sub(r"\1", part) + ("" if last else "/") for p in paths]
             continue
@@ -151,6 +152,8 @@ def _glob(word: str, budget: List[int], cwd: str) -> List[str]:
             if len(found) > MAX_WORDS:
                 raise _TooMuchError
         paths = found
+        if not paths:
+            return []
     if word.endswith("/"):
         paths = [p.rstrip("/") + "/" for p in paths if os.path.isdir(on_disk(p))]
     return sorted(p for p in paths if os.path.lexists(on_disk(p)))
