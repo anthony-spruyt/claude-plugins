@@ -1,0 +1,250 @@
+#!/usr/bin/env bats
+#
+# The SessionStart hook installs the grep shim and the rg config outside the plugin dir
+# and writes the lines that make the Bash tool's shell use them.
+
+# shellcheck disable=SC2016,SC2030,SC2031
+bats_require_minimum_version 1.5.0
+load helpers
+
+REPO_ROOT="${BATS_TEST_DIRNAME}/../.."
+PLUGIN="${REPO_ROOT}/security-hooks"
+HOOKS="${PLUGIN}/hooks/hooks.json"
+
+setup() {
+  ORIG_PATH="${PATH}"
+  REAL_GREP="$(real_grep_path)"
+  TMP="$(mktemp -d)"
+  cp -R "${PLUGIN}" "${TMP}/plugin"
+  export CLAUDE_PLUGIN_ROOT="${TMP}/plugin"
+  export CLAUDE_PLUGIN_DATA="${TMP}/data"
+  export CLAUDE_ENV_FILE="${TMP}/env.sh"
+  unset SECURITY_HOOKS_GREP_SHIM RIPGREP_CONFIG_PATH POSIXLY_CORRECT
+  mkdir -p "${TMP}/tree/sub"
+  printf 'needle\n' >"${TMP}/tree/a.sops.yaml"
+  printf 'needle\n' >"${TMP}/tree/b.yaml"
+  printf 'needle\n' >"${TMP}/tree/sub/c.sops.json"
+}
+
+teardown() {
+  rm -rf "${TMP}"
+}
+
+install() {
+  run --separate-stderr bash "${CLAUDE_PLUGIN_ROOT}/scripts/install-grep-shim.sh"
+}
+
+# Runs a command in a fresh bash after sourcing the env file(s), as the Bash tool's shell does.
+in_shell() {
+  local files="$1" cmd="$2"
+  run --separate-stderr env -i HOME="${TMP}" PATH="${ORIG_PATH}" ENV_FILES="${files}" TREE="${TMP}/tree" SHIMDIR="${CLAUDE_PLUGIN_DATA}/shim" \
+    bash -c '
+    grep() { echo "builtin grep function"; }
+    for f in ${ENV_FILES}; do . "${f}"; done
+    cd "${TREE}" && '"${cmd}"
+}
+
+@test "installs the shim and the rg config under the data dir and exits quietly" {
+  install
+  [ "${status}" -eq 0 ]
+  [ -z "${output}" ]
+  [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
+  [ -f "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" ]
+  [ -s "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "the env lines never mention the plugin root" {
+  install
+  [ "${status}" -eq 0 ]
+  run grep -F "${CLAUDE_PLUGIN_ROOT}" "${CLAUDE_ENV_FILE}"
+  [ "${status}" -eq 1 ]
+}
+
+@test "after sourcing the env lines grep skips *.sops.* files and the builtin grep function is gone" {
+  install
+  in_shell "${CLAUDE_ENV_FILE}" 'type -t grep; grep -rl needle .'
+  [ "${status}" -eq 0 ]
+  [ "${lines[0]}" = "file" ]
+  [ "${lines[1]}" = "./b.yaml" ]
+  [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "keeps working after the plugin root is gone" {
+  install
+  rm -rf "${CLAUDE_PLUGIN_ROOT}"
+  in_shell "${CLAUDE_ENV_FILE}" 'grep -rl needle .'
+  [ "${output}" = "./b.yaml" ]
+  [ -z "${stderr}" ]
+}
+
+@test "the env lines work before, after or without a file that unsets the grep function, and when sourced twice" {
+  install
+  printf 'unset -f grep find 2>/dev/null || true\n' >"${TMP}/restore.sh"
+  for files in "${CLAUDE_ENV_FILE} ${TMP}/restore.sh" "${TMP}/restore.sh ${CLAUDE_ENV_FILE}" "${CLAUDE_ENV_FILE}" \
+    "${CLAUDE_ENV_FILE} ${CLAUDE_ENV_FILE}" "${CLAUDE_ENV_FILE} ${TMP}/restore.sh ${CLAUDE_ENV_FILE}" \
+    "${TMP}/restore.sh ${CLAUDE_ENV_FILE} ${TMP}/restore.sh ${CLAUDE_ENV_FILE}"; do
+    in_shell "${files}" 'type -t grep; command -v grep; grep -rl needle .'
+    if [ "${lines[0]}" != "file" ] || [ "${lines[1]}" != "${CLAUDE_PLUGIN_DATA}/shim/grep" ] || [ "${lines[2]}" != "./b.yaml" ] || [ "${#lines[@]}" -ne 3 ]; then
+      echo "sourcing: ${files}: ${output}" >&2
+      return 1
+    fi
+  done
+}
+
+@test "puts the shim dir on PATH once, however often the lines are sourced" {
+  install
+  in_shell "${CLAUDE_ENV_FILE} ${CLAUDE_ENV_FILE} ${CLAUDE_ENV_FILE}" 'printf "%s\n" "$PATH" | tr ":" "\n" | grep -cFx "${SHIMDIR}"'
+  [ "${output}" = "1" ]
+  in_shell "${CLAUDE_ENV_FILE}" 'echo "${PATH%%:*}"'
+  [ "${output}" = "${CLAUDE_PLUGIN_DATA}/shim" ]
+}
+
+@test "leaves PATH alone when the shim dir is already on it" {
+  install
+  run --separate-stderr env -i HOME="${TMP}" PATH="${ORIG_PATH}:${CLAUDE_PLUGIN_DATA}/shim" EF="${CLAUDE_ENV_FILE}" \
+    bash -c '. "${EF}"; echo "${PATH}"'
+  [ "${output}" = "${ORIG_PATH}:${CLAUDE_PLUGIN_DATA}/shim" ]
+}
+
+@test "sets RIPGREP_CONFIG_PATH to the installed config only when it is unset" {
+  install
+  in_shell "${CLAUDE_ENV_FILE}" 'echo "${RIPGREP_CONFIG_PATH-unset}"'
+  [ "${output}" = "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" ]
+  run --separate-stderr env -i HOME="${TMP}" PATH="${ORIG_PATH}" RIPGREP_CONFIG_PATH=/their/rc EF="${CLAUDE_ENV_FILE}" \
+    bash -c '. "${EF}"; echo "${RIPGREP_CONFIG_PATH}"'
+  [ "${output}" = "/their/rc" ]
+  run --separate-stderr env -i HOME="${TMP}" PATH="${ORIG_PATH}" RIPGREP_CONFIG_PATH= EF="${CLAUDE_ENV_FILE}" \
+    bash -c '. "${EF}"; echo "[${RIPGREP_CONFIG_PATH-unset}]"'
+  [ "${output}" = "[]" ]
+}
+
+@test "does not point RIPGREP_CONFIG_PATH at a config that is gone" {
+  install
+  rm -rf "${CLAUDE_PLUGIN_DATA}"
+  in_shell "${CLAUDE_ENV_FILE}" 'echo "${RIPGREP_CONFIG_PATH-unset}"'
+  [ "${output}" = "unset" ]
+}
+
+@test "the rg config makes rg skip *.sops.* files when it walks a directory" {
+  rg="$(PATH="${ORIG_PATH}" command -v rg || true)"
+  case "${rg}" in /*) ;; *) skip "rg is not installed" ;; esac
+  install
+  run env RIPGREP_CONFIG_PATH="${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" "${rg}" -l needle "${TMP}/tree"
+  [ "${status}" -eq 0 ]
+  [ "$(printf '%s\n' "${output}" | sort)" = "${TMP}/tree/b.yaml" ]
+}
+
+@test "running it again leaves the env file byte for byte the same" {
+  install
+  cp "${CLAUDE_ENV_FILE}" "${TMP}/first.sh"
+  install
+  [ "${status}" -eq 0 ]
+  cmp "${CLAUDE_ENV_FILE}" "${TMP}/first.sh"
+}
+
+@test "appends to an env file that already has content, with or without a trailing newline" {
+  printf 'export OTHER=1\n' >"${CLAUDE_ENV_FILE}"
+  install
+  [ "$(head -n1 "${CLAUDE_ENV_FILE}")" = "export OTHER=1" ]
+  in_shell "${CLAUDE_ENV_FILE}" 'grep -rl needle .'
+  [ "${output}" = "./b.yaml" ]
+  rm "${CLAUDE_ENV_FILE}"
+  printf 'export OTHER=1' >"${CLAUDE_ENV_FILE}"
+  install
+  [ "$(head -n1 "${CLAUDE_ENV_FILE}")" = "export OTHER=1" ]
+  in_shell "${CLAUDE_ENV_FILE}" 'grep -rl needle .'
+  [ "${output}" = "./b.yaml" ]
+}
+
+@test "replaces an older copy of the shim with the new one" {
+  install
+  printf '# newer\n' >>"${CLAUDE_PLUGIN_ROOT}/shim/grep"
+  install
+  [ "$(tail -n1 "${CLAUDE_PLUGIN_DATA}/shim/grep")" = "# newer" ]
+  [ -x "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
+  [ "$(find "${CLAUDE_PLUGIN_DATA}/shim" -type f | wc -l)" -eq 2 ]
+}
+
+@test "a data dir with a space and a quote in its name works" {
+  export CLAUDE_PLUGIN_DATA="${TMP}/da ta's \$HOME"
+  install
+  [ "${status}" -eq 0 ]
+  in_shell "${CLAUDE_ENV_FILE} ${CLAUDE_ENV_FILE}" 'command -v grep; grep -rl needle .; echo "${RIPGREP_CONFIG_PATH}"'
+  [ "${lines[0]}" = "${CLAUDE_PLUGIN_DATA}/shim/grep" ]
+  [ "${lines[1]}" = "./b.yaml" ]
+  [ "${lines[2]}" = "${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" ]
+}
+
+@test "installs nothing when there is no GNU grep" {
+  mkdir "${TMP}/bsd"
+  printf '#!/bin/sh\nif [ "$1" = --version ]; then echo "grep (BSD grep, GNU compatible) 2.6.0-FreeBSD"; exit 0; fi\nexec %s "$@"\n' "${REAL_GREP}" >"${TMP}/bsd/grep"
+  chmod +x "${TMP}/bsd/grep"
+  PATH="${TMP}/bsd:${ORIG_PATH}"
+  install
+  [ "${status}" -eq 0 ]
+  [ -z "${output}" ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "installs nothing when grep does not honour --exclude" {
+  mkdir "${TMP}/odd"
+  printf '#!/bin/sh\nfor a; do shift; case $a in --exclude=*) ;; *) set -- "$@" "$a" ;; esac; done\nexec %s "$@"\n' "${REAL_GREP}" >"${TMP}/odd/grep"
+  chmod +x "${TMP}/odd/grep"
+  PATH="${TMP}/odd:${ORIG_PATH}"
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "installs nothing when grep honours --exclude only in a recursive search" {
+  mkdir "${TMP}/odd"
+  printf '#!/bin/sh\nrec=0; for a; do case $a in -r*) rec=1 ;; esac; done\nif [ $rec = 0 ]; then for a; do shift; case $a in --exclude=*) ;; *) set -- "$@" "$a" ;; esac; done; fi\nexec %s "$@"\n' "${REAL_GREP}" >"${TMP}/odd/grep"
+  chmod +x "${TMP}/odd/grep"
+  PATH="${TMP}/odd:${ORIG_PATH}"
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "SECURITY_HOOKS_GREP_SHIM=0 installs nothing" {
+  export SECURITY_HOOKS_GREP_SHIM=0
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+  [ ! -e "${CLAUDE_PLUGIN_DATA}" ]
+}
+
+@test "SECURITY_HOOKS_GREP_SHIM=0 set after the install leaves rg and grep alone" {
+  install
+  run --separate-stderr env -i HOME="${TMP}" PATH="${ORIG_PATH}" SECURITY_HOOKS_GREP_SHIM=0 EF="${CLAUDE_ENV_FILE}" TREE="${TMP}/tree" \
+    bash -c '. "${EF}"; echo "${RIPGREP_CONFIG_PATH-unset}"; cd "${TREE}" && grep -rl needle . | sort'
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "$(printf 'unset\n./a.sops.yaml\n./b.yaml\n./sub/c.sops.json')" ]
+}
+
+@test "does nothing without an env file or a data dir" {
+  unset CLAUDE_ENV_FILE
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_PLUGIN_DATA}" ]
+  export CLAUDE_ENV_FILE="${TMP}/env.sh"
+  unset CLAUDE_PLUGIN_DATA
+  install
+  [ "${status}" -eq 0 ]
+  [ ! -e "${CLAUDE_ENV_FILE}" ]
+}
+
+@test "hooks.json runs the installer on every SessionStart source, compact included" {
+  [ "$(jq -r '.hooks | keys | join(" ")' "${HOOKS}")" = "SessionStart" ]
+  [ "$(jq -r '.hooks.SessionStart | length' "${HOOKS}")" -eq 1 ]
+  [ "$(jq -r '.hooks.SessionStart[0].hooks[0].command' "${HOOKS}")" = 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/install-grep-shim.sh"' ]
+  [ "$(jq -r '.hooks.SessionStart[0].hooks[0].timeout' "${HOOKS}")" -gt 0 ]
+  matcher="$(jq -r '.hooks.SessionStart[0].matcher // ""' "${HOOKS}")"
+  for source_ in startup resume clear compact fork; do
+    if [ -n "${matcher}" ] && [ "${matcher}" != "*" ]; then
+      [[ "${source_}" =~ ^(${matcher})$ ]]
+    fi
+  done
+  [ -x "${PLUGIN}/scripts/install-grep-shim.sh" ]
+  [ -x "${PLUGIN}/shim/grep" ]
+}

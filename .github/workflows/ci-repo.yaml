@@ -38,5 +38,7 @@ jobs:
         run: "bats tests/hooks/ -t"
       - name: "Run agent-kit tests"
         run: "bats tests/agent-kit/ -t"
+      - name: "Run security-hooks tests"
+        run: "bats tests/security-hooks/ -t"
       - name: "Run release config tests"
         run: "bats tests/release/ -t"
