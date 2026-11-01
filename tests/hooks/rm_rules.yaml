@@ -300,6 +300,14 @@ test_cases:
     tool: Bash
     command: "rm -rf 'my dir'/*"
     expect: block
+  - name: 'block-rm-unchecked-target: blocks double star'
+    tool: Bash
+    command: rm -rf **
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks double star under a directory'
+    tool: Bash
+    command: rm -rf build/**
+    expect: block
   - name: 'block-rm-unchecked-target: blocks dot'
     tool: Bash
     command: rm -rf .
@@ -329,6 +337,26 @@ test_cases:
     tool: Bash
     command: 'rm -rf "${PWD:?}"/*'
     expect: block
+  - name: 'block-rm-unchecked-target: blocks guarded TMP then star'
+    tool: Bash
+    command: 'rm -rf "${TMP:?}"/*'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks guarded TEMP then star'
+    tool: Bash
+    command: 'rm -rf "${TEMP:?}"/*'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks guarded OLDPWD then star'
+    tool: Bash
+    command: 'rm -rf "${OLDPWD:?}"/*'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks guarded XDG dir then star'
+    tool: Bash
+    command: 'rm -rf "${XDG_CACHE_HOME:?}"/*'
+    expect: block
+  - name: 'block-rm-unchecked-target: allows a guarded variable that starts like TMP'
+    tool: Bash
+    command: 'rm -rf "${TMPOUT:?}"/*'
+    expect: allow
   - name: 'block-rm-unchecked-target: blocks guarded HOME'
     tool: Bash
     command: 'rm -rf "${HOME:?}"'
