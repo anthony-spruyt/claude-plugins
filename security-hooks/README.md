@@ -45,7 +45,7 @@ The rules need the **hookify-plus** plugin from this same marketplace. Without t
 
 ## grep and rg skip secret files
 
-In Claude sessions, `grep` skips secret files (the names in `shim/secret-globs`) and `.git/`, and so does `rg` while it walks a folder, whatever `-g`, `--glob` or `--iglob` you pass it; `rg` searches a file you name on its command line. Everything else about them is as usual.
+In Claude sessions, `grep` skips secret files (the names in `shim/secret-globs`) and `.git/`, and so does `rg` when it searches a folder, whatever `-g`, `--glob` or `--iglob` you pass it. Everything else about them is as usual.
 
 - `shim/secret-globs` is the one list: a glob per line, and a glob ending in `/` is a directory. It holds `*.sops.*`, `.env`, `.env.*`, `.envrc`, secret and token files, key and certificate files, cloud, package-manager, GitHub CLI and Terraform Cloud credential files, Terraform state, Talos config and `.git/`.
 - A SessionStart hook (every source, `compact` included) copies a `grep` wrapper, an `rg` wrapper (only when a real rg is on PATH), the helper both source and the list to `${CLAUDE_PLUGIN_DATA}/shim`, which survives plugin updates, writes an rg config from the list next to them, then adds them to the Bash tool's shell through `CLAUDE_ENV_FILE`.
