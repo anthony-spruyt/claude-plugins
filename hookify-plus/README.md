@@ -138,6 +138,9 @@ You're editing a .env file. Make sure it's in .gitignore!
 
 `command_match` parses the Bash command and regex-searches each "clean line": one per simple command bash would run, with quotes removed and wrappers (`sudo`, `bash -c`, `eval`, ...) unwrapped, keeping redirects and pipes. `sudo -E e''nv | wc -l` gives `sudo -E env | wc -l`, `env | wc -l` and `wc -l`. If the command can't be parsed, `fallback` (or `pattern` if there is no `fallback`) is matched
 against the raw command instead. That raw command is masked when the rule sets `mask_data: true`. Block rules also split an unparsed command on `;`, `&`, `|`, newlines and parens and match `pattern` on every piece that parses, so one piece the parser can't read doesn't hide the rest.
+When the command runs code the parser can't see, `fallback` is matched against each top-level command (split on `;`, `&&`, `||` and newlines, never `|`) if that code stays inside one command, as with `kubectl` or `docker`, and no command writes a file, sets a variable or changes `PATH`.
+It is matched against the whole command otherwise: when the command can't be split, holds a loop (`for`, `while`, `until`, `select`), or has one command define code another runs, such as a function, an alias, a saved script or a variable.
+A `fallback` shouldn't rely on text in a neighbouring command.
 
 Unquoted globs and braces expand the way bash would, against the hook's `cwd`: in a folder holding `.env`, `cat .e?v` gives `cat .env` and `cat .{e,x}nv` gives `cat .env .xnv`. A glob that matches nothing stays as written. If expansion would read more than 20,000 directory entries or make more than 256 words, the word stays as written. The `glob_overflow` operator (no `pattern`) matches a Bash
 command holding such a word.
