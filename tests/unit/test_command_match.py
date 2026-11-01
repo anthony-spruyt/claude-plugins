@@ -337,6 +337,14 @@ class TestOpaqueFallbackPerCommand:
     def test_code_defined_in_one_command_and_run_in_another_is_matched_whole(self, cmd):
         assert self._blocks(cmd)
 
+    def test_a_command_text_that_differs_from_the_parsed_one_is_matched_whole(self):
+        raw = "kubectl get secret demo-creds; kubectl get pods -o json"
+        changed = "kubectl get secret demo -o json"
+        condition = Condition("command", "command_match", r"^nomatch$", self.FALLBACK)
+        engine = RuleEngine()
+        assert not engine._command_match(condition, "Bash", raw, raw, True, True)
+        assert engine._command_match(condition, "Bash", raw, changed, True, True)
+
     def test_function_defined_and_called_in_separate_commands_is_matched_whole(self):
         commit_ip = r"git\s+commit\b.*\b\d{1,3}(?:\.\d{1,3}){3}\b"
         assert self._blocks('f() { git commit -m "$1"; }; f "host 192.0.2.5"', commit_ip)
@@ -648,6 +656,13 @@ class TestFallbackPiecesSeparators:
     def test_a_background_command_at_the_end_is_a_piece(self, cmd):
         assert _pieces(cmd) == ("a", "b &")
 
+    @pytest.mark.parametrize("cmd", ["a &\nb", "a & \n b", "a &\n\nb"])
+    def test_a_newline_after_a_background_command_ends_it(self, cmd):
+        assert _pieces(cmd) == ("a &", "b")
+
+    def test_a_background_command_and_the_next_on_one_line_stay_together(self):
+        assert _pieces("a & b") == ("a & b",)
+
     @pytest.mark.parametrize(
         "cmd",
         [
@@ -656,6 +671,7 @@ class TestFallbackPiecesSeparators:
             "a;\n\n b\n",
             "a && b &",
             "a & b; c &",
+            "a &\nb",
             "a |\n b || c",
             "if a; then b; fi; c &",
             "a; b;",

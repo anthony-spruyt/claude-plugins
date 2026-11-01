@@ -1562,6 +1562,14 @@ class _Parser:
             self.blank(newlines=True)
             self.pipeline()
 
+    def separator(self) -> None:
+        """Steps over ; or &, and a newline right after & ends that background command."""
+        background = self.at("&")
+        self.i += 1
+        if background:
+            self.blank()
+            self.cut("\n")
+
     def compound_list(self, ends: frozenset = frozenset()) -> Optional[str]:
         s = self.s
         while True:
@@ -1584,7 +1592,7 @@ class _Parser:
             if self.at(";;") or self.at(";&"):
                 raise _UnsureError
             if self.at(";") or self.at("&"):
-                self.i += 1
+                self.separator()
             elif self.i < len(s) and s[self.i] not in "\n)":
                 raise _UnsureError
 
