@@ -135,7 +135,7 @@ class TestLimits:
         ],
     )
     def test_glob_walk_is_linear_in_path_parts(self, tmp_path, word):
-        """Quadratic work per path part, or work after nothing can match, made a long word time out."""
+        """A long word expands in time linear in its path parts and stops once nothing can match."""
         (tmp_path / "d").mkdir()
         assert_fast(lambda: expand(word, cwd=str(tmp_path)), 0.2, "glob walk")
 
