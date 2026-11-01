@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/anthony-spruyt/claude-plugins/compare/security-hooks-v2.9.0...security-hooks-v2.10.0) (2026-11-01)
+
+
+### Features
+
+* **security-hooks:** skip secret file names in grep and rg ([#248](https://github.com/anthony-spruyt/claude-plugins/issues/248)) ([a0f78d7](https://github.com/anthony-spruyt/claude-plugins/commit/a0f78d783e29e4828cad3e44585cb96341433fa5))
+
 ## [2.9.0](https://github.com/anthony-spruyt/claude-plugins/compare/security-hooks-v2.8.2...security-hooks-v2.9.0) (2026-11-01)
 
 
