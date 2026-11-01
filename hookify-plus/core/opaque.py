@@ -3,6 +3,7 @@
 When a command is opaque, command_match also checks the rule's raw-command fallback.
 """
 
+import enum
 import os
 import re
 import stat
@@ -54,14 +55,11 @@ CODE_BUILTINS = frozenset(
         "exec",
     ]
 )
-RUNNERS = frozenset(
+# Run only the code in their own arguments, right away
+ONE_SHOT_RUNNERS = frozenset(
     [
         "busybox",
         "toybox",
-        "tmux",
-        "screen",
-        "byobu",
-        "gdb",
         "docker",
         "podman",
         "nerdctl",
@@ -74,6 +72,15 @@ RUNNERS = frozenset(
         "lxc",
         "incus",
         "machinectl",
+    ]
+)
+# Take code from a session, a script or a project file that another command may have written
+STATEFUL_RUNNERS = frozenset(
+    [
+        "tmux",
+        "screen",
+        "byobu",
+        "gdb",
         "vagrant",
         "vim",
         "nvim",
@@ -93,6 +100,14 @@ STDIN_OPS = ("<", "<<", "<<-", "<<<", "<&", "<>")
 SHELL_ALIAS = re.compile(r"alias\.[^=\s]*[= ]?!|^!")
 
 
+class Opacity(enum.IntEnum):
+    """LOCAL: the hidden code sits in the one command that runs it. SHARED: another command may define it."""
+
+    VISIBLE = 0
+    LOCAL = 1
+    SHARED = 2
+
+
 def _name(cmd: SimpleCommand) -> str:
     return _base(cmd.name) or cmd.name
 
@@ -103,7 +118,7 @@ def _stdin_op(op: str) -> str:
 
 def _runs_hidden_code(cmd: SimpleCommand) -> bool:  # noqa: PLR0911  # one early return per independent check
     name = _name(cmd)
-    if name in CODE_BUILTINS or name in RUNNERS or "{}" in cmd.name:
+    if name in CODE_BUILTINS or name in STATEFUL_RUNNERS or "{}" in cmd.name:
         return True
     words = cmd.args + [target for _, target in cmd.redirects]
     if any(EVAL_EXPANSION.search(w) for w in words):
@@ -193,27 +208,28 @@ def _saves(cmd: SimpleCommand) -> bool:
     return False
 
 
-def opaque(command: str, commands: List[SimpleCommand], functions=()) -> bool:  # noqa: PLR0911  # one early return per independent check
+def opaque(command: str, commands: List[SimpleCommand], functions=()) -> Opacity:  # noqa: PLR0911  # one early return per independent check
+    """LOCAL only when every command that hides code keeps it to itself; any other reason is SHARED."""
     if functions or CODE_VAR.search(command):
-        return True
+        return Opacity.SHARED
     # Heredoc text can be saved and run later; the parser only reads it when a shell runs it now
     if _unparsed_heredoc(commands):
-        return True
+        return Opacity.SHARED
     upstream = {}
     for cmd in commands:
         if cmd.pipe_to is not None:
             upstream[id(cmd.pipe_to)] = cmd
     for cmd in commands:
         if _runs_hidden_code(cmd) or _group_reads_stdin(cmd) or _saves_code(cmd):
-            return True
+            return Opacity.SHARED
         if _name(cmd) == "xargs" and (
             id(cmd) in upstream or any(_stdin_op(op) in STDIN_OPS for op, _ in cmd.redirects)
         ):
-            return True
+            return Opacity.SHARED
         prev = upstream.get(id(cmd))
         if _name(cmd) in STDIN_READERS and prev is not None and (_name(prev) in PASS_THROUGH or id(prev) in upstream):
-            return True
+            return Opacity.SHARED
         # ssh with only a host runs its stdin as a remote script
         if _name(cmd) == "ssh" and prev is not None and len([a for a in cmd.args if not a.startswith("-")]) <= 1:
-            return True
-    return False
+            return Opacity.SHARED
+    return Opacity.LOCAL if any(_name(cmd) in ONE_SHOT_RUNNERS for cmd in commands) else Opacity.VISIBLE

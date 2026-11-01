@@ -1,4 +1,5 @@
-# A command the parser cannot see through is checked one command at a time, so text in one command never completes a match in another.
+# A command the parser cannot see through is checked one command at a time when it can be split and its hidden code stays inside one command, so text in one command never completes a match in another.
+# Code one command defines and another runs (functions, saved scripts, source, alias) is checked as a whole.
 test_cases:
   - name: 'compound: allows an IP in a command after the gh call'
     tool: Bash
@@ -39,4 +40,36 @@ test_cases:
   - name: 'compound: blocks an IP in a gh body when a heredoc is present'
     tool: Bash
     command: "kubectl get pods; gh issue create --title x --body-file - <<'EOF'\nsee 10.1.2.3\nEOF"
+    expect: block
+  - name: 'compound: blocks an IP passed to a function that runs git commit'
+    tool: Bash
+    command: 'f() { git commit -m "$1"; }; f "host 10.1.2.3"'
+    expect: block
+  - name: 'compound: blocks an IP passed to a function keyword definition that runs git commit'
+    tool: Bash
+    command: 'function f { git commit "$@"; }; f -m "host 10.1.2.3"'
+    expect: block
+  - name: 'compound: blocks an IP passed to a function that runs gh issue create'
+    tool: Bash
+    command: 'f() { gh issue create --title x --body "$1"; }; f "host 10.1.2.3"'
+    expect: block
+  - name: 'compound: blocks an IP passed to an exported function that runs git commit'
+    tool: Bash
+    command: "f() { git commit -m \"$1\"; }; export -f f; bash -c 'f \"host 10.1.2.3\"'"
+    expect: block
+  - name: 'compound: blocks an IP passed to a script saved by echo and run with bash'
+    tool: Bash
+    command: "echo 'git commit -m \"$1\"' > /tmp/a.sh; bash /tmp/a.sh \"host 10.1.2.3\""
+    expect: block
+  - name: 'compound: blocks an IP passed to a script saved by echo and run with source'
+    tool: Bash
+    command: "echo 'git commit -m \"$1\"' > /tmp/a.sh; source /tmp/a.sh \"host 10.1.2.3\""
+    expect: block
+  - name: 'compound: blocks an IP passed to a script saved by echo and run with a dot'
+    tool: Bash
+    command: "echo 'git commit -m \"$1\"' > /tmp/a.sh; . /tmp/a.sh \"host 10.1.2.3\""
+    expect: block
+  - name: 'compound: blocks an IP passed to an alias of git commit'
+    tool: Bash
+    command: "alias gc='git commit'; gc -m \"host 10.1.2.3\""
     expect: block

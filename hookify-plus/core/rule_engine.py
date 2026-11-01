@@ -12,7 +12,7 @@ from core.command_split import split_commands
 from core.config_loader import Condition, Rule
 from core.globbing import MAX_ENTRIES
 from core.masking import mask_data
-from core.opaque import opaque
+from core.opaque import Opacity, opaque
 from core.shell_parse import _BODIES, parse_commands, render
 
 
@@ -46,7 +46,7 @@ def _clean_path(path: str) -> str:
 
 @lru_cache(maxsize=16)
 def clean_lines(command: str, cwd: str = "") -> Optional[tuple]:
-    """Cached parse: (clean lines, opaque) or None. Several rules parse the same command."""
+    """Cached parse: (clean lines, opacity, glob overflow) or None. Several rules parse the same command."""
     try:
         parsed = normalise(command, cwd)
     except Exception:  # noqa: BLE001
@@ -332,7 +332,8 @@ class RuleEngine:
             return self._regex_match(condition.fallback or pattern, field_value)
         parsed = clean_lines(raw_value, cwd)
         if parsed is None or (strict and parsed[1] and condition.fallback):
-            if self._fallback_match(condition.fallback or pattern, field_value, parsed is None):
+            per_command = parsed is not None and parsed[1] == Opacity.LOCAL
+            if self._fallback_match(condition.fallback or pattern, field_value, per_command):
                 return True
             if parsed is None:
                 # Block rules also try each piece that parses, so one unreadable piece can't hide the rest
@@ -343,9 +344,9 @@ class RuleEngine:
             lines = [mask_data(line) for line in lines]
         return any(self._regex_match(pattern, line) for line in lines)
 
-    def _fallback_match(self, pattern: str, command: str, unparsed: bool) -> bool:
-        """An unparsed command is matched whole; an opaque one per command, so one command's flags stay its own."""
-        pieces = None if unparsed else split_commands(command)
+    def _fallback_match(self, pattern: str, command: str, per_command: bool) -> bool:
+        """Per command when its hidden code stays in one command, so another command's flags stay out; else whole."""
+        pieces = split_commands(command) if per_command else None
         if pieces is None:
             return self._regex_match(pattern, command)
         return any(self._regex_match(pattern, piece) for piece in pieces)

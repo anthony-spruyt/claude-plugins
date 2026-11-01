@@ -269,10 +269,10 @@ class TestOpaqueAlsoUsesFallback:
 
 
 class TestOpaqueFallbackPerCommand:
-    FALLBACK = r"kubectl\b(?=.*\ssecrets?\b)(?=.*\s-o\s*json\b)"
+    FALLBACK = r"kubectl\b(?=.*\ssecrets?\b)(?=.*\s-o\s*(?:json|yaml)\b)"
 
-    def _blocks(self, cmd):
-        return _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+    def _blocks(self, cmd, fallback=FALLBACK):
+        return _matches(_rule(pattern=r"^nomatch$", fallback=fallback), cmd)
 
     @pytest.mark.parametrize(
         "cmd",
@@ -313,6 +313,81 @@ class TestOpaqueFallbackPerCommand:
     def test_unparsed_or_unsplittable_command_is_matched_whole(self, cmd):
         assert self._blocks(cmd)
 
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            'kc() { kubectl -n x "$@"; }; kc get secret db -o yaml',
+            'function kc { kubectl get secret x "$@"; }; kc -o json',
+            "hash -p /usr/local/bin/kubectl k; k get secret x -o json",
+            "echo 'kubectl get secret x \"$@\"' > /tmp/a.sh; bash /tmp/a.sh -o json",
+            "echo 'kubectl get secret x' > /tmp/a.sh; source /tmp/a.sh -o json",
+            "printf 'kubectl get secret x' > ./a.env; . ./a.env -o json",
+            "f() { kubectl \"$@\"; }; export -f f; bash -c 'f get secret x -o json'",
+            "alias k=kubectl; k get secret x -o json",
+            "alias k='kubectl get secret'; k x -o json",
+        ],
+    )
+    def test_code_defined_in_one_command_and_run_in_another_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
+    def test_function_defined_and_called_in_separate_commands_is_matched_whole(self):
+        commit_ip = r"git\s+commit\b.*\b\d{1,3}(?:\.\d{1,3}){3}\b"
+        assert self._blocks('f() { git commit -m "$1"; }; f "host 192.0.2.5"', commit_ip)
+
+
+class TestOpaqueFallbackScope:
+    """Per command only when the code a command hides cannot be set up by another command."""
+
+    FALLBACK = r"\bfirst\b.*\bsecond\b"
+
+    def _blocks(self, cmd):
+        return _matches(_rule(pattern=r"^nomatch$", fallback=self.FALLBACK), cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "kubectl get first; echo second",
+            "kubectl exec p -- first && echo second",
+            "docker exec c first || echo second",
+            "podman run first\necho second",
+            "oc get first; echo second",
+            "busybox first; echo second",
+        ],
+    )
+    def test_runner_keeping_its_code_in_one_command_is_matched_per_command(self, cmd):
+        assert not self._blocks(cmd)
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "f() { first; }; f second",
+            "function f { first; }; f second",
+            "source first; echo second",
+            ". first; echo second",
+            "trap first EXIT; echo second",
+            "hash first; echo second",
+            "exec first; echo second",
+            "PS4=first bash -xc :; echo second",
+            "echo first > run.sh; echo second",
+            'echo "${first@P}"; echo second',
+            "git -c alias.x='!first' x; echo second",
+            "find first -exec {} \\; ; echo second",
+            "bash < <(echo first); echo second",
+            "echo first | cat | sh; echo second",
+            "echo first | xargs nice; echo second",
+            "echo first | ssh host; echo second",
+            "{ first; } < f; echo second",
+            "tmux send-keys first; tmux send-keys second",
+            "make first; echo second",
+            "parallel first ::: x; echo second",
+            "vim -c first; echo second",
+            "kubectl get x; trap first EXIT; echo second",
+            "kubectl get first; . ./x.sh; echo second",
+        ],
+    )
+    def test_code_that_can_reach_another_command_is_matched_whole(self, cmd):
+        assert self._blocks(cmd)
+
 
 class TestOpaqueFallbackKeepsPipes:
     FALLBACK = r"\benv\s*\|\s*grep\b"
@@ -332,9 +407,6 @@ class TestOpaqueFallbackKeepsPipes:
     )
     def test_pipe_inside_one_command_matches(self, cmd):
         assert self._blocks(cmd)
-
-    def test_separate_commands_are_not_a_pipe(self):
-        assert not self._blocks("docker ps; env\ngrep TOKEN f")
 
 
 class TestMaskedCleanLines:

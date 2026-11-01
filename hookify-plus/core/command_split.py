@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import List, Optional, Tuple
 
 UNSPLITTABLE = re.compile(r"<<|\$'|(?<![\w-])case(?![\w-])")
-COMMENT_BEFORE = frozenset(" \t\r\n;&|()<>`")
+COMMENT_BEFORE = frozenset(" \t\n;&|()<>`")
 PARAM = "${"
 
 
@@ -105,6 +105,8 @@ class _Splitter:
 @lru_cache(maxsize=64)
 def split_commands(command: str) -> Optional[Tuple[str, ...]]:
     """Top-level commands split on ; && || and newlines, or None when it cannot be split safely."""
-    if UNSPLITTABLE.search(command):
+    pieces = _Splitter(command).run()
+    # Checked on the joined pieces: a backslash-newline inside << or case hides it from the raw text
+    if pieces is None or any(UNSPLITTABLE.search(piece) for piece in pieces):
         return None
-    return _Splitter(command).run()
+    return pieces

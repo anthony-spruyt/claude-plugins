@@ -56,7 +56,7 @@ Specifies how to match.
 ### command_match / fallback
 
 For `field: command`, the engine parses the command into "clean lines": one per simple command bash would run, quotes removed, wrappers (`sudo`, `bash -c`, `eval`, ...) unwrapped, redirects and pipes kept. `sudo -E e''nv | wc -l` gives `sudo -E env | wc -l`, `env | wc -l` and `wc -l`. The condition matches if `pattern` regex-searches any clean line. If the command can't be parsed, `fallback` (or
-`pattern` if there is no `fallback`) is matched against the raw command instead. That raw command is masked when the rule sets `mask_data: true`. Block rules also match `pattern` on each piece of the unparsed command that parses on its own. On other fields, `command_match` behaves like `regex_match`.
+`pattern` if there is no `fallback`) is matched against the raw command instead. That raw command is masked when the rule sets `mask_data: true`. Block rules also match `pattern` on each piece of the unparsed command that parses on its own. When the command runs code the parser can't see, `fallback` is matched against each top-level command (split on `;`, `&&`, `||` and newlines, never `|`) if that code stays inside one command, as with `kubectl` or `docker`, and against the whole command if it can't be split or if one command can define code another runs, such as a function, an alias or a saved script, so a `fallback` shouldn't rely on text in a neighbouring command. On other fields, `command_match` behaves like `regex_match`.
 
 ```yaml
 conditions:
