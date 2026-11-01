@@ -22,6 +22,9 @@ EXPANDED, GLOB, QUOTED = 1, 2, 4
 
 PLAIN = re.compile(r'[^ \t\n;&|()<>\'"\\$`*?\[{}]+')
 BLANK = re.compile(r"(?:[ \t]+|\\\n)+")
+LINE_JOIN = re.compile(r"\\\n|(\\.)", re.DOTALL)
+# Text that gets no cuts: heredocs, $'..' strings and loops (comments are handled in _Parser.blank)
+UNCUT = re.compile(r"<<|\$'|(?<![\w-])(?:case|for|while|until|select)(?![\w-])")
 DQ_PLAIN = re.compile(r'[^"\\$`]+')
 DELIM_PLAIN = re.compile(r'[^ \t\n;&|()<>\'"\\$`]+')
 DELIM_DQ = re.compile(r'"((?:[^"\\$`]|\\[^\n]|\$(?![({]))*)"')
@@ -90,6 +93,11 @@ class VariableSet(str):
 
 class _UnsureError(Exception):
     pass
+
+
+def join_lines(text: str) -> str:
+    """The text with each backslash-newline gone, as bash reads it."""
+    return LINE_JOIN.sub(r"\1", text)
 
 
 # Set by parse_commands(prefix_ends=True): read a heredoc inside $( the way bash 5.2+ does
@@ -892,7 +900,9 @@ class _Parser:
         subst: int,
         parent: Optional[SimpleCommand] = None,
         feed: Optional[Tuple[str, str]] = None,
+        spans: Optional[list] = None,
     ):
+        self.spans, self.mark = spans, 0
         self.s, self.i, self.out = s, 0, out
         self.depth, self.subst = depth, subst
         self.parent, self.fed_by, self.base, self.top = parent, feed, subst, subst
@@ -912,6 +922,7 @@ class _Parser:
             if m:
                 self.i = m.end()
             elif s[self.i] == "#":
+                self.uncut()
                 end = s.find("\n", self.i)
                 self.i = len(s) if end < 0 else end
             elif s[self.i] == "\n" and newlines:
@@ -920,6 +931,18 @@ class _Parser:
                     self.bodies()
             else:
                 return
+
+    def cut(self, *seps: str) -> None:
+        """Ends the top-level command at the cursor, on one of seps or, with none given, at the end of the text."""
+        sep = next((x for x in seps if self.at(x)), "")
+        if (sep or not seps) and self.spans is not None and self.depth == 1:
+            self.spans.append((self.mark, self.i))
+            self.mark = self.i + len(sep)
+
+    def uncut(self) -> None:
+        if self.spans is not None:
+            self.spans.clear()
+            self.spans = None
 
     def enter(self, subst: int = 0) -> None:
         self.depth += 1
@@ -1532,7 +1555,9 @@ class _Parser:
         while True:
             self.blank()
             if not (self.at("&&") or self.at("||")):
+                self.cut(";", "\n")
                 return
+            self.cut("&&", "||")
             self.i += 2
             self.blank(newlines=True)
             self.pipeline()
@@ -1571,25 +1596,33 @@ def _run(  # noqa: PLR0913, PLR0917  # parser state passed down each nested pars
     subst: int,
     parent: Optional[SimpleCommand] = None,
     feed: Optional[Tuple[str, str]] = None,
+    spans: Optional[list] = None,
 ) -> Optional[SimpleCommand]:
     if depth > MAX_DEPTH:
         raise _UnsureError
-    parser = _Parser(text, out, depth, subst, parent, feed)
+    parser = _Parser(text, out, depth, subst, parent, feed, spans)
     parser.compound_list()
+    parser.cut()
     if parser.pending:
         parser.bodies()
     return next(iter(parser.readers.values()), None)
 
 
 def parse_commands(
-    command: str, functions: Optional[set] = None, prefix_ends: bool = False, variables: Optional[set] = None
+    command: str,
+    functions: Optional[set] = None,
+    prefix_ends: bool = False,
+    variables: Optional[set] = None,
+    spans: Optional[list] = None,
 ) -> Optional[List[SimpleCommand]]:
+    """Fills spans with the (start, end) of each top-level command, cut on ; && || and newlines, or leaves it empty."""
     if len(command) > MAX_LENGTH:
         return None
     out = []
+    cuts = None if UNCUT.search(join_lines(command)) else spans
     _PREFIX_ENDS[0] = prefix_ends
     try:
-        _run(command, out, 1, 0)
+        _run(command, out, 1, 0, spans=cuts)
     except (_UnsureError, RecursionError):
         return None
     finally:

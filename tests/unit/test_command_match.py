@@ -299,6 +299,7 @@ class TestOpaqueFallbackPerCommand:
             "kubectl get secret demo -o json; kubectl get pods",
             "kubectl get pods; kubectl get secret demo -o json",
             "kubectl get pods && kubectl get secret demo -o json",
+            "kubectl get pods; kubectl get secret demo -o json &",
             "kubectl get secret x $(true; echo) -o json",
             "kubectl get secret x `true; echo` -o json",
             "kubectl get secret x \\\n -o json",
@@ -624,6 +625,234 @@ class TestOpaqueFallbackAcrossCommands:
     )
     def test_commands_with_no_write_path_change_or_loop_are_matched_per_command(self, cmd):
         assert not self._blocks(cmd)
+
+
+def _pieces(command):
+    """What a LOCAL fallback is matched against, or None when it is matched whole."""
+    parsed = rule_engine.normalise(command)
+    return tuple(rule_engine.fallback_pieces(command, parsed[3])) if parsed and parsed[3] else None
+
+
+class TestFallbackPiecesSeparators:
+    @pytest.mark.parametrize(
+        "cmd",
+        ["a; b", "a;b", "a && b", "a&&b", "a || b", "a||b", "a\nb", "a ;\n b"],
+    )
+    def test_splits_on_list_operators_and_newlines(self, cmd):
+        assert _pieces(cmd) == ("a", "b")
+
+    def test_keeps_pipes_and_background_together(self):
+        assert _pieces("a | b; c & d |& e") == ("a | b", "c & d |& e")
+
+    @pytest.mark.parametrize("cmd", ["a; b &", "a && b &", "a || b &", "a\nb &", "a;\n b &\n"])
+    def test_a_background_command_at_the_end_is_a_piece(self, cmd):
+        assert _pieces(cmd) == ("a", "b &")
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "a",
+            "a; b",
+            "a;\n\n b\n",
+            "a && b &",
+            "a & b; c &",
+            "a |\n b || c",
+            "if a; then b; fi; c &",
+            "a; b;",
+            "a; b ",
+        ],
+    )
+    def test_spans_leave_out_only_the_separators(self, cmd):
+        spans = rule_engine.normalise(cmd)[3]
+        gaps = {cmd[end:start] for (_, end), (start, _) in zip(spans, spans[1:])}
+        assert (spans[0][0], spans[-1][1]) == (0, len(cmd))
+        assert gaps <= {";", "&&", "||", "\n"}
+
+    def test_background_commands_before_a_separator_stay_in_their_piece(self):
+        assert _pieces("a & b; c &") == ("a & b", "c &")
+
+    def test_a_newline_after_a_pipe_continues_the_pipeline(self):
+        assert _pieces("a |\n b; c") == ("a |\n b", "c")
+
+    def test_an_if_and_a_test_expression_are_each_one_piece(self):
+        assert _pieces("if a; then b; fi; c") == ("if a; then b; fi", "c")
+        assert _pieces("[[ a && b ]]; c") == ("[[ a && b ]]", "c")
+
+    def test_drops_empty_pieces(self):
+        assert _pieces("a; b;\n\n ") == ("a", "b")
+
+    def test_no_separator_is_one_piece(self):
+        assert _pieces("kubectl get pods") == ("kubectl get pods",)
+
+
+class TestFallbackPiecesQuotesAndEscapes:
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "a 'x; y' b",
+            'a "x; y" b',
+            "a 'x && y' b",
+            'a "x\ny" b',
+            'a "it\'s; ok" b',
+            "a 'say \"hi\"; ok' b",
+            'a "x \\" ; y" b',
+            "a x\\;y b",
+            "a x\\&&y b",
+        ],
+    )
+    def test_does_not_split_inside_quotes_or_after_a_backslash(self, cmd):
+        assert _pieces(cmd) == (cmd,)
+
+    def test_single_quote_ends_at_the_next_quote_whatever_precedes_it(self):
+        assert _pieces("a 'x\\'; b") == ("a 'x\\'", "b")
+
+    def test_joins_backslash_newline(self):
+        assert _pieces("a \\\n  b; c") == ("a   b", "c")
+        assert _pieces("kub\\\nectl x") == ("kubectl x",)
+        assert _pieces('a "x\\\ny" b') == ('a "xy" b',)
+
+    def test_joins_backslash_newline_inside_single_quotes_for_the_shell_that_runs_the_text(self):
+        assert _pieces("a 'x\\\ny'") == ("a 'xy'",)
+
+    def test_keeps_an_escaped_backslash_before_a_newline(self):
+        assert _pieces('a "x\\\\\ny" b') == ('a "x\\\\\ny" b',)
+
+    @pytest.mark.parametrize("cmd", ["a 'x; b", 'a "x; b', 'a "x\\"; b', "a 'x\"; b"])
+    def test_unclosed_quote_gives_up(self, cmd):
+        assert _pieces(cmd) is None
+
+
+class TestFallbackPiecesNesting:
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "a $(b; c) d",
+            "a $(b && c) d",
+            "(a; b)",
+            "a $(b $(c; d); e) f",
+            "a $(b 'x)' ; c) d",
+            'a $(b "x)" ; c) d',
+            "a `b; c` d",
+            "{ b; c; }",
+            "a ${b:-c;d} e",
+            'a "x $(b; c) y" d',
+            'a "x `b; c` y" d',
+            'a "x `b "c; d"` y" e',
+            'a "x ${b:-c;d} y" d',
+            'a "$(b "c; d")" e',
+            "a <(b; c) d",
+            "a >(b; c) d",
+            "a $(b\nc) d",
+            "(b\nc)",
+        ],
+    )
+    def test_does_not_split_inside_groups_and_substitutions(self, cmd):
+        assert _pieces(cmd) == (cmd,)
+
+    def test_splits_around_a_group(self):
+        assert _pieces("(a; b); c && { d; e; }") == ("(a; b)", "c", "{ d; e; }")
+
+    def test_splits_after_a_quoted_substitution(self):
+        assert _pieces('a "$(b)"; c') == ('a "$(b)"', "c")
+
+    @pytest.mark.parametrize(
+        "expansion",
+        ["${b:-'c;d'}", '${b:-"c;d"}', "${b:-`c;d`}", "${b:-$(c;d)}", "${b:-${c};d}"],
+    )
+    def test_splits_after_a_parameter_expansion_with_separators_inside(self, expansion):
+        assert _pieces(f"a {expansion}; e") == (f"a {expansion}", "e")
+
+    def test_a_comment_inside_backticks_leaves_the_cuts_outside_alone(self):
+        assert _pieces("a `# x\n` b") == ("a `# x\n` b",)
+        assert _pieces("a `# x\n`; b") == ("a `# x\n`", "b")
+
+    @pytest.mark.parametrize(
+        ("cmd", "expected"),
+        [("a { b; c", ("a { b", "c")), ("a b}; c", ("a b}", "c")), ("a $(b}); c", ("a $(b})", "c"))],
+    )
+    def test_braces_outside_command_position_are_plain_words(self, cmd, expected):
+        assert _pieces(cmd) == expected
+
+    @pytest.mark.parametrize(
+        "cmd",
+        ["a $(b; c", "a (b; c", "{ b; c", "a ${b; c", "a `b; c", 'a "$(b; c"', "a $(b 'x); c)"],
+    )
+    def test_unclosed_group_gives_up(self, cmd):
+        assert _pieces(cmd) is None
+
+    @pytest.mark.parametrize("cmd", ["a b); c", "a (b}; c", "a {b); c"])
+    def test_unmatched_closer_gives_up(self, cmd):
+        assert _pieces(cmd) is None
+
+
+class TestFallbackPiecesGivesUp:
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "cat <<EOF; a\nb\nEOF",
+            "cat <<'EOF'\nx\nEOF\na",
+            "cat <<-EOF\nx\nEOF",
+            "a <<< b; c",
+            "a $'\\';'' b",
+            "a # it's; b",
+            "a; # note\nb",
+            "a (# x\n) b",
+            "case x in a) b;; esac; c",
+            "case x in (a) b;; (c) d;; esac",
+            "a $(case x in a) b;; esac); c",
+            "a $((1; 2)) b",
+            "# x\na",
+            "a\n# x\nb",
+            "a\t# x\nb",
+            "a;# x\nb",
+            "a&# x\nb",
+            "a|# x\nb",
+            "(a)# x\nb",
+            "a ># x\nb",
+            "a <# x\nb",
+            "cat <\\\n<EOF\nx\nEOF",
+            "a $\\\n'x;y'; b",
+            "ca\\\nse x in (a) b;; esac",
+            "for i in 1 2; do a; b; done",
+            "for ((i=0; i<2; i++)); do a; done",
+            "while a; do b; c; done",
+            "until a; do b; c; done",
+            "select i in x y; do a; b; done",
+            "a && for i in 1; do b; done",
+            "a | while read i; do b; done",
+            "! while a; do b; done",
+            "if a; then for i in 1; do b; done; fi",
+            "{ for i in 1; do a; done; }; b",
+            "fo\\\nr i in 1; do a; done",
+        ],
+    )
+    def test_gives_up_on_what_it_cannot_read_with_certainty(self, cmd):
+        assert _pieces(cmd) is None
+
+    @pytest.mark.parametrize("cmd", ["a $#; b", "a x#y; b", "a 'x #'; b", 'a "x #"; b', "a ${#b}; c", "a \\#b; c"])
+    def test_a_hash_inside_a_word_is_not_a_comment(self, cmd):
+        assert _pieces(cmd) is not None
+
+    @pytest.mark.parametrize("cmd", ["showcase a; b", "a --case-file x; b", "a case_x; b"])
+    def test_other_words_containing_case_split(self, cmd):
+        assert _pieces(cmd) is not None
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "a --for=x; b",
+            "a --while x; b",
+            "a format; b",
+            "a forward; b",
+            "a for_each; b",
+            "a for-each; b",
+            "a unlike; b",
+            "a selected; b",
+            "a until_x; b",
+        ],
+    )
+    def test_other_words_containing_a_loop_keyword_split(self, cmd):
+        assert _pieces(cmd) is not None
 
 
 class TestMaskedCleanLines:
