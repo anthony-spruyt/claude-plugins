@@ -1,0 +1,123 @@
+# A command the parser cannot see through is checked one command at a time when it can be split and its hidden code stays inside one command, so text in one command never completes a match in another.
+# Code one command defines and another runs (functions, saved scripts, source, alias, a written file, a set variable, a changed PATH, a loop) is checked as a whole.
+test_cases:
+  - name: 'compound: allows an IP in a command after the gh call'
+    tool: Bash
+    command: 'kubectl get pods; gh issue create --title x --body-file r.md; echo 10.1.2.3'
+    expect: allow
+  - name: 'compound: allows an IP in a command after the gh call on the next line'
+    tool: Bash
+    command: "kubectl get pods\ngh issue create --title x --body-file r.md\necho 10.1.2.3"
+    expect: allow
+  - name: 'compound: blocks an IP in the gh body'
+    tool: Bash
+    command: 'kubectl get pods; gh issue create --title x --body "see 10.1.2.3"'
+    expect: block
+  - name: 'compound: blocks an IP in a gh body continued on the next line'
+    tool: Bash
+    command: "kubectl get pods; gh issue create --title x \\\n  --body 'see 10.1.2.3'"
+    expect: block
+  - name: 'compound: blocks an IP in a gh body holding a semicolon'
+    tool: Bash
+    command: 'kubectl get pods; gh issue create --title x --body "a; see 10.1.2.3"'
+    expect: block
+  - name: 'compound: blocks a piped env search after another command'
+    tool: Bash
+    command: 'kubectl get pods; env | grep TOKEN'
+    expect: block
+  - name: 'compound: blocks a piped env search after &&'
+    tool: Bash
+    command: 'docker ps && printenv | grep KEY'
+    expect: block
+  - name: 'compound: blocks a piped env search on its own line'
+    tool: Bash
+    command: "kubectl get pods\nenv | grep TOKEN"
+    expect: block
+  - name: 'compound: blocks a decrypt after another command'
+    tool: Bash
+    command: 'kubectl get pods; sops -d secrets.yaml'
+    expect: block
+  - name: 'compound: blocks an IP in a gh body when a heredoc is present'
+    tool: Bash
+    command: "kubectl get pods; gh issue create --title x --body-file - <<'EOF'\nsee 10.1.2.3\nEOF"
+    expect: block
+  - name: 'compound: blocks an IP passed to a function that runs git commit'
+    tool: Bash
+    command: 'f() { git commit -m "$1"; }; f "host 10.1.2.3"'
+    expect: block
+  - name: 'compound: blocks an IP passed to a function keyword definition that runs git commit'
+    tool: Bash
+    command: 'function f { git commit "$@"; }; f -m "host 10.1.2.3"'
+    expect: block
+  - name: 'compound: blocks an IP passed to a function that runs gh issue create'
+    tool: Bash
+    command: 'f() { gh issue create --title x --body "$1"; }; f "host 10.1.2.3"'
+    expect: block
+  - name: 'compound: blocks an IP passed to an exported function that runs git commit'
+    tool: Bash
+    command: "f() { git commit -m \"$1\"; }; export -f f; bash -c 'f \"host 10.1.2.3\"'"
+    expect: block
+  - name: 'compound: blocks an IP passed to a script saved by echo and run with bash'
+    tool: Bash
+    command: "echo 'git commit -m \"$1\"' > /tmp/a.sh; bash /tmp/a.sh \"host 10.1.2.3\""
+    expect: block
+  - name: 'compound: blocks an IP passed to a script saved by echo and run with source'
+    tool: Bash
+    command: "echo 'git commit -m \"$1\"' > /tmp/a.sh; source /tmp/a.sh \"host 10.1.2.3\""
+    expect: block
+  - name: 'compound: blocks an IP passed to a script saved by echo and run with a dot'
+    tool: Bash
+    command: "echo 'git commit -m \"$1\"' > /tmp/a.sh; . /tmp/a.sh \"host 10.1.2.3\""
+    expect: block
+  - name: 'compound: blocks an IP passed to an alias of git commit'
+    tool: Bash
+    command: "alias gc='git commit'; gc -m \"host 10.1.2.3\""
+    expect: block
+  - name: 'compound: allows an IP after the gh call when a command only discards output'
+    tool: Bash
+    command: 'kubectl get pods >/dev/null 2>&1; gh issue create --title x --body-file r.md; echo 10.1.2.3'
+    expect: allow
+  - name: 'compound: blocks an IP passed to a script saved by printf and found through PATH'
+    tool: Bash
+    command: "printf 'gh issue create --body \"$@\"' > /tmp/p/kubectl-g; PATH=/tmp/p:$PATH kubectl g 10.1.2.3"
+    expect: block
+  - name: 'compound: blocks an IP passed to an oc plugin saved by printf and found through PATH'
+    tool: Bash
+    command: "printf 'gh issue create --body \"$@\"' > /tmp/p/oc-g; PATH=/tmp/p:$PATH oc g 10.1.2.3"
+    expect: block
+  - name: 'compound: blocks an IP passed to a docker plugin saved by printf'
+    tool: Bash
+    command: "printf 'gh issue create --body \"$@\"' > ~/.docker/cli-plugins/docker-g; docker g 10.1.2.3"
+    expect: block
+  - name: 'compound: blocks an IP passed to a plugin saved by tee'
+    tool: Bash
+    command: "printf 'gh issue create --body \"$@\"' | tee /tmp/p/kubectl-g; kubectl g 10.1.2.3"
+    expect: block
+  - name: 'compound: blocks an IP after a busybox call that can run a script file'
+    tool: Bash
+    command: 'busybox sh /tmp/x gh issue create --body-file r.md; echo 10.1.2.3'
+    expect: block
+  - name: 'compound: blocks an IP fed to a kubectl call in a for loop'
+    tool: Bash
+    command: 'for i in 1 2; do kubectl gh issue create --body $@; set -- 10.1.2.3; done'
+    expect: block
+  - name: 'compound: blocks an IP fed to a kubectl exec call in an until loop'
+    tool: Bash
+    command: 'until false; do kubectl exec p -- gh issue create --body $c; c=10.1.2.3; done'
+    expect: block
+  - name: 'compound: blocks an IP fed to a kubectl call in a while loop on separate lines'
+    tool: Bash
+    command: "while true\ndo\n  kubectl gh issue create --body $@\n  set -- 10.1.2.3\ndone"
+    expect: block
+  - name: 'compound: allows an IP after the gh call when a variable is set only for one kubectl call'
+    tool: Bash
+    command: 'KUBECONFIG=/x kubectl get pods; gh issue create --title x --body-file r.md; echo 10.1.2.3'
+    expect: allow
+  - name: 'compound: blocks an IP passed through a variable that another command set'
+    tool: Bash
+    command: "c='gh issue create --body'; docker exec p sh -c \"$c 10.1.2.3\""
+    expect: block
+  - name: 'compound: blocks an IP passed through the positional parameters that another command set'
+    tool: Bash
+    command: "set -- gh issue create --body; kubectl exec p -- sh -c \"$* 10.1.2.3\""
+    expect: block
