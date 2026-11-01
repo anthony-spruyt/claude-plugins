@@ -116,6 +116,12 @@ INPUTS = {
     "rm-many-stars": "rm " + "*/" * 9990,
     "rm-unbalanced-quotes": "rm " + 'a" ' * 6600,
     "rm-open-quotes-then-glob": "rm " + '"a ' * 6600 + "/*",
+    "rm-then-newlines": "rm a" + "\n" * 19990,
+    "rm-then-wrapper-words": "rm a;" + "sudo a b c d e " * 1300,
+    "rm-then-xargs-rm": "rm a;" + "xargs rm " * 2200,
+    "rm-then-assignments": "rm a;" + "a=1 " * 4900,
+    "rm-many-parents": "rm " + "../" * 6600,
+    "rm-then-continued-wrappers": "rm a;" + "sudo \\\n" * 3300,
 }
 
 

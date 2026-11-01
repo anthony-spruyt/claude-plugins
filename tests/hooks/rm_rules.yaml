@@ -248,6 +248,243 @@ test_cases:
     tool: Bash
     command: 'git commit -m "fix: x" && rm -rf /usr'
     expect: block
+  - name: 'block-rm-unchecked-target: blocks variable with a variable subpath'
+    tool: Bash
+    command: 'rm -f "$DIR/$f"'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable with a variable subpath in a loop'
+    tool: Bash
+    command: 'for f in a b; do rm -f "$DIR/$f"; done'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks braced variables around a slash'
+    tool: Bash
+    command: 'rm -rf "${OUT}/${NAME}"'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks quoted variable then quoted variable'
+    tool: Bash
+    command: 'rm -rf "$DIR"/"$f"'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks quoted variable then star suffix'
+    tool: Bash
+    command: 'rm -f "$DIR"/*.log'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable then star suffix'
+    tool: Bash
+    command: 'rm -f $LOGDIR/*.txt'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable with a quoted slash then star'
+    tool: Bash
+    command: 'rm -rf "$DIR/"*'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable then brace list'
+    tool: Bash
+    command: 'rm -rf $WORK/{a,b}'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable then question mark'
+    tool: Bash
+    command: 'rm -f $DIR/?.log'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable then bracket set'
+    tool: Bash
+    command: 'rm -f $DIR/[ab].log'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable then a second slash'
+    tool: Bash
+    command: 'rm -rf $DIR//x'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks variable then a single-quoted subpath'
+    tool: Bash
+    command: "rm -rf \"$DIR\"/'x y'"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks star under a single-quoted directory'
+    tool: Bash
+    command: "rm -rf 'my dir'/*"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks dot'
+    tool: Bash
+    command: rm -rf .
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks dot slash'
+    tool: Bash
+    command: rm -rf ./
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks parent'
+    tool: Bash
+    command: rm -rf ..
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks grandparent'
+    tool: Bash
+    command: rm -rf ../..
+    expect: block
+  # A guard does not help for variables that are normally set
+  - name: 'block-rm-unchecked-target: blocks guarded HOME then star'
+    tool: Bash
+    command: 'rm -rf "${HOME:?}"/*'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks guarded TMPDIR then star'
+    tool: Bash
+    command: 'rm -rf "${TMPDIR:?}"/*'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks guarded PWD then star'
+    tool: Bash
+    command: 'rm -rf "${PWD:?}"/*'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks guarded HOME'
+    tool: Bash
+    command: 'rm -rf "${HOME:?}"'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks after an environment assignment'
+    tool: Bash
+    command: FOO=1 rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under nice with options'
+    tool: Bash
+    command: nice -n 5 rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under timeout'
+    tool: Bash
+    command: timeout 10 rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under command'
+    tool: Bash
+    command: command rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks with a leading backslash'
+    tool: Bash
+    command: \rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks after an or'
+    tool: Bash
+    command: true || rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in a second rm'
+    tool: Bash
+    command: rm -f a.txt && rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in a for loop body'
+    tool: Bash
+    command: 'for d in a b; do rm -rf "$d"/*; done'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in a brace group'
+    tool: Bash
+    command: '{ rm -rf /usr; }'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in backticks'
+    tool: Bash
+    command: 'x=`rm -rf /usr`'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks on a later line'
+    tool: Bash
+    command: "cd /tmp/x\nrm -rf *"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks on a later line before a heredoc'
+    tool: Bash
+    command: "cd /tmp/x\nrm -rf *\ncat <<'EOF'\nhi\nEOF"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in bash -lc'
+    tool: Bash
+    command: "bash -lc 'rm -rf *'"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in eval'
+    tool: Bash
+    command: "eval 'rm -rf *'"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in a case branch'
+    tool: Bash
+    command: 'case $x in a) rm -rf *;; esac'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in an if condition'
+    tool: Bash
+    command: 'if rm -rf *; then echo ok; fi'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in an else branch'
+    tool: Bash
+    command: 'if true; then :; else rm -rf *; fi'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in a while condition'
+    tool: Bash
+    command: 'while rm -rf logs/*; do sleep 1; done'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in an until condition'
+    tool: Bash
+    command: 'until rm -rf logs/*; do sleep 1; done'
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under time'
+    tool: Bash
+    command: time rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under env'
+    tool: Bash
+    command: env LC_ALL=C rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under nohup'
+    tool: Bash
+    command: nohup rm -rf * &
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under exec'
+    tool: Bash
+    command: exec rm -rf *
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under watch'
+    tool: Bash
+    command: watch rm -rf logs/*
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in find execdir'
+    tool: Bash
+    command: find . -name build -execdir rm -rf * \;
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks star after a continuation'
+    tool: Bash
+    command: "rm -rf \\\n  /tmp/x/*"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks star when rm ends the line'
+    tool: Bash
+    command: "rm \\\n  -rf logs/*"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks star after a continuation between flags'
+    tool: Bash
+    command: "rm -r \\\n  -f *"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks top-level directory after a continuation'
+    tool: Bash
+    command: "rm -rf \\\n  /usr"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks substitution after a continuation'
+    tool: Bash
+    command: "rm -rf \\\n  \"$(pwd)\""
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks substitution after a continuation between flags'
+    tool: Bash
+    command: "rm -r \\\n  -f \"$(pwd)\""
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under sudo split by a continuation'
+    tool: Bash
+    command: "sudo \\\n  -E rm -rf *"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks under sudo options split by a continuation'
+    tool: Bash
+    command: "sudo -E \\\n  -u root rm -rf *"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks in bash -c split by a continuation'
+    tool: Bash
+    command: "bash -c \\\n  'rm -rf *'"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks substitution after a continuation before a flag'
+    tool: Bash
+    command: "rm \\\n  -r \"$(pwd)\""
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks substitution after a continuation before the first of two flags'
+    tool: Bash
+    command: "rm \\\n  -f -r \"$(pwd)\""
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks after an assignment split by a continuation below a heredoc'
+    tool: Bash
+    command: "cat <<'EOF' > /tmp/x\nhi\nEOF\ntrue; A=1 \\\n  rm -rf *"
+    expect: block
+  - name: 'block-rm-unchecked-target: blocks star in a Monitor command'
+    tool: Monitor
+    tool_input: {command: 'rm -rf logs/*', description: 'clean logs'}
+    expect: block
   - name: 'block-rm-unchecked-target: allows literal absolute path'
     tool: Bash
     command: rm -rf /tmp/agent-work/x
@@ -375,4 +612,56 @@ test_cases:
   - name: 'block-rm-unchecked-target: allows literal paths in a quoted remote command before a quoted glob argument'
     tool: Bash
     command: "ssh host 'rm -rf src/obj src/bin' && find . -type d -not -path './.git/*'"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows a glob in a commit message after a real rm'
+    tool: Bash
+    command: 'rm -rf build && git commit -m "chore: stop using rm -rf dist/*"'
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows rm text in a heredoc body after a real rm'
+    tool: Bash
+    command: "rm -f tmp.txt && cat > notes.md <<'EOF'\nrm -rf \"$DIR\"/*\nrm -rf /usr\nEOF"
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows rm text in a heredoc commit message after a real rm'
+    tool: Bash
+    command: "rm -f tmp.txt && git commit -m \"$(cat <<'EOF'\nfix: x\n\nrm -rf dist/*\nEOF\n)\""
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows a quoted glob in echo after a real rm'
+    tool: Bash
+    command: 'rm -f tmp.txt && echo "rm -rf *"'
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows guarded variable with a subpath'
+    tool: Bash
+    command: 'rm -rf "${DIR:?}/x"'
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows guarded variable then star suffix'
+    tool: Bash
+    command: 'rm -rf "${DIR:?}"/*.log'
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows hidden directories'
+    tool: Bash
+    command: rm -rf .venv .cache
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows a sibling of the parent'
+    tool: Bash
+    command: rm -rf ../build
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows rm text in a message that masking blanks'
+    tool: Bash
+    command: 'git commit -m "docs: set ENV=1; rm -rf /usr is unsafe"'
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows a word ending in a keyword before rm text'
+    tool: Bash
+    command: 'rm -f a && git commit -m "fix: undo rm -rf dist/*"'
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows a word ending in a wrapper name before rm text'
+    tool: Bash
+    command: 'rm -f a && echo "stopwatch rm -rf dist/*"'
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows a word ending in a c flag before quoted rm text'
+    tool: Bash
+    command: "rm -f a && echo \"ab-c 'rm -rf dist/*'\""
+    expect: allow
+  - name: 'block-rm-unchecked-target: allows a literal path in a Monitor command'
+    tool: Monitor
+    tool_input: {command: 'rm -rf /tmp/x', description: 'clean up'}
     expect: allow
