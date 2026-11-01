@@ -1,19 +1,20 @@
 # best-practices
 
-Warning rules for Claude Code that nudge toward better patterns without blocking.
+Rules for Claude Code that nudge toward better patterns and block commands that stall on a permission prompt.
 
 ## Requirements
 
 Requires the **hookify-plus** plugin to be installed from this same marketplace. Without the engine, these rule files are inert markdown with no effect.
 
-## Rules (4)
+## Rules (5)
 
-| Rule                      | Warns About                                             |
-| ------------------------- | ------------------------------------------------------- |
-| warn-conventional-commits | Non-conventional commit messages                        |
-| warn-shell-wrappers       | `sh -c` / `bash -c` / `eval` instead of dedicated tools |
-| warn-use-edit-tool        | Using `sed`/`awk` instead of Edit tool                  |
-| warn-use-read-tool        | Using `cat`/`head`/`tail` instead of Read tool          |
+| Rule                      | Action | Covers                                                                                             |
+| ------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| block-rm-unchecked-target | Block  | `rm`/`rmdir` of `*` or `dir/*`, `"$VAR"/`, a bare `$(...)`, `/`, `~`, `.` or a top-level directory |
+| warn-conventional-commits | Warn   | Non-conventional commit messages                                                                   |
+| warn-shell-wrappers       | Warn   | `sh -c` / `bash -c` / `eval` instead of dedicated tools                                            |
+| warn-use-edit-tool        | Warn   | Using `sed`/`awk` instead of Edit tool                                                             |
+| warn-use-read-tool        | Warn   | Using `cat`/`head`/`tail` instead of Read tool                                                     |
 
 ## Installation
 
