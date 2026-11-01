@@ -47,9 +47,9 @@ The rules need the **hookify-plus** plugin from this same marketplace. Without t
 
 In Claude sessions, `grep` and `rg` skip `*.sops.*` files.
 
-- A SessionStart hook (every source, `compact` included) copies a `grep` wrapper and an rg config to `${CLAUDE_PLUGIN_DATA}/shim`, which survives plugin updates, then adds them to the Bash tool's shell through `CLAUDE_ENV_FILE`.
+- A SessionStart hook (every source, `compact` included) copies a `grep` wrapper and an rg config (`--glob=!*.sops.*`) to `${CLAUDE_PLUGIN_DATA}/shim`, which survives plugin updates, then adds them to the Bash tool's shell through `CLAUDE_ENV_FILE`.
 - The wrapper runs the real grep with `--exclude=*.sops.*`, placed after your options so that a later `--include` does not undo it. If it cannot tell where the options end (an option it does not know, together with `--` or `POSIXLY_CORRECT`), it exits 2 with an error instead of guessing.
-- rg gets `--glob=!*.sops.*` from the config. An existing `RIPGREP_CONFIG_PATH` is left alone.
+- If you set `RIPGREP_CONFIG_PATH` yourself, add `--glob=!*.sops.*` to that file.
 - It needs GNU grep. Without one the hook installs nothing.
 - Only Claude sessions are affected. Your own terminal is unchanged.
 - Set `SECURITY_HOOKS_GREP_SHIM=0` to turn all of it off.

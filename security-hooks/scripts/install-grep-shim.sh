@@ -69,7 +69,6 @@ works || exit 0
 
 q_dir=$(quote "$shim_dir")
 q_config=$(quote "$rg_config")
-append_line 'unset -f grep 2>/dev/null || true'
 # shellcheck disable=SC2016
 append_line 'case ":$PATH:" in *:'"$q_dir"':*) ;; *) PATH='"$q_dir"':"$PATH" ;; esac'
 # shellcheck disable=SC2016

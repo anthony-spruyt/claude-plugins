@@ -1,6 +1,7 @@
-#!/usr/bin/env bash
+#!/usr/bin/env -S bash -p
 # security-hooks grep shim: runs the real grep with --exclude=*.sops.*. Installed by scripts/install-grep-shim.sh.
-# Keep this line second: find_real_grep skips every grep that has it, so copies of the shim on PATH never call each other.
+# Keep the line above as line 2: is_shim reads it from every grep on PATH, so copies of the shim never call each other.
+# bash -p ignores the caller's BASH_ENV, SHELLOPTS and BASHOPTS, which would change how this script runs.
 
 LONG_OPTIONS=(
   after-context: basic-regexp before-context: binary binary-files: byte-offset color? colour? context: count

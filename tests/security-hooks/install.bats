@@ -24,6 +24,8 @@ setup() {
   printf 'needle\n' >"${TMP}/tree/a.sops.yaml"
   printf 'needle\n' >"${TMP}/tree/b.yaml"
   printf 'needle\n' >"${TMP}/tree/sub/c.sops.json"
+  printf 'grep() { echo "claude grep function"; }\n' >"${TMP}/function.sh"
+  printf 'unset -f grep find 2>/dev/null || true\n' >"${TMP}/restore.sh"
 }
 
 teardown() {
@@ -39,7 +41,6 @@ in_shell() {
   local files="$1" cmd="$2"
   run --separate-stderr env -i HOME="${TMP}" PATH="${ORIG_PATH}" ENV_FILES="${files}" TREE="${TMP}/tree" SHIMDIR="${CLAUDE_PLUGIN_DATA}/shim" \
     bash -c '
-    grep() { echo "builtin grep function"; }
     for f in ${ENV_FILES}; do . "${f}"; done
     cd "${TREE}" && '"${cmd}"
 }
@@ -60,12 +61,21 @@ in_shell() {
   [ "${status}" -eq 1 ]
 }
 
-@test "after sourcing the env lines grep skips *.sops.* files and the builtin grep function is gone" {
+@test "after sourcing the env lines grep skips *.sops.* files" {
   install
   in_shell "${CLAUDE_ENV_FILE}" 'type -t grep; grep -rl needle .'
   [ "${status}" -eq 0 ]
   [ "${lines[0]}" = "file" ]
   [ "${lines[1]}" = "./b.yaml" ]
+  [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "the env lines leave a grep function of the shell alone" {
+  install
+  in_shell "${TMP}/function.sh ${CLAUDE_ENV_FILE}" 'type -t grep; grep -rl needle .'
+  [ "${status}" -eq 0 ]
+  [ "${lines[0]}" = "function" ]
+  [ "${lines[1]}" = "claude grep function" ]
   [ "${#lines[@]}" -eq 2 ]
 }
 
@@ -77,12 +87,11 @@ in_shell() {
   [ -z "${stderr}" ]
 }
 
-@test "the env lines work before, after or without a file that unsets the grep function, and when sourced twice" {
+@test "the env lines work before or after a file that unsets the grep function, and when sourced twice" {
   install
-  printf 'unset -f grep find 2>/dev/null || true\n' >"${TMP}/restore.sh"
-  for files in "${CLAUDE_ENV_FILE} ${TMP}/restore.sh" "${TMP}/restore.sh ${CLAUDE_ENV_FILE}" "${CLAUDE_ENV_FILE}" \
-    "${CLAUDE_ENV_FILE} ${CLAUDE_ENV_FILE}" "${CLAUDE_ENV_FILE} ${TMP}/restore.sh ${CLAUDE_ENV_FILE}" \
-    "${TMP}/restore.sh ${CLAUDE_ENV_FILE} ${TMP}/restore.sh ${CLAUDE_ENV_FILE}"; do
+  for files in "${TMP}/function.sh ${CLAUDE_ENV_FILE} ${TMP}/restore.sh" "${TMP}/function.sh ${TMP}/restore.sh ${CLAUDE_ENV_FILE}" \
+    "${TMP}/function.sh ${CLAUDE_ENV_FILE} ${TMP}/restore.sh ${CLAUDE_ENV_FILE}" \
+    "${TMP}/function.sh ${TMP}/restore.sh ${CLAUDE_ENV_FILE} ${TMP}/restore.sh ${CLAUDE_ENV_FILE}"; do
     in_shell "${files}" 'type -t grep; command -v grep; grep -rl needle .'
     if [ "${lines[0]}" != "file" ] || [ "${lines[1]}" != "${CLAUDE_PLUGIN_DATA}/shim/grep" ] || [ "${lines[2]}" != "./b.yaml" ] || [ "${#lines[@]}" -ne 3 ]; then
       echo "sourcing: ${files}: ${output}" >&2
@@ -126,10 +135,9 @@ in_shell() {
 }
 
 @test "the rg config makes rg skip *.sops.* files when it walks a directory" {
-  rg="$(PATH="${ORIG_PATH}" command -v rg || true)"
-  case "${rg}" in /*) ;; *) skip "rg is not installed" ;; esac
+  require_rg
   install
-  run env RIPGREP_CONFIG_PATH="${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" "${rg}" -l needle "${TMP}/tree"
+  run env RIPGREP_CONFIG_PATH="${CLAUDE_PLUGIN_DATA}/shim/ripgreprc" "${RG}" -l needle "${TMP}/tree"
   [ "${status}" -eq 0 ]
   [ "$(printf '%s\n' "${output}" | sort)" = "${TMP}/tree/b.yaml" ]
 }
@@ -245,6 +253,11 @@ in_shell() {
       [[ "${source_}" =~ ^(${matcher})$ ]]
     fi
   done
-  [ -x "${PLUGIN}/scripts/install-grep-shim.sh" ]
-  [ -x "${PLUGIN}/shim/grep" ]
+}
+
+@test "the installed shim runs on its own and skips *.sops.* files" {
+  install
+  run "${CLAUDE_PLUGIN_DATA}/shim/grep" -rl needle "${TMP}/tree"
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "${TMP}/tree/b.yaml" ]
 }

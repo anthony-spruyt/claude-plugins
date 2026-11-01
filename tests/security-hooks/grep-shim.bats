@@ -181,6 +181,36 @@ real_grep() {
   [ "${output}" = "1" ]
 }
 
+@test "an exported errexit changes neither the status nor the message of grep" {
+  for shape in "--frobnicate needle b.yaml" "-r -e" "-c needle b.yaml" "nomatch b.yaml"; do
+    read -ra words <<<"${shape}"
+    run --separate-stderr env SHELLOPTS=errexit grep "${words[@]}" </dev/null
+    shim_status="${status}"
+    shim_output="$(sorted "${output}")"
+    shim_stderr="${stderr}"
+    run --separate-stderr real_grep "${words[@]}" </dev/null
+    if [ "${shim_status}" != "${status}" ] || [ "${shim_output}" != "$(sorted "${output}")" ] || [ "${shim_stderr}" != "${stderr}" ]; then
+      echo "grep ${shape}: shim ${shim_status} '${shim_output}' '${shim_stderr}', real ${status} '${output}' '${stderr}'" >&2
+      return 1
+    fi
+  done
+}
+
+@test "an exported xtrace prints nothing extra" {
+  run --separate-stderr env SHELLOPTS=xtrace grep -c needle b.yaml
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "1" ]
+  [ -z "${stderr}" ]
+}
+
+@test "a BASH_ENV file is not sourced" {
+  printf 'touch "%s/sourced"\n' "${TMP}" >"${TMP}/bash_env.sh"
+  run env BASH_ENV="${TMP}/bash_env.sh" grep -c needle b.yaml
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "1" ]
+  [ ! -e "${TMP}/sourced" ]
+}
+
 @test "does not loop when its directory is on PATH twice or through a link" {
   PATH="${SHIM_DIR}:${SHIM_DIR}:${ORIG_PATH}:${SHIM_DIR}"
   run timeout 10 grep -rl needle .
