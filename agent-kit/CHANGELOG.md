@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.4.1...agent-kit-v1.4.2) (2026-11-02)
+
+
+### Bug Fixes
+
+* **agent-kit:** ignore stability-days and Agent triage in ci-status.sh ([#268](https://github.com/anthony-spruyt/claude-plugins/issues/268)) ([f2ac1c5](https://github.com/anthony-spruyt/claude-plugins/commit/f2ac1c5c1a44d54b7347ebd111054b62a61bc72d))
+
 ## [1.4.1](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.4.0...agent-kit-v1.4.1) (2026-11-01)
 
 
