@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.4.2...agent-kit-v1.5.0) (2026-11-02)
+
+
+### Features
+
+* **agent-kit:** install the pre-commit hook in workspace.sh clones ([#271](https://github.com/anthony-spruyt/claude-plugins/issues/271)) ([63bda34](https://github.com/anthony-spruyt/claude-plugins/commit/63bda348b95c593bf97d6c11e24427d7004e9e49))
+
 ## [1.4.2](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.4.1...agent-kit-v1.4.2) (2026-11-02)
 
 
