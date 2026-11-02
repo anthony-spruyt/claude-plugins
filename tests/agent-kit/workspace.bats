@@ -157,6 +157,37 @@ without_pre_commit() {
   [[ "${stderr}" == *"stub-pre-commit-stderr"* ]]
 }
 
+@test "stdout stays the path when CDPATH is set and the workspace root is relative" {
+  seed_hooked_remote
+  stub_pre_commit
+  cd "${TMP}"
+  export CDPATH="${TMP}"
+  export AGENT_WORKSPACE_ROOT=work
+  run --separate-stderr bash "${SCRIPT}" acme/hooked fix-thing
+  [ "${status}" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${output}" =~ ^work/hooked-fix-thing-[A-Za-z0-9]{4,}$ ]]
+}
+
+@test "runs the pre-commit found on PATH, never one inside the clone" {
+  seed_hooked_remote
+  stub_pre_commit
+  cat >"${TMP}/seed-hooked/pre-commit" <<'EOF'
+#!/usr/bin/env bash
+touch "${STUB_CALLS}.clone"
+EOF
+  chmod +x "${TMP}/seed-hooked/pre-commit"
+  git -C "${TMP}/seed-hooked" add pre-commit
+  git -C "${TMP}/seed-hooked" commit -q -m add-pre-commit
+  git -C "${TMP}/seed-hooked" push -q origin HEAD:trunk
+  cd "${TMP}/stub-bin"
+  PATH=":${PATH}"
+  run --separate-stderr bash "${SCRIPT}" acme/hooked fix-thing
+  [ "${status}" -eq 0 ]
+  [ ! -e "${STUB_CALLS}.clone" ]
+  [ "$(cat "${STUB_CALLS}")" = "${output}|install" ]
+}
+
 @test "a missing pre-commit gives one warning and the clone still succeeds" {
   seed_hooked_remote
   without_pre_commit acme/hooked fix-thing

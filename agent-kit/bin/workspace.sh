@@ -37,10 +37,14 @@ trap - ERR
 
 # A missing or failing install must never fail the clone: the caller captures the path from stdout
 if [[ -f "$dir/.pre-commit-config.yaml" ]]; then
-  if ! command -v pre-commit >/dev/null 2>&1; then
+  if ! pc=$(command -v pre-commit 2>/dev/null); then
     echo "workspace.sh: warning: pre-commit not found, so commits in $dir skip its hook" >&2
-  elif ! (cd "$dir" && pre-commit install >&2); then
-    echo "workspace.sh: warning: 'pre-commit install' failed, so commits in $dir skip its hook" >&2
+  else
+    # Absolute path, resolved before the cd, so PATH is never searched from inside the clone
+    [[ "$pc" == /* ]] || pc=$PWD/${pc#./}
+    if ! (cd "$dir" && "$pc" install) >&2; then
+      echo "workspace.sh: warning: 'pre-commit install' failed, so commits in $dir skip its hook" >&2
+    fi
   fi
 fi
 
