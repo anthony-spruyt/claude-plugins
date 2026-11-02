@@ -111,6 +111,8 @@ The plugin's `bin/` is on the Bash tool's `PATH` in the main session and in suba
 | `push-reviewed.sh` | Push the signed commits a reviewer approved (creates a missing branch), or stop     |
 | `ci-status.sh`     | Report CI, CodeQL, Sonar and pending review of a PR or commit, optionally waiting   |
 
+When the repo has a `.pre-commit-config.yaml` and `pre-commit` is on `PATH`, `workspace.sh` also runs `pre-commit install` in the clone, so commits there run the same checks as a normal checkout. It builds no hook environments, and its output goes to stderr so stdout stays the path. A missing `pre-commit` or a failed install prints one warning and the clone still succeeds.
+
 ## Skills
 
 `writing-agents`: patterns for writing and trimming agent system prompts, including a section on plugin agents.
