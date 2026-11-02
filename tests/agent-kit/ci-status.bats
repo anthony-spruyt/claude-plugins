@@ -119,6 +119,35 @@ ci() {
   [ "$(first_line)" = "green" ]
 }
 
+@test "a pending renovate/stability-days check and an in-progress Agent triage check do not hold a PR back" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"},{"name":"renovate/stability-days","bucket":"pending"},{"name":"Agent triage","bucket":"pending"}]'
+  fixture pr-checks.rc 8
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
+@test "a failing renovate/stability-days or Agent triage check is ignored on a PR" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"},{"name":"renovate/stability-days","bucket":"fail"}]'
+  fixture pr-checks.rc 1
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"},{"name":"Agent triage","bucket":"fail"}]'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
+@test "a PR with only renovate/stability-days and Agent triage checks is not-started" {
+  fixture pr-checks.json '[{"name":"renovate/stability-days","bucket":"pending"},{"name":"Agent triage","bucket":"pending"}]'
+  fixture pr-checks.rc 8
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 3 ]
+  [ "$(first_line)" = "not-started" ]
+}
+
 @test "a failing check makes the PR failed and names the check" {
   fixture pr-checks.json '[{"name":"build","bucket":"pass"},{"name":"unit tests","bucket":"fail"}]'
   fixture pr-checks.rc 1
@@ -387,6 +416,43 @@ sha_green() {
   ci --repo o/r --sha "${SHA}"
   [ "${status}" -eq 0 ]
   [ "$(first_line)" = "green" ]
+}
+
+@test "a pending or failed renovate/stability-days commit status is ignored on a commit" {
+  sha_green
+  fixture status.json '{"state":"pending","total_count":1,"statuses":[{"context":"renovate/stability-days","state":"pending"}]}'
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+
+  fixture status.json '{"state":"failure","total_count":1,"statuses":[{"context":"renovate/stability-days","state":"failure"}]}'
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
+@test "an in-progress Agent triage check-run is ignored on a commit" {
+  sha_green
+  fixture check-runs.json '{"check_runs":[{"name":"build","status":"completed","conclusion":"success"},{"name":"Agent triage","status":"in_progress","conclusion":null}]}'
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 0 ]
+  [ "$(first_line)" = "green" ]
+}
+
+@test "a commit status with another context still counts beside an ignored renovate/stability-days one" {
+  sha_green
+  fixture status.json '{"state":"failure","total_count":2,"statuses":[{"context":"renovate/stability-days","state":"pending"},{"context":"Terraform Cloud/ws","state":"failure"}]}'
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 1 ]
+  [ "$(first_line)" = "failed" ]
+  [[ "${output}" == *"Terraform Cloud/ws"* ]]
+  [[ "${output}" != *"renovate/stability-days"* ]]
+
+  fixture status.json '{"state":"pending","total_count":2,"statuses":[{"context":"renovate/stability-days","state":"pending"},{"context":"Terraform Cloud/ws","state":"pending"}]}'
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 2 ]
+  [[ "${output}" == *"Terraform Cloud/ws"* ]]
+  [[ "${output}" != *"renovate/stability-days"* ]]
 }
 
 @test "a commit with no workflow runs or no check-runs is not-started" {
@@ -688,6 +754,17 @@ wf_runs() {
   [[ "${output}" == *"0 green, 1 failed, 2 pending, 3 not-started, 4 error"* ]]
   [[ "${output}" == *"--no-sonar"* && "${output}" == *"--no-codeql"* ]]
   [[ "${output}" == *"review: pending"* ]]
+}
+
+@test "--help names every check the script ignores" {
+  ci --help
+  local flat names name
+  flat=$(printf '%s' "${output}" | tr '\n' ' ' | tr -s ' ')
+  names=$(sed -n "s/^readonly IGNORED_CHECKS='\(.*\)'\$/\1/p" "${SCRIPT}" | jq -r '.[]')
+  [ -n "${names}" ]
+  while IFS= read -r name; do
+    [[ "${flat}" == *"${name}"* ]]
+  done <<<"${names}"
 }
 
 @test "bad arguments are an error" {
