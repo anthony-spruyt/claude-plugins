@@ -3,7 +3,7 @@
 set -eEuo pipefail
 trap 'printf "error\nunexpected failure near line %s\n" "${LINENO}"; exit 4' ERR
 
-readonly IGNORED_CHECKS='["Mergify Merge Protections","Mergify Merge Queue"]'
+readonly IGNORED_CHECKS='["Mergify Merge Protections","Mergify Merge Queue","renovate/stability-days","Agent triage"]'
 readonly INTERVAL=60
 # shellcheck disable=SC2016
 readonly RERUN_RUN='def superseded($all): . as $r | $r.conclusion == "cancelled" and $r.workflowDatabaseId != null and any($all[]; .workflowDatabaseId == $r.workflowDatabaseId and .databaseId > $r.databaseId);'
@@ -20,8 +20,9 @@ Exit codes: 0 green, 1 failed, 2 pending, 3 not-started, 4 error.
 --wait polls every 60s for --timeout minutes (default 8) and returns at once on green, failed,
 or a run that needs approval. A PR also needs its Sonar gate and CodeQL clean: --sonar-key sets
 the project key (default <owner>_<repo>), --no-sonar and --no-codeql skip one each. Mergify Merge
-Protections and Mergify Merge Queue are ignored. A PR still waiting on a review ends with the
-line "review: pending"; that is not CI and never changes the state or exit code.
+Protections, Mergify Merge Queue, renovate/stability-days and Agent triage are ignored, as checks
+or as commit statuses: none is CI. A PR still waiting on a review ends with the line
+"review: pending"; that is not CI and never changes the state or exit code.
 EOF
 }
 
@@ -188,8 +189,9 @@ check_sha() {
 
   statuses=$(gh api "repos/${repo}/commits/${sha}/status") || die "commit status query failed"
   jq -e . >/dev/null 2>&1 <<<"${statuses}" || die "commit status query gave no JSON"
-  add failed "$(jq -r '.statuses[] | select(.state | IN("failure", "error")) | "\(.context): \(.state)"' <<<"${statuses}")"
-  add pending "$(jq -r '.statuses[] | select(.state == "pending") | "\(.context): pending"' <<<"${statuses}")"
+  statuses=$(jq --argjson ig "${IGNORED_CHECKS}" '[.statuses[] | select(.context | IN($ig[]) | not)]' <<<"${statuses}")
+  add failed "$(jq -r '.[] | select(.state | IN("failure", "error")) | "\(.context): \(.state)"' <<<"${statuses}")"
+  add pending "$(jq -r '.[] | select(.state == "pending") | "\(.context): pending"' <<<"${statuses}")"
 
   fetch_runs "${sha}"
   record_runs "${runs_json}"
