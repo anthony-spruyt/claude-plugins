@@ -441,11 +441,12 @@ sha_green() {
 
 @test "a commit status with another context still counts beside an ignored renovate/stability-days one" {
   sha_green
-  fixture status.json '{"state":"failure","total_count":2,"statuses":[{"context":"renovate/stability-days","state":"pending"},{"context":"Terraform Cloud/ws","state":"failure"}]}'
+  fixture status.json '{"state":"failure","total_count":3,"statuses":[{"context":"renovate/stability-days","state":"pending"},{"context":"Terraform Cloud/ws","state":"failure"},{"context":"renovate/artifacts","state":"failure"}]}'
   ci --repo o/r --sha "${SHA}"
   [ "${status}" -eq 1 ]
   [ "$(first_line)" = "failed" ]
   [[ "${output}" == *"Terraform Cloud/ws"* ]]
+  [[ "${output}" == *"renovate/artifacts"* ]]
   [[ "${output}" != *"renovate/stability-days"* ]]
 
   fixture status.json '{"state":"pending","total_count":2,"statuses":[{"context":"renovate/stability-days","state":"pending"},{"context":"Terraform Cloud/ws","state":"pending"}]}'
