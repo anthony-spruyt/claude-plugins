@@ -33,15 +33,16 @@ This is more reliable than a static inventory that goes stale.
 
 Omitting `model` (or setting `inherit`) runs the agent on the main session's model.
 
-**Effort.** Omit `effort` and the agent inherits the session's level. Set it when the agent needs a different depth: `medium` as the starting point for analysis and multi-step tool use, `low` for fixed checklists and pre-baked queries, `xhigh`/`max` only where a test showed a gain. On Sonnet, `low` makes skipping verification of a change more likely, so avoid it for agents that edit. Levels don't carry across models; re-check `effort` when you change `model`. Effort is the thinking control on current models: don't write "think step by step", "think harder", or "don't overthink" into an agent body.
+**Effort.** Omit `effort` and the agent inherits the session's level. Set it when the agent needs a different depth: `medium` as the starting point for analysis and multi-step tool use, `low` for fixed checklists and pre-baked queries, `xhigh`/`max` only where a test showed a gain. On Sonnet, `low` makes skipping verification of a change more likely, so avoid it for agents that edit.
+Levels don't carry across models; re-check `effort` when you change `model`. Effort is the thinking control on current models: don't write "think step by step", "think harder", or "don't overthink" into an agent body.
 
 ## 3. Size Benchmarks
 
-| Category                         | Lines   | Words     |
-| -------------------------------- | ------- | --------- |
-| Small                            | 100-150 | <800     |
-| Medium                           | 150-300 | 800-1,500 |
-| Large (review for padding)       | 300+    | 2,000+    |
+| Category                   | Lines   | Words     |
+| -------------------------- | ------- | --------- |
+| Small                      | 100-150 | <800      |
+| Medium                     | 150-300 | 800-1,500 |
+| Large (review for padding) | 300+    | 2,000+    |
 
 **Size is a signal, not a target.** A long agent is worth reviewing, but cut a line only because it fails the test in `anthropic-best-practices.md` Section 1 (the model already knows it, it duplicates inherited context from CLAUDE.md/rules, or it is a verbose example), never to hit a line count. Agents are single `.md` files; do not extract content to separate files.
 

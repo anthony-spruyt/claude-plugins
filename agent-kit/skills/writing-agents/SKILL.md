@@ -11,19 +11,19 @@ Patterns and workflows for writing effective, token-efficient agent system promp
 
 ## Quick Reference
 
-| Task                   | Reference                                          |
-| ---------------------- | -------------------------------------------------- |
-| Frontmatter fields     | `references/agent-frontmatter.md`                  |
+| Task                   | Reference                                                     |
+| ---------------------- | ------------------------------------------------------------- |
+| Frontmatter fields     | `references/agent-frontmatter.md`                             |
 | Override built-in      | `references/agent-frontmatter.md`, Overriding built-in agents |
-| Plugin agents          | `references/agent-frontmatter.md`, Plugin agents   |
-| Description template   | `references/project-patterns.md` Section 6         |
-| Model selection        | `references/project-patterns.md` Section 2         |
-| Size targets           | `references/project-patterns.md` Section 3         |
-| Output format patterns | `references/project-patterns.md` Section 4         |
-| Handoff patterns       | `references/project-patterns.md` Section 5         |
-| Emphasis calibration   | `references/anthropic-best-practices.md` Section 3 |
-| Parallel execution     | `references/anthropic-best-practices.md` Section 6 |
-| Common mistakes        | `references/common-mistakes.md`                    |
+| Plugin agents          | `references/agent-frontmatter.md`, Plugin agents              |
+| Description template   | `references/project-patterns.md` Section 6                    |
+| Model selection        | `references/project-patterns.md` Section 2                    |
+| Size targets           | `references/project-patterns.md` Section 3                    |
+| Output format patterns | `references/project-patterns.md` Section 4                    |
+| Handoff patterns       | `references/project-patterns.md` Section 5                    |
+| Emphasis calibration   | `references/anthropic-best-practices.md` Section 3            |
+| Parallel execution     | `references/anthropic-best-practices.md` Section 6            |
+| Common mistakes        | `references/common-mistakes.md`                               |
 
 ## Description Field
 
@@ -54,7 +54,8 @@ Canonical section order:
 6. **Output Format** — Structured template (verdict header, evidence, next steps)
 7. **Handoff Protocol** — How results return to caller
 8. **Rules** — Constraints the model would otherwise get wrong, each with its reason
-9. **Agent Definition Feedback** — The agent ends its final reply to the caller with an `### Agent Definition Feedback` section: each problem as `- [definition] <what happened> → <change to its own file>`, `- [rules] <what happened> → <change to CLAUDE.md, .claude/rules/<file> or the hook>` or `- [brief] <what happened> → <what the caller's brief should have said>`. Tag `[definition]` if it would recur under any reasonable brief and comes from the agent file; `[rules]` if it comes from `CLAUDE.md`, `.claude/rules/` or a hook; otherwise `[brief]`. Suggest only; never self-edit. Copy the wording from an existing agent. Skip it when a machine parses the output
+9. **Agent Definition Feedback** — The agent ends its final reply to the caller with an `### Agent Definition Feedback` section: each problem as `- [definition] <what happened> → <change to its own file>`, `- [rules] <what happened> → <change to CLAUDE.md, .claude/rules/<file> or the hook>` or `- [brief] <what happened> → <what the caller's brief should have said>`.
+   Tag `[definition]` if it would recur under any reasonable brief and comes from the agent file; `[rules]` if it comes from `CLAUDE.md`, `.claude/rules/` or a hook; otherwise `[brief]`. Suggest only; never self-edit. Copy the wording from an existing agent. Skip it when a machine parses the output
 
 Not every agent needs all sections. Small focused agents may only need Persona, Workflow, Rules, and Output Format.
 
@@ -109,8 +110,8 @@ Read the agent file, this skill, and all inherited context files (CLAUDE.md, `.c
    - No `<example>` dialogue. Move any trigger an example carried that the conditions don't already cover into "When to use" or "When NOT to use", then delete the example
    - Must have "When to use" and "When NOT to use" sections
 3. **Remove inherited context** — Read CLAUDE.md and every `.claude/rules/` file. Search the agent for duplicated content. Common: secret handling, git staging, research priority, domain substitution. Replace with single-line references (e.g., "Follow inherited secret handling rules")
-4. **Calibrate emphasis** — Soften CRITICAL/MUST/NEVER/FORBIDDEN/MANDATORY (see `references/anthropic-best-practices.md` Section 3). Remove explanations the model already knows (Section 12). **Safety gates** (hard stops preventing data loss, secret exposure, skipping required inputs) stay unconditional, stated plainly with their reason. **Operational preferences** (tool choice, workflow ordering, style) use normal language — no bold, no
-   CRITICAL, no blockquote emphasis
+4. **Calibrate emphasis** — Soften CRITICAL/MUST/NEVER/FORBIDDEN/MANDATORY (see `references/anthropic-best-practices.md` Section 3). Remove explanations the model already knows (Section 12).
+   **Safety gates** (hard stops preventing data loss, secret exposure, skipping required inputs) stay unconditional, stated plainly with their reason. **Operational preferences** (tool choice, workflow ordering, style) use normal language — no bold, no CRITICAL, no blockquote emphasis
 5. **Cut what fails the test** — Remove what the model already knows, inherited context, and verbose examples (`references/anthropic-best-practices.md` Section 1). Agents are single files; do not extract. **Keep:** domain-specific commands with non-obvious flags, exact commit/git commands, behavioral anchors preventing shallow execution
 6. **Verify frontmatter** — All original fields must survive (`name`, `description`, `model`, `effort`, `tools`). Missing `tools` silently grants all tools
 
@@ -129,11 +130,11 @@ Apply the fixes in the main session. Re-run Phase 2 only when a fix restored or 
 
 ## Common Mistakes
 
-| Mistake                          | Fix                                                                 |
-| -------------------------------- | ------------------------------------------------------------------- |
-| Workflow summary in description  | Brief capability + triggering conditions only. Put workflow in body |
-| CRITICAL/MANDATORY/NEVER overuse | Normal language. Current models overtrigger on aggressive emphasis |
-| Padding in a long system prompt  | Remove what the model already knows; keep facts and reasons          |
-| No output format specified       | Add structured output template                                      |
+| Mistake                          | Fix                                                                    |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| Workflow summary in description  | Brief capability + triggering conditions only. Put workflow in body    |
+| CRITICAL/MANDATORY/NEVER overuse | Normal language. Current models overtrigger on aggressive emphasis     |
+| Padding in a long system prompt  | Remove what the model already knows; keep facts and reasons            |
+| No output format specified       | Add structured output template                                         |
 | Example dialogue in description  | Replace with intent categories under "When to use" / "When NOT to use" |
-| See full list                    | `references/common-mistakes.md`                                     |
+| See full list                    | `references/common-mistakes.md`                                        |
