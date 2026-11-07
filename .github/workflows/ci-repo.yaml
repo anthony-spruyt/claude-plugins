@@ -12,7 +12,7 @@ jobs:
       contents: "read"
     steps:
       - name: "Harden Runner"
-        uses: "anthony-spruyt/repo-operator/.github/actions/harden-runner@881af8f143b5eefd95f1f3b9a02569f32c403fbe" # main
+        uses: "anthony-spruyt/repo-operator/.github/actions/harden-runner@aaa9f7cebd854dfb5470c92f44e0bd120e99ca8b" # main
         with:
           allowed-endpoints: >-
             api.github.com:443
