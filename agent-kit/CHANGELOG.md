@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.5.0...agent-kit-v1.5.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **agent-kit:** report runs that wait for approval as pending in ci-status.sh ([#297](https://github.com/anthony-spruyt/claude-plugins/issues/297)) ([9837ff5](https://github.com/anthony-spruyt/claude-plugins/commit/9837ff5cbf94e32e6828092b83137eca28e782b9))
+
 ## [1.5.0](https://github.com/anthony-spruyt/claude-plugins/compare/agent-kit-v1.4.2...agent-kit-v1.5.0) (2026-11-02)
 
 
