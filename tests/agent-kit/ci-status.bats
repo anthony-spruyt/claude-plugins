@@ -226,6 +226,15 @@ ci() {
   [[ "${output}" == *"CI"*"needs approval"* ]]
 }
 
+@test "a completed workflow run with conclusion action_required keeps a PR with passing checks pending" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture runs.json '[{"name":"CI","status":"completed","conclusion":"action_required"}]'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql
+  [ "${status}" -eq 2 ]
+  [ "$(first_line)" = "pending" ]
+  [[ "${output}" == *"CI: action_required, needs approval"* ]]
+}
+
 @test "a workflow run that is queued or in progress keeps a PR with passing checks pending" {
   fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
   fixture runs.json '[{"name":"CI","status":"in_progress","conclusion":""},{"name":"Release","status":"queued","conclusion":""}]'
@@ -485,6 +494,16 @@ sha_green() {
   [[ "${output}" == *"CI"* ]]
 }
 
+@test "a workflow run with conclusion action_required keeps the commit pending, not failed" {
+  sha_green
+  fixture runs.json '[{"name":"CI","status":"completed","conclusion":"action_required"}]'
+  ci --repo o/r --sha "${SHA}"
+  [ "${status}" -eq 2 ]
+  [ "$(first_line)" = "pending" ]
+  [ "$(printf '%s\n' "${output}" | grep -c 'CI: action_required')" -eq 1 ]
+  [[ "${output}" == *"CI: action_required, needs approval"* ]]
+}
+
 @test "--wait polls every 60 seconds until the PR turns green" {
   fixture pr-checks.1.json '[{"name":"e2e","bucket":"pending"}]'
   fixture pr-checks.2.json '[{"name":"e2e","bucket":"pending"}]'
@@ -653,6 +672,15 @@ wf_runs() {
 @test "--wait returns at once when a run is waiting for approval" {
   fixture pr-checks.json '[{"name":"lint","bucket":"pending"}]'
   fixture runs.json '[{"name":"CI","status":"waiting","conclusion":""}]'
+  ci --repo o/r --pr 7 --no-sonar --no-codeql --wait
+  [ "${status}" -eq 2 ]
+  [[ "${output}" == *"needs approval"* ]]
+  [ ! -s "${BIN}/sleep.log" ]
+}
+
+@test "--wait returns at once when a run has conclusion action_required" {
+  fixture pr-checks.json '[{"name":"build","bucket":"pass"}]'
+  fixture runs.json '[{"name":"CI","status":"completed","conclusion":"action_required"}]'
   ci --repo o/r --pr 7 --no-sonar --no-codeql --wait
   [ "${status}" -eq 2 ]
   [[ "${output}" == *"needs approval"* ]]
