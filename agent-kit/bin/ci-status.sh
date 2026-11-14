@@ -103,7 +103,7 @@ add() {
 
 record_unfinished() {
   local waiting
-  waiting=$(jq -r '.[] | select(.status == "waiting") | "\(.name): waiting, needs approval"' <<<"$1")
+  waiting=$(jq -r '.[] | if .status == "waiting" then "\(.name): waiting, needs approval" elif .status == "completed" and .conclusion == "action_required" then "\(.name): action_required, needs approval" else empty end' <<<"$1")
   [[ -z "${waiting}" ]] || approval=1
   add pending "${waiting}"
   add pending "$(jq -r '.[] | select(.status != "completed" and .status != "waiting") | "\(.name): \(.status)"' <<<"$1")"
@@ -117,7 +117,7 @@ record_runs() {
     return
   fi
   record_unfinished "${runs}"
-  add failed "$(jq -r "${RERUN_RUN} . as \$all | .[] | select(superseded(\$all) | not) | select(.status == \"completed\" and (.conclusion | IN(\"success\", \"skipped\", \"neutral\") | not)) | \"\(.name): \(.conclusion)\"" <<<"${runs}")"
+  add failed "$(jq -r "${RERUN_RUN} . as \$all | .[] | select(superseded(\$all) | not) | select(.status == \"completed\" and (.conclusion | IN(\"success\", \"skipped\", \"neutral\", \"action_required\") | not)) | \"\(.name): \(.conclusion)\"" <<<"${runs}")"
 }
 
 fetch_runs() {
